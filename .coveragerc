@@ -1,0 +1,3 @@
+[run]
+source = spwc_proxy
+omit = spwc_proxy/test*
