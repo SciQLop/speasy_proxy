@@ -16,6 +16,8 @@ RUN mkdir spwc_proxy &&\
     pip3 install --user -e . &&\
     sed -i 's/listen = \*:6543/listen = 0.0.0.0:6543/' production.ini
 
+ADD entry_point.sh /home/spwc/entry_point.sh
+
 VOLUME $SPWC_CACHE_PATH
 EXPOSE 6543/tcp
-CMD ["pserve spwc_proxy/production.ini"]
+CMD ["/home/spwc/entry_point.sh"]
