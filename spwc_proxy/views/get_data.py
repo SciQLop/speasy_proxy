@@ -2,11 +2,19 @@ from pyramid.view import view_config
 from pyramid.response import Response
 import pickle
 import spwc
-from datetime import datetime
+from datetime import datetime, timezone
 from spwc import SpwcVariable
 import logging
 
 log = logging.getLogger(__name__)
+
+
+def dt_to_str(dt:datetime):
+    return dt.isoformat()
+
+
+def ts_to_str(ts:float):
+    return dt_to_str(datetime.utcfromtimestamp(ts))
 
 
 @view_config(route_name='get_data', renderer='json')
@@ -27,8 +35,8 @@ def get_data(request):
         if len(var.time):
             log.debug(
                 'Got data: data shape = {shape}, data start time = {start_time}, data stop time = {stop_time}'.format(
-                    shape=var.data.shape, start_time=datetime.fromtimestamp(var.time[0]),
-                    stop_time=datetime.fromtimestamp(var.time[-1])))
+                    shape=var.data.shape, start_time=ts_to_str(var.time[0]),
+                    stop_time=ts_to_str(var.time[-1])))
         else:
             log.debug('Got empty data')
     else:
