@@ -15,7 +15,8 @@ requires = [
     'pyramid_debugtoolbar',
     'waitress',
     'humanize',
-    'spwc',
+    'apscheduler',
+    'spwc>=0.6.0',
 ]
 
 tests_require = [
