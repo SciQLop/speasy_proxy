@@ -13,6 +13,7 @@ requires = [
     'pyramid',
     'pyramid_jinja2',
     'pyramid_debugtoolbar',
+    'pyramid_openapi3',
     'waitress',
     'humanize',
     'apscheduler',

@@ -17,7 +17,7 @@ def ts_to_str(ts:float):
     return dt_to_str(datetime.utcfromtimestamp(ts))
 
 
-@view_config(route_name='get_data', renderer='json')
+@view_config(route_name='get_data', openapi=True)
 def get_data(request):
     params = {}
     for parameter in ("path", "start_time", "stop_time"):

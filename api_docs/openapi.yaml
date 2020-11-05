@@ -1,0 +1,37 @@
+openapi: "3.0.0"
+info:
+  version: "1.0.0"
+  title: Spwc proxy
+paths:
+  /:
+    get:
+      responses:
+        200:
+          description: home page
+  /get_data:
+    get:
+      parameters:
+        - name: path
+          in: query
+          required: true
+          schema:
+            type: string
+            minLength: 3
+          example: amda/c1_b_gsm
+        - name: start_time
+          in: query
+          required: true
+          schema:
+            type: string
+          example: "2018-10-24T00:00:00"
+        - name: stop_time
+          in: query
+          required: true
+          schema:
+            type: string
+          example: "2018-10-24T01:00:00"
+      responses:
+        200:
+          description: Returns pickled data
+        400:
+          description: Bad Request

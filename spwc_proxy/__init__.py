@@ -11,4 +11,6 @@ def main(global_config, **settings):
         config.include('pyramid_jinja2')
         config.include('.routes')
         config.scan()
+        config.pyramid_openapi3_spec('api_docs/openapi.yaml', route='/api/v1/openapi.yaml')
+        config.pyramid_openapi3_add_explorer(route='/api/v1/')
     return config.make_wsgi_app()
