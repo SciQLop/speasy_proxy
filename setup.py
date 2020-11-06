@@ -43,6 +43,7 @@ setup(
     url='',
     keywords='web pyramid pylons',
     packages=find_packages(),
+    data_files=[('api', ['api_docs/openapi.yaml'])],
     include_package_data=True,
     zip_safe=False,
     extras_require={

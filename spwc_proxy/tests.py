@@ -7,8 +7,6 @@ from spwc.common.variable import SpwcVariable
 from pyramid import testing
 from pyramid.paster import get_appsettings
 
-settings = get_appsettings('development.ini', name='main')
-
 
 class ViewTests(unittest.TestCase):
     def setUp(self):
@@ -28,7 +26,7 @@ class ViewTests(unittest.TestCase):
 class FunctionalTests(unittest.TestCase):
     def setUp(self):
         from spwc_proxy import main
-        app = main(global_config=None, **settings)
+        app = main(global_config=None, **get_appsettings('development.ini', name='main'))
         from webtest import TestApp
         self.testapp = TestApp(app)
 
