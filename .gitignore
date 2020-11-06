@@ -9,6 +9,7 @@ coverage.xml
 build/
 dist/
 .tox/
+.vagrant/
 nosetests.xml
 env*/
 tmp/
