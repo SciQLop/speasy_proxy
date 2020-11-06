@@ -65,3 +65,6 @@ class FunctionalTests(unittest.TestCase):
         self.assertIs(type(v), list)
         self.assertGreater(len(v), 0)
         self.assertIs(type(v[0]), str)
+
+    def test_get_api_doc(self):
+        res = self.testapp.get(url='/api/v1/', status=200)
