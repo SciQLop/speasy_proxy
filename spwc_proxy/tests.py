@@ -1,6 +1,13 @@
 import unittest
 
+import pickle
+from datetime import datetime, timezone
+from spwc.common.variable import SpwcVariable
+
 from pyramid import testing
+from pyramid.paster import get_appsettings
+
+settings = get_appsettings('development.ini', name='main')
 
 
 class ViewTests(unittest.TestCase):
@@ -14,16 +21,47 @@ class ViewTests(unittest.TestCase):
         from .views.default import my_view
         request = testing.DummyRequest()
         info = my_view(request)
-        self.assertEqual(info['project'], 'spwc-proxy')
+        for key in ['entries', 'cache_disk_size', 'up_date', 'up_duration', 'cache_hits', 'cache_misses']:
+            self.assertIn(key, info)
 
 
 class FunctionalTests(unittest.TestCase):
     def setUp(self):
         from spwc_proxy import main
-        app = main({})
+        app = main(global_config=None, **settings)
         from webtest import TestApp
         self.testapp = TestApp(app)
 
-    def test_root(self):
+    def _get_data(self, path, start, stop):
+        res = self.testapp.get(url='/get_data', params={'start_time': start, 'stop_time': stop, 'path': path},
+                               status=200)
+        v = pickle.loads(res.body)
+        self.assertIsNotNone(v)
+        self.assertIs(type(v), SpwcVariable)
+        self.assertGreater(len(v), 0)
+
+    def test_home(self):
         res = self.testapp.get('/', status=200)
-        self.assertTrue(b'Pyramid' in res.body)
+        self.assertTrue(b'SPWC proxy' in res.body)
+
+    def test_get_data(self):
+        start_time = datetime(2006, 1, 8, 1, 0, 0, tzinfo=timezone.utc)
+        stop_time = datetime(2006, 1, 8, 1, 0, 5, tzinfo=timezone.utc)
+        path = 'amda/c1_b_gsm'
+        self._get_data(path=path, start=start_time, stop=stop_time)
+
+    def test_get_data_time_format(self):
+        stop_time = datetime(2006, 1, 8, 1, 0, 5, tzinfo=timezone.utc)
+        path = 'amda/c1_b_gsm'
+        for start_time in [datetime(2006, 1, 8, 1, 0, 0, tzinfo=timezone.utc),
+                           datetime(2006, 1, 8, 1, 0, 0, tzinfo=timezone.utc).isoformat(),
+                           '2006-01-08 00:00:00','2006-01-08T00:00:00','2006-01-08T00:00:00Z']:
+            self._get_data(path=path, start=start_time, stop=stop_time)
+
+    def test_get_cache_entries(self):
+        res = self.testapp.get(url='/get_cache_entries', status=200)
+        v = pickle.loads(res.body)
+        self.assertIsNotNone(v)
+        self.assertIs(type(v), list)
+        self.assertGreater(len(v), 0)
+        self.assertIs(type(v[0]), str)
