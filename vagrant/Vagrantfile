@@ -65,8 +65,7 @@ Vagrant.configure("2") do |config|
         domain.cpus = 8
     end
   config.vm.provision "file", source: "./sciqlop-proxy.conf", destination: "~/sciqlop-proxy.conf" 
-  config.vm.provision "file", source: "../docker/Dockerfile", destination: "~/spwc-docker/Dockerfile"
-  config.vm.provision "file", source: "../docker/entry_point.sh", destination: "~/spwc-docker/entry_point.sh"
+  config.vm.synced_folder "../../spwc_proxy", "/home/vagrant/spwc_proxy", type: "rsync", rsync__exclude: "../../.git/"
 
 
   # Enable provisioning with a shell script. Additional provisioners such as
@@ -76,12 +75,12 @@ Vagrant.configure("2") do |config|
      sudo dnf update -y
      mkdir -p /DATA/spwc_proxy /DATA/log/spwc
      sudo chmod -R 777 /DATA
-     sudo dnf install -y nginx podman nginx-all-modules git
+     sudo dnf install -y nginx podman podman-docker.noarch
      sudo mv /home/vagrant/sciqlop-proxy.conf /etc/nginx/conf.d/sciqlop-proxy.conf
      sed -i  s/SELINUX=enforcing/SELINUX=disabled/ /etc/selinux/config
      sudo setenforce 0
      systemctl enable --now nginx
-     cd /home/vagrant/spwc-docker/ && sudo podman build -t spwc_proxy .
+     cd /home/vagrant/spwc_proxy/docker/ && sudo sh ./build.sh
      sudo podman run --restart unless-stopped --ulimit nofile=262144:262144 -d -v /DATA/spwc_proxy:/data -v /DATA/log:/log -e SPWC_CACHE_SIZE="1e10" -p6543:6543 --name spwc-proxy spwc_proxy
    SHELL
 end

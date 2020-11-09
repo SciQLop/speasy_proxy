@@ -9,16 +9,19 @@ ENV SPWC_CACHE_PATH=/data \
 RUN useradd spwc && mkdir -p $SPWC_CACHE_PATH $SPWC_INDEX_PATH && dnf install -y python3-pip
 RUN chown -R spwc $SPWC_CACHE_PATH $SPWC_INDEX_PATH && mkdir -p $SPWC_LOG_PATH/spwc && chown -R spwc $SPWC_LOG_PATH/spwc
 
+COPY spwc_proxy/*.ini spwc_proxy/*.py spwc_proxy/*.txt /home/spwc/spwc_proxy/
+COPY spwc_proxy/api_docs /home/spwc/spwc_proxy/api_docs
+COPY spwc_proxy/spwc_proxy /home/spwc/spwc_proxy/spwc_proxy
+RUN chown -R spwc /home/spwc/spwc_proxy
+
 USER spwc
 WORKDIR /home/spwc
 
-RUN mkdir spwc_proxy &&\
-    curl https://codeload.github.com/SciQLop/spwc_proxy/tar.gz/master | tar -xz -C spwc_proxy --strip-components=1 &&\
-    cd spwc_proxy &&\
+RUN cd spwc_proxy &&\
     pip3 install --user -e . &&\
     sed -i 's/listen = \*:6543/listen = 0.0.0.0:6543/' production.ini 
 
-ADD entry_point.sh /home/spwc/entry_point.sh
+ADD spwc_proxy/docker/entry_point.sh /home/spwc/entry_point.sh
 
 VOLUME $SPWC_CACHE_PATH
 VOLUME $SPWC_LOG_PATH
