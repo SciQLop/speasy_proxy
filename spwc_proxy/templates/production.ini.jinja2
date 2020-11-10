@@ -14,31 +14,32 @@ pyramid.default_locale_name = en
 pyramid.includes =
     pyramid_openapi3
 
-filter-with = proxy-prefix
+api_doc_path = {{ 'api_docs/openapi.yaml' if api_docs == "" else api_docs }}
+
 jinja2.filters =
     route_url = pyramid_jinja2.filters:route_url_filter
 
-###
-# wsgi server configuration
-###
-
+{{'filter-with = proxy-prefix
 [filter:proxy-prefix]
 use = egg:PasteDeploy#prefix
-prefix = /cache
+prefix = '+proxy_prefix
+if proxy_prefix != ""}}
 
 [server:main]
 use = egg:waitress#main
-listen = *:6543
+listen = {{ host+':'+port|string }}
 threads = 64
 connection_limit = 128
 backlog = 65536
 outbuf_overflow = 16777216
 asyncore_use_poll = True
 
-trusted_proxy = 127.0.0.1
+{{
+'trusted_proxy = 127.0.0.1
 trusted_proxy_count = 1
 trusted_proxy_headers = x-forwarded-for x-forwarded-host x-forwarded-proto x-forwarded-port
-clear_untrusted_proxy_headers = yes
+clear_untrusted_proxy_headers = yes' if enable_proxy
+}}
 
 ###
 # logging configuration

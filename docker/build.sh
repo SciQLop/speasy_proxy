@@ -1,4 +1,6 @@
-#!env sh
+#!/usr/bin/env sh
 
 BASEDIR=$(dirname "$0")
-docker build -t spwc_proxy -f $BASEDIR/Dockerfile $BASEDIR/../../
+PORT=${1:-6543}
+NAME=${2:-spwc_proxy}
+docker build --build-arg PORT=$PORT -t $NAME -f $BASEDIR/Dockerfile $BASEDIR/../../

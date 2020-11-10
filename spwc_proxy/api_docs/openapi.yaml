@@ -41,4 +41,4 @@ paths:
     get:
       responses:
         200:
-          description: Returns pickled data
+          description: Returns pickled data\ No newline at end of file

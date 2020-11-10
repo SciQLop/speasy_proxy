@@ -4,6 +4,7 @@ from humanize import filesize,time
 from datetime import datetime
 from ..index import index
 
+
 @view_config(route_name='home', renderer='../templates/welcome.jinja2')
 def my_view(request):
     up_since = index["up_since"]

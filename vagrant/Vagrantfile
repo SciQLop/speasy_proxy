@@ -1,69 +1,14 @@
 # -*- mode: ruby -*-
 # vi: set ft=ruby :
 
-# All Vagrant configuration is done below. The "2" in Vagrant.configure
-# configures the configuration version (we support older styles for
-# backwards compatibility). Please don't change it unless you know what
-# you're doing.
 Vagrant.configure("2") do |config|
-  # The most common configuration options are documented and commented below.
-  # For a complete reference, please see the online documentation at
-  # https://docs.vagrantup.com.
-
-  # Every Vagrant development environment requires a box. You can search for
-  # boxes at https://vagrantcloud.com/search.
   config.vm.box = "fedora/33-cloud-base"
 
-  # Disable automatic box update checking. If you disable this, then
-  # boxes will only be checked for updates when the user runs
-  # `vagrant box outdated`. This is not recommended.
-  # config.vm.box_check_update = false
-
-  # Create a forwarded port mapping which allows access to a specific port
-  # within the machine from a port on the host machine. In the example below,
-  # accessing "localhost:8080" will access port 80 on the guest machine.
-  # NOTE: This will enable public access to the opened port
-  # config.vm.network "forwarded_port", guest: 80, host: 8080
-
-  # Create a forwarded port mapping which allows access to a specific port
-  # within the machine from a port on the host machine and only allow access
-  # via 127.0.0.1 to disable public access
-  # config.vm.network "forwarded_port", guest: 80, host: 8080, host_ip: "127.0.0.1"
-
-  # Create a private network, which allows host-only access to the machine
-  # using a specific IP.
-  # config.vm.network "private_network", ip: "192.168.33.10"
-
-  # Create a public network, which generally matched to bridged network.
-  # Bridged networks make the machine appear as another physical device on
-  # your network.
-  # config.vm.network "public_network"
-
-  # Share an additional folder to the guest VM. The first argument is
-  # the path on the host to the actual folder. The second argument is
-  # the path on the guest to mount the folder. And the optional third
-  # argument is a set of non-required options.
-  # config.vm.synced_folder "../data", "/vagrant_data"
-
-  # Provider-specific configuration so you can fine-tune various
-  # backing providers for Vagrant. These expose provider-specific options.
-  # Example for VirtualBox:
-  #
-  # config.vm.provider "virtualbox" do |vb|
-  #   # Display the VirtualBox GUI when booting the machine
-  #   vb.gui = true
-  #
-  #   # Customize the amount of memory on the VM:
-  #   vb.memory = "1024"
-  # end
-  #
-  # View the documentation for the provider you are using for more
-  # information on available options.
-
-    config.vm.provider :libvirt do |domain|
-        domain.memory = "16384"
-        domain.cpus = 8
-    end
+  config.vm.provider :libvirt do |domain|
+      domain.memory = "16384"
+      domain.cpus = 8
+  end
+  config.vm.hostname = "spwc-proxy"
   config.vm.provision "file", source: "./sciqlop-proxy.conf", destination: "~/sciqlop-proxy.conf" 
   config.vm.synced_folder "../../spwc_proxy", "/home/vagrant/spwc_proxy", type: "rsync", rsync__exclude: "../../.git/"
 
@@ -74,13 +19,16 @@ Vagrant.configure("2") do |config|
    config.vm.provision "shell", inline: <<-SHELL
      sudo dnf update -y
      mkdir -p /DATA/spwc_proxy /DATA/log/spwc
+     mkdir -p /DATA/spwc_proxy_dev /DATA/log_dev/spwc
      sudo chmod -R 777 /DATA
      sudo dnf install -y nginx podman podman-docker.noarch
      sudo mv /home/vagrant/sciqlop-proxy.conf /etc/nginx/conf.d/sciqlop-proxy.conf
      sed -i  s/SELINUX=enforcing/SELINUX=disabled/ /etc/selinux/config
      sudo setenforce 0
      systemctl enable --now nginx
-     cd /home/vagrant/spwc_proxy/docker/ && sudo sh ./build.sh
-     sudo podman run --restart unless-stopped --ulimit nofile=262144:262144 -d -v /DATA/spwc_proxy:/data -v /DATA/log:/log -e SPWC_CACHE_SIZE="1e10" -p6543:6543 --name spwc-proxy spwc_proxy
+     cd /home/vagrant/spwc_proxy/docker/ && sudo sh ./build.sh && sudo sh ./build.sh 6544 spwc_proxy_dev
+     export IP=`hostname -I | cut -d' ' -f1`
+     sudo podman run --restart unless-stopped --ulimit nofile=262144:262144 -d -v /DATA/spwc_proxy:/data -v /DATA/log:/log -e SPWC_CACHE_SIZE="1e10" -e SPWC_PROXY_PREFIX='/cache' -e SPWC_PROXY_URL="http://$IP" -p6543:6543 --name spwc-proxy spwc_proxy
+     sudo podman run --restart unless-stopped --ulimit nofile=262144:262144 -d -v /DATA/spwc_proxy_dev:/data -v /DATA/log_dev:/log -e SPWC_CACHE_SIZE="1e10" -e SPWC_PROXY_PREFIX='/cache-dev' -e PORT=6544 -e SPWC_PROXY_URL="http://$IP" -p6544:6544 --name spwc-proxy-dev spwc_proxy_dev
    SHELL
 end
