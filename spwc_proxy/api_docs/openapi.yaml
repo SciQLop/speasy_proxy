@@ -8,6 +8,11 @@ paths:
       responses:
         200:
           description: home page
+  /get_spwc_version:
+    get:
+      responses:
+        200:
+          description: proxy SPWC version
   /get_data:
     get:
       parameters:
