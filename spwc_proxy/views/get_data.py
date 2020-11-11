@@ -1,19 +1,20 @@
 from pyramid.view import view_config
 from pyramid.response import Response
-import pickle
 import spwc
 from datetime import datetime, timezone
 from spwc import SpwcVariable
 import logging
 
+from . import pickle_data
+
 log = logging.getLogger(__name__)
 
 
-def dt_to_str(dt:datetime):
+def dt_to_str(dt: datetime):
     return dt.isoformat()
 
 
-def ts_to_str(ts:float):
+def ts_to_str(ts: float):
     return dt_to_str(datetime.utcfromtimestamp(ts))
 
 
@@ -41,6 +42,6 @@ def get_data(request):
             log.debug('Got empty data')
     else:
         log.debug('Got None')
-    result = pickle.dumps(var)
+    result = pickle_data(var, request)
     del var
     return Response(content_type="text/plain", body=result)

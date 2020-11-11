@@ -18,7 +18,8 @@ requires = [
     'humanize',
     'apscheduler',
     'spwc>=0.6.0',
-    'diskcache'
+    'diskcache',
+    'jinja2'
 ]
 
 tests_require = [

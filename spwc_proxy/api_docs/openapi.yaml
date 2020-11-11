@@ -18,20 +18,9 @@ paths:
             type: string
             minLength: 3
           example: amda/c1_b_gsm
-        - name: start_time
-          in: query
-          required: true
-          schema:
-            type: string
-            pattern: ([0-9]{4})-([0-9]{2})-([0-9]{2})(T| )([0-9]{2}):([0-9]{2}):([0-9]{2})Z?
-          example: "2018-10-24T00:00:00"
-        - name: stop_time
-          in: query
-          required: true
-          schema:
-            type: string
-            pattern: ([0-9]{4})-([0-9]{2})-([0-9]{2})(T| )([0-9]{2}):([0-9]{2}):([0-9]{2})Z?
-          example: "2018-10-24T01:00:00"
+        - $ref: "#/components/parameters/StartDateParam"
+        - $ref: "#/components/parameters/StopDateParam"
+        - $ref: '#/components/parameters/PickleProtocolParam'
       responses:
         200:
           description: Returns pickled data
@@ -39,6 +28,40 @@ paths:
           description: Bad Request
   /get_cache_entries:
     get:
+      parameters:
+        - $ref: '#/components/parameters/PickleProtocolParam'
       responses:
         200:
           description: Returns pickled data\ No newline at end of file
+
+components:
+  schemas:
+    Date:
+      type: string
+      pattern: ([0-9]{4})-([0-9]{2})-([0-9]{2})(T| )([0-9]{2}):([0-9]{2}):([0-9]{2})Z?
+  parameters:
+    PickleProtocolParam:
+      name: pickle_proto
+      in: query
+      required: false
+      schema:
+        type: integer
+        format: int32
+        minimum: 3
+        default: 3
+        maximum: 5
+    StartDateParam:
+      name: start_time
+      in: query
+      required: true
+      schema:
+        $ref: "#/components/schemas/Date"
+      example: "2018-10-24T00:00:00"
+    StopDateParam:
+      name: stop_time
+      in: query
+      required: true
+      schema:
+        $ref: "#/components/schemas/Date"
+      example: "2018-10-24T00:01:00"
+
