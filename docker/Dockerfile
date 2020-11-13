@@ -11,7 +11,7 @@ ENV SPWC_CACHE_PATH=/data \
     SPWC_PROXY_URL="" \
     PORT=$PORT
 
-RUN useradd spwc && mkdir -p $SPWC_CACHE_PATH $SPWC_INDEX_PATH && dnf install -y python3-pip git
+RUN useradd spwc && mkdir -p $SPWC_CACHE_PATH $SPWC_INDEX_PATH && dnf install -y python3-pip git python3-astropy
 RUN chown -R spwc $SPWC_CACHE_PATH $SPWC_INDEX_PATH && mkdir -p $SPWC_LOG_PATH/spwc && chown -R spwc $SPWC_LOG_PATH/spwc
 
 COPY spwc_proxy/*.ini spwc_proxy/*.py spwc_proxy/*.txt /home/spwc/spwc_proxy/
