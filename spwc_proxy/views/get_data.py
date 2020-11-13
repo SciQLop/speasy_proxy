@@ -30,6 +30,9 @@ def get_data(request):
                 body="Error: missing {name} parameter".format(name=parameter)
             )
         params[parameter] = value
+    for parameter in ("coordinate_system",):
+        if parameter in request.params:
+            params[parameter]=request.params[parameter]
     log.debug('New request: {path} {start_time} {stop_time}'.format(**params))
     var: SpwcVariable = spwc.get_data(**params)
     if var is not None:

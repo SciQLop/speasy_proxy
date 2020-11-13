@@ -23,6 +23,13 @@ paths:
             type: string
             minLength: 3
           example: amda/c1_b_gsm
+        - name: coordinate_system
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [geo, gm, gse, gsm, sm, geitod, geij2000]
+          example: gse
         - $ref: "#/components/parameters/StartDateParam"
         - $ref: "#/components/parameters/StopDateParam"
         - $ref: '#/components/parameters/PickleProtocolParam'
