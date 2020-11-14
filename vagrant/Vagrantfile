@@ -26,7 +26,7 @@ Vagrant.configure("2") do |config|
      sed -i  s/SELINUX=enforcing/SELINUX=disabled/ /etc/selinux/config
      sudo setenforce 0
      systemctl enable --now nginx
-     cd /home/vagrant/spwc_proxy/docker/ && sudo sh ./build.sh && sudo sh ./build.sh 6544 spwc_proxy_dev
+     cd /home/vagrant/spwc_proxy/docker/ && sudo sh ./build.sh && sudo sh ./build.sh 6544 spwc_proxy_dev git+https://github.com/SciQLop/spwc
      export IP=`hostname -I | cut -d' ' -f1`
      sudo podman run --restart unless-stopped --ulimit nofile=262144:262144 -d -v /DATA/spwc_proxy:/data -v /DATA/log:/log -e SPWC_CACHE_SIZE="1e10" -e SPWC_PROXY_PREFIX='/cache' -e SPWC_PROXY_URL="http://$IP" -p6543:6543 --name spwc-proxy spwc_proxy
      sudo podman run --restart unless-stopped --ulimit nofile=262144:262144 -d -v /DATA/spwc_proxy_dev:/data -v /DATA/log_dev:/log -e SPWC_CACHE_SIZE="1e10" -e SPWC_PROXY_PREFIX='/cache-dev' -e PORT=6544 -e SPWC_PROXY_URL="http://$IP" -p6544:6544 --name spwc-proxy-dev spwc_proxy_dev

@@ -1,6 +1,7 @@
 FROM fedora:33
 
 ARG PORT=6543
+ARG SPWC=spwc
 
 ENV SPWC_CACHE_PATH=/data \
     SPWC_CACHE_SIZE="20e9" \
@@ -23,7 +24,7 @@ WORKDIR /home/spwc
 
 RUN cd spwc_proxy &&\
     pip3 install --user -e . &&\
-    pip3 install --user --upgrade git+https://github.com/Pylons/pyramid_openapi3
+    pip3 install --user --upgrade git+https://github.com/Pylons/pyramid_openapi3 $SPWC
 
 ADD spwc_proxy/docker/entry_point.sh /home/spwc/entry_point.sh
 
