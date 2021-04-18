@@ -66,3 +66,8 @@ class FunctionalTests(unittest.TestCase):
 
     def test_get_api_doc(self):
         res = self.testapp.get(url='/api/v1/', status=200)
+
+    def test_get_version(self):
+        res = self.testapp.get(url='/get_version', status=200)
+        from spwc_proxy import __version__
+        self.assertTrue(str(__version__).encode() in res.body)

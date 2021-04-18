@@ -13,6 +13,11 @@ paths:
       responses:
         200:
           description: proxy SPWC version
+  /get_version:
+    get:
+      responses:
+        200:
+          description: proxy version
   /get_data:
     get:
       parameters:
