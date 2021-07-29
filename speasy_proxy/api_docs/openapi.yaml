@@ -1,7 +1,7 @@
 openapi: "3.0.0"
 info:
   version: "1.0.0"
-  title: Spwc proxy
+  title: Speasy proxy
 paths:
   /:
     get:
@@ -12,7 +12,7 @@ paths:
     get:
       responses:
         200:
-          description: proxy SPWC version
+          description: proxy SPEASY version
   /get_version:
     get:
       responses:

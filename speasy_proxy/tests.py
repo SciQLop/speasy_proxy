@@ -2,7 +2,7 @@ import unittest
 
 import pickle
 from datetime import datetime, timezone
-from speasy.common.variable import SpwcVariable
+from speasy.common.variable import SpeasyVariable
 
 from pyramid import testing
 from pyramid.paster import get_appsettings
@@ -35,12 +35,12 @@ class FunctionalTests(unittest.TestCase):
                                status=200)
         v = pickle.loads(res.body)
         self.assertIsNotNone(v)
-        self.assertIs(type(v), SpwcVariable)
+        self.assertIs(type(v), SpeasyVariable)
         self.assertGreater(len(v), 0)
 
     def test_home(self):
         res = self.testapp.get('/', status=200)
-        self.assertTrue(b'SPWC proxy' in res.body)
+        self.assertTrue(b'SPEASY proxy' in res.body)
 
     def test_get_data(self):
         start_time = datetime(2006, 1, 8, 1, 0, 0, tzinfo=timezone.utc)
