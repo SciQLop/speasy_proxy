@@ -2,7 +2,7 @@ import unittest
 
 import pickle
 from datetime import datetime, timezone
-from spwc.common.variable import SpwcVariable
+from speasy.common.variable import SpwcVariable
 
 from pyramid import testing
 from pyramid.paster import get_appsettings
@@ -25,7 +25,7 @@ class ViewTests(unittest.TestCase):
 
 class FunctionalTests(unittest.TestCase):
     def setUp(self):
-        from spwc_proxy import main
+        from speasy_proxy import main
         app = main(global_config=None, **get_appsettings('development.ini', name='main'))
         from webtest import TestApp
         self.testapp = TestApp(app)
@@ -69,5 +69,5 @@ class FunctionalTests(unittest.TestCase):
 
     def test_get_version(self):
         res = self.testapp.get(url='/get_version', status=200)
-        from spwc_proxy import __version__
+        from speasy_proxy import __version__
         self.assertTrue(str(__version__).encode() in res.body)

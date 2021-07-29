@@ -1,6 +1,6 @@
 import argparse, os
-from spwc.config import cache_size, cache_path
-from spwc_proxy.config import index_path
+from speasy.config import cache_size, cache_path
+from speasy_proxy.config import index_path
 from jinja2 import Environment, PackageLoader, select_autoescape
 
 
@@ -18,7 +18,7 @@ def write_config_file(env, path, port, proxy_prefix, enable_proxy, api_docs):
 
 
 def write_openapi_file(env, path, server_url, url_prefix):
-    with  open(path, 'w') as api_doc, open(f'{os.path.dirname(os.path.realpath(__file__))}/spwc_proxy/api_docs/openapi.yaml',
+    with  open(path, 'w') as api_doc, open(f'{os.path.dirname(os.path.realpath(__file__))}/speasy_proxy/api_docs/openapi.yaml',
                                            'r') as api_doc_body:
         api_doc_template = env.get_template('openapi.yaml.jinja2')
         api_doc.write(api_doc_template.render(server_url=f"{server_url}{url_prefix}", body=api_doc_body.read()))
@@ -53,7 +53,7 @@ if __name__ == "__main__":
 
     if args.config_path != "":
         env = Environment(
-            loader=PackageLoader('spwc_proxy', 'templates'),
+            loader=PackageLoader('speasy_proxy', 'templates'),
             autoescape=select_autoescape(['ini'])
         )
         write_config_file(env, path=args.config_path, port=args.server_port, proxy_prefix=args.proxy_prefix,

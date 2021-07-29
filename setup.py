@@ -17,7 +17,7 @@ requires = [
     'waitress',
     'humanize',
     'apscheduler',
-    'spwc>=0.8.2',
+    'speasy>=0.8.3',
     'diskcache',
     'jinja2'
 ]
@@ -29,9 +29,9 @@ tests_require = [
 ]
 
 setup(
-    name='spwc_proxy',
+    name='speasy_proxy',
     version='0.2.2',
-    description='spwc-proxy',
+    description='speasy-proxy',
     long_description=README + '\n\n' + CHANGES,
     classifiers=[
         'Programming Language :: Python',
@@ -53,7 +53,7 @@ setup(
     install_requires=requires,
     entry_points={
         'paste.app_factory': [
-            'main = spwc_proxy:main',
+            'main = speasy_proxy:main',
         ],
     },
 )

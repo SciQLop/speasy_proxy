@@ -1,8 +1,8 @@
 from pyramid.view import view_config
 from pyramid.response import Response
-import spwc
+import speasy
 from datetime import datetime, timezone
-from spwc import SpwcVariable
+from speasy import SpwcVariable
 import logging
 
 from . import pickle_data
@@ -34,7 +34,7 @@ def get_data(request):
         if parameter in request.params:
             params[parameter]=request.params[parameter]
     log.debug('New request: {path} {start_time} {stop_time}'.format(**params))
-    var: SpwcVariable = spwc.get_data(**params)
+    var: SpwcVariable = speasy.get_data(**params)
     if var is not None:
         if len(var.time):
             log.debug(

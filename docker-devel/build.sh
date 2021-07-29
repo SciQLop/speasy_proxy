@@ -1,1 +1,1 @@
-docker build -t spwc_proxy_dev .
+docker build -t speasy_proxy_dev .

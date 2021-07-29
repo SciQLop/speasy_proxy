@@ -8,7 +8,7 @@ paths:
       responses:
         200:
           description: home page
-  /get_spwc_version:
+  /get_speasy_version:
     get:
       responses:
         200:

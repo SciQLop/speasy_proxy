@@ -7,7 +7,7 @@ def mkdir(directory):
         os.makedirs(directory)
 
 
-_CONFIG_FNAME = str(appdirs.user_config_dir(appname="spwc_proxy", appauthor="LPP")) + "/config.ini"
+_CONFIG_FNAME = str(appdirs.user_config_dir(appname="speasy_proxy", appauthor="LPP")) + "/config.ini"
 mkdir(os.path.dirname(_CONFIG_FNAME))
 _config = configparser.ConfigParser()
 _config.read(_CONFIG_FNAME)

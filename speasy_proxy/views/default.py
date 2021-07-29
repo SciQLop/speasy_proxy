@@ -1,5 +1,5 @@
 from pyramid.view import view_config
-from spwc import cache
+from speasy import cache
 from humanize import filesize,time
 from datetime import datetime
 from ..index import index

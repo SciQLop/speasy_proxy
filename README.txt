@@ -1,4 +1,4 @@
-spwc-proxy
+speasy-proxy
 ==========
 
 Getting Started
@@ -6,7 +6,7 @@ Getting Started
 
 - Change directory into your newly created project.
 
-    cd spwc_proxy
+    cd speasy_proxy
 
 - Create a Python virtual environment.
 
