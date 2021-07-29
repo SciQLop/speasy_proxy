@@ -1,6 +1,6 @@
 __author__ = """Alexis Jeandet"""
 __email__ = 'alexis.jeandet@member.fsf.org'
-__version__ = '0.3.1'
+__version__ = '0.3.2'
 
 from pyramid.config import Configurator
 import os
