@@ -2,7 +2,7 @@
 # vi: set ft=ruby :
 
 Vagrant.configure("2") do |config|
-  config.vm.box = "fedora/33-cloud-base"
+  config.vm.box = "fedora/36-cloud-base"
 
   config.vm.provider :libvirt do |domain|
       domain.memory = "16384"
@@ -29,6 +29,6 @@ Vagrant.configure("2") do |config|
      cd /home/vagrant/speasy_proxy/docker/ && sudo sh ./build.sh && sudo sh ./build.sh 6544 speasy_proxy_dev git+https://github.com/SciQLop/speasy
      export IP=`hostname -I | cut -d' ' -f1`
      sudo podman run --restart unless-stopped --ulimit nofile=262144:262144 -d -v /DATA/speasy_proxy:/data -v /DATA/log:/log -e SPEASY_CACHE_SIZE="1e10" -e SPEASY_PROXY_PREFIX='/cache' -e SPEASY_PROXY_URL="http://$IP" -p6543:6543 --name speasy-proxy speasy_proxy
-     sudo podman run --restart unless-stopped --ulimit nofile=262144:262144 -d -v /DATA/speasy_proxy_dev:/data -v /DATA/log_dev:/log -e SPEASY_CACHE_SIZE="1e10" -e SPEASY_PROXY_PREFIX='/cache-dev' -e PORT=6544 -e SPEASY_PROXY_URL="http://$IP" -p6544:6544 --name speasy-proxy-dev speasy_proxy_dev
+     sudo podman run --restart unless-stopped --ulimit nofile=262144:262144 -d -v /DATA/speasy_proxy_dev:/data -v /DATA/log_dev:/log -e SPEASY_PROXY_LOG_LEVEL="INFO" -e SPEASY_CACHE_SIZE="1e10" -e SPEASY_PROXY_PREFIX='/cache-dev' -e PORT=6544 -e SPEASY_PROXY_URL="http://$IP" -p6544:6544 --name speasy-proxy-dev speasy_proxy_dev
    SHELL
 end

@@ -56,7 +56,7 @@ keys = console, filelog
 keys = generic
 
 [logger_root]
-level = WARN
+level = {{ log_level or 'WARN' }}
 handlers = console
 
 [logger_speasy_proxy]
@@ -67,7 +67,7 @@ qualname = speasy_proxy
 [handler_console]
 class = StreamHandler
 args = (sys.stderr,)
-level = NOTSET
+level = {{ log_level or 'WARN' }}
 formatter = generic
 
 [handler_filelog]
