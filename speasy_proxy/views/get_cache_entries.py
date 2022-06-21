@@ -1,6 +1,6 @@
 from pyramid.view import view_config
 from pyramid.response import Response
-from speasy import cache
+from speasy.core import cache
 import logging
 from . import pickle_data
 

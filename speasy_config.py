@@ -10,16 +10,17 @@ def is_true(value: str):
     return False
 
 
-def write_config_file(env, path, port, proxy_prefix, enable_proxy, api_docs):
+def write_config_file(env, path, port, proxy_prefix, enable_proxy, api_docs, log_level):
     with open(path, 'w') as ini_file:
         production_ini = env.get_template('production.ini.jinja2')
         ini_file.write(production_ini.render(host='0.0.0.0', port=port, proxy_prefix=proxy_prefix,
-                                             enable_proxy=enable_proxy, api_docs=api_docs))
+                                             enable_proxy=enable_proxy, api_docs=api_docs, log_level=log_level))
 
 
 def write_openapi_file(env, path, server_url, url_prefix):
-    with  open(path, 'w') as api_doc, open(f'{os.path.dirname(os.path.realpath(__file__))}/speasy_proxy/api_docs/openapi.yaml',
-                                           'r') as api_doc_body:
+    with  open(path, 'w') as api_doc, open(
+            f'{os.path.dirname(os.path.realpath(__file__))}/speasy_proxy/api_docs/openapi.yaml',
+            'r') as api_doc_body:
         api_doc_template = env.get_template('openapi.yaml.jinja2')
         api_doc.write(api_doc_template.render(server_url=f"{server_url}{url_prefix}", body=api_doc_body.read()))
 
@@ -46,6 +47,8 @@ if __name__ == "__main__":
     parser.add_argument("-x", "--enable-proxy", help="Enable proxy server in waitress config", default='')
     parser.add_argument("-y", "--proxy-prefix", help="Add proxy prefix path waitress config", default='')
     parser.add_argument("-z", "--config-path", help="Sever .ini config file path", default='')
+    parser.add_argument("-v", "--log-level", help="Root logger log level", default='WARN')
+
     args = parser.parse_args()
 
     configure_cache(size=args.cache_size, path=args.cache_path)
@@ -57,5 +60,6 @@ if __name__ == "__main__":
             autoescape=select_autoescape(['ini'])
         )
         write_config_file(env, path=args.config_path, port=args.server_port, proxy_prefix=args.proxy_prefix,
-                          enable_proxy=is_true(args.enable_proxy), api_docs="/tmp/openapi.yaml")
+                          enable_proxy=is_true(args.enable_proxy), api_docs="/tmp/openapi.yaml",
+                          log_level=args.log_level)
         write_openapi_file(env, path='/tmp/openapi.yaml', server_url=args.proxy_url, url_prefix=args.proxy_prefix)

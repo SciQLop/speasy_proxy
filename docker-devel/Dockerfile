@@ -1,4 +1,4 @@
-FROM fedora:33
+FROM fedora:36
 
 RUN dnf update -y && \
    dnf install -y python3-pyramid python3-waitress.noarch python3-webtest.noarch python3-pytest-cov.noarch \

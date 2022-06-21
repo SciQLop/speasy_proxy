@@ -1,4 +1,4 @@
-FROM fedora:33
+FROM fedora:36
 
 ARG PORT=6543
 ARG SPEASY=speasy
@@ -10,6 +10,7 @@ ENV SPEASY_CACHE_PATH=/data \
     SPEASY_PROXY="true" \
     SPEASY_PROXY_PREFIX="" \
     SPEASY_PROXY_URL="" \
+    SPEASY_PROXY_LOG_LEVEL="WARN"\
     PORT=$PORT
 
 RUN useradd speasy && mkdir -p $SPEASY_CACHE_PATH $SPEASY_INDEX_PATH && dnf install -y python3-pip git python3-astropy

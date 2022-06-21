@@ -21,7 +21,7 @@ def ts_to_str(ts: float):
 @view_config(route_name='get_data', openapi=True)
 def get_data(request):
     params = {}
-    for parameter in ("path", "start_time", "stop_time"):
+    for parameter, new_name in (("path", "product"), ("start_time", "start_time"), ("stop_time", "stop_time")):
         value = request.params.get(parameter, None)
         if value is None:
             log.error('Missing parameter: {name}'.format(name=parameter))
@@ -29,11 +29,11 @@ def get_data(request):
                 content_type="text/plain",
                 body="Error: missing {name} parameter".format(name=parameter)
             )
-        params[parameter] = value
+        params[new_name] = value
     for parameter in ("coordinate_system",):
         if parameter in request.params:
             params[parameter]=request.params[parameter]
-    log.debug('New request: {path} {start_time} {stop_time}'.format(**params))
+    log.debug('New request: {product} {start_time} {stop_time}'.format(**params))
     var: SpeasyVariable = speasy.get_data(**params)
     if var is not None:
         if len(var.time):
