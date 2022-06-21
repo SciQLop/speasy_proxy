@@ -6,6 +6,12 @@ from pyramid.config import Configurator
 import os
 from datetime import datetime
 from .index import index
+from apscheduler.schedulers.background import BackgroundScheduler
+
+
+scheduler = BackgroundScheduler()
+
+scheduler.start()
 
 
 def main(global_config, **settings):
