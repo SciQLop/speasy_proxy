@@ -14,7 +14,7 @@ requires = [
     'pyramid',
     'pyramid_jinja2',
     'pyramid_debugtoolbar',
-    'openapi-spec-validator == 0.4.*',
+    'openapi-spec-validator < 0.5.0',
     'pyramid_openapi3',
     'waitress',
     'humanize',
@@ -46,7 +46,7 @@ setup(
     url='',
     keywords='web pyramid pylons',
     packages=find_packages(),
-    data_files=[('api', ['api_docs/openapi.yaml'])],
+    data_files=[('api', ['speasy_proxy/api_docs/openapi.yaml'])],
     include_package_data=True,
     zip_safe=False,
     extras_require={

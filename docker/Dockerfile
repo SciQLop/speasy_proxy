@@ -13,7 +13,7 @@ ENV SPEASY_CACHE_PATH=/data \
     SPEASY_PROXY_LOG_LEVEL="WARN"\
     PORT=$PORT
 
-RUN useradd speasy && mkdir -p $SPEASY_CACHE_PATH $SPEASY_INDEX_PATH && dnf install -y python3-pip git python3-astropy
+RUN useradd speasy && mkdir -p $SPEASY_CACHE_PATH $SPEASY_INDEX_PATH && dnf install -y python3-pip git python3-astropy /usr/bin/pypy3.8
 RUN chown -R speasy $SPEASY_CACHE_PATH $SPEASY_INDEX_PATH && mkdir -p $SPEASY_LOG_PATH/speasy && chown -R speasy $SPEASY_LOG_PATH/speasy
 
 COPY speasy_proxy/*.ini speasy_proxy/*.py speasy_proxy/*.txt /home/speasy/speasy_proxy/
@@ -24,8 +24,10 @@ USER speasy
 WORKDIR /home/speasy
 
 RUN cd speasy_proxy &&\
-    pip3 install --user -e . &&\
-    pip3 install --user --upgrade git+https://github.com/Pylons/pyramid_openapi3 $SPEASY
+    /usr/bin/pypy3.8 -m ensurepip &&\
+    pypy3.8 -mpip install -U pip &&\
+    pypy3.8 -mpip install -U . &&\
+    pypy3.8 -mpip install -U $SPEASY
 
 ADD speasy_proxy/docker/entry_point.sh /home/speasy/entry_point.sh
 
