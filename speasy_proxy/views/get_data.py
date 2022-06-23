@@ -4,6 +4,7 @@ import speasy
 from datetime import datetime, timezone
 from speasy import SpeasyVariable
 import logging
+import uuid
 
 from . import pickle_data
 
@@ -20,31 +21,33 @@ def ts_to_str(ts: float):
 
 @view_config(route_name='get_data', openapi=True)
 def get_data(request):
-    params = {}
-    for parameter, new_name in (("path", "product"), ("start_time", "start_time"), ("stop_time", "stop_time")):
-        value = request.params.get(parameter, None)
+    request_id = uuid.uuid4()
+    extra_params = {}
+    product = request.params.get("path", None)
+    start_time = request.params.get("start_time", None)
+    stop_time = request.params.get("stop_time", None)
+
+    for value, name in ((product, "path"), (start_time, "start_time"), (stop_time, "stop_time")):
         if value is None:
-            log.error('Missing parameter: {name}'.format(name=parameter))
+            log.error(f'Missing parameter: {name}')
             return Response(
                 content_type="text/plain",
-                body="Error: missing {name} parameter".format(name=parameter)
+                body=f"Error: missing {name} parameter"
             )
-        params[new_name] = value
     for parameter in ("coordinate_system",):
         if parameter in request.params:
-            params[parameter]=request.params[parameter]
-    log.debug('New request: {product} {start_time} {stop_time}'.format(**params))
-    var: SpeasyVariable = speasy.get_data(**params)
+            extra_params[parameter] = request.params[parameter]
+
+    log.debug(f'New request {request_id}: {product} {start_time} {stop_time}')
+    var: SpeasyVariable = speasy.get_data(product=product, start_time=start_time, stop_time=stop_time, **extra_params)
     if var is not None:
         if len(var.time):
             log.debug(
-                'Got data: data shape = {shape}, data start time = {start_time}, data stop time = {stop_time}'.format(
-                    shape=var.data.shape, start_time=ts_to_str(var.time[0]),
-                    stop_time=ts_to_str(var.time[-1])))
+                f'{request_id}, Got data: data shape = {var.data.shape}, data start time = {ts_to_str(var.time[0])}, data stop time = {ts_to_str(var.time[-1])}')
         else:
-            log.debug('Got empty data')
+            log.debug(f'{request_id},Got empty data')
     else:
-        log.debug('Got None')
+        log.debug(f'{request_id}, Got None')
     result = pickle_data(var, request)
     del var
-    return Response(content_type="text/plain", body=result)
+    return Response(content_type="application/python-pickle", body=result)

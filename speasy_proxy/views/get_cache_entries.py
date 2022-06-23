@@ -9,4 +9,4 @@ log = logging.getLogger(__name__)
 
 @view_config(route_name='get_cache_entries', openapi=True)
 def get_cache_entries(request):
-    return Response(content_type="text/plain", body=pickle_data(cache.entries(), request))
+    return Response(content_type="application/python-pickle", body=pickle_data(cache.entries(), request))
