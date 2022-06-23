@@ -46,7 +46,16 @@ setup(
     url='',
     keywords='web pyramid pylons',
     packages=find_packages(),
-    data_files=[('api', ['speasy_proxy/api_docs/openapi.yaml'])],
+    data_files=[
+        ('api', ['speasy_proxy/api_docs/openapi.yaml']),
+        ('templates', ['speasy_proxy/templates/404.jinja2',
+                       'speasy_proxy/templates/layout.jinja2',
+                       'speasy_proxy/templates/openapi.yaml.jinja2',
+                       'speasy_proxy/templates/production.ini.jinja2',
+                       'speasy_proxy/templates/welcome.jinja2']),
+        ('static', ['speasy_proxy/static/logo_LPP.png', 'speasy_proxy/static/pyramid.png',
+                    'speasy_proxy/static/pyramid-16x16.png', 'speasy_proxy/static/theme.css'])
+    ],
     include_package_data=True,
     zip_safe=False,
     extras_require={
