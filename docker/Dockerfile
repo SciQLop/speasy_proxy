@@ -13,8 +13,11 @@ ENV SPEASY_CACHE_PATH=/data \
     SPEASY_PROXY_LOG_LEVEL="WARN"\
     PORT=$PORT
 
-RUN useradd speasy && mkdir -p $SPEASY_CACHE_PATH $SPEASY_INDEX_PATH && dnf install -y python3-pip git python3-astropy /usr/bin/pypy3.8
-RUN chown -R speasy $SPEASY_CACHE_PATH $SPEASY_INDEX_PATH && mkdir -p $SPEASY_LOG_PATH/speasy && chown -R speasy $SPEASY_LOG_PATH/speasy
+RUN useradd speasy && mkdir -p $SPEASY_CACHE_PATH $SPEASY_INDEX_PATH \
+    && dnf install -y git /usr/bin/pypy3.8 pypy3.8-devel.x86_64 gcc g++\
+    && chown -R speasy $SPEASY_CACHE_PATH $SPEASY_INDEX_PATH \
+    && mkdir -p $SPEASY_LOG_PATH/speasy \
+    && chown -R speasy $SPEASY_LOG_PATH/speasy
 
 COPY speasy_proxy/*.ini speasy_proxy/*.py speasy_proxy/*.txt /home/speasy/speasy_proxy/
 COPY speasy_proxy/speasy_proxy /home/speasy/speasy_proxy/speasy_proxy
