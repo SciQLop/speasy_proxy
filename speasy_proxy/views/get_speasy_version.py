@@ -7,5 +7,6 @@ log = logging.getLogger(__name__)
 
 
 @view_config(route_name='get_speasy_version', openapi=True)
-def get_cache_entries(request):
+def get_speasy_version(request):
+    log.debug('Client asking for speasy version')
     return Response(content_type="text/plain", body=__version__)

@@ -1,12 +1,16 @@
 from pyramid.view import view_config
 from speasy.core import cache
-from humanize import filesize,time
+from humanize import filesize, time
 from datetime import datetime
+import logging
 from ..index import index
+
+log = logging.getLogger(__name__)
 
 
 @view_config(route_name='home', renderer='../templates/welcome.jinja2')
 def my_view(request):
+    log.debug(f'Client asking for home page from {request.user_agent}')
     up_since = index["up_since"]
     up_time = datetime.now() - up_since
     cache_stats = cache.stats()
