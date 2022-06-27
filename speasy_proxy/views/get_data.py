@@ -1,3 +1,5 @@
+import time
+
 from pyramid.view import view_config
 from pyramid.response import Response
 import speasy
@@ -21,6 +23,7 @@ def ts_to_str(ts: float):
 
 @view_config(route_name='get_data', openapi=True)
 def get_data(request):
+    request_start_time = time.time_ns()
     request_id = uuid.uuid4()
     extra_params = {}
     product = request.params.get("path", None)
@@ -40,14 +43,18 @@ def get_data(request):
 
     log.debug(f'New request {request_id}: {product} {start_time} {stop_time}')
     var: SpeasyVariable = speasy.get_data(product=product, start_time=start_time, stop_time=stop_time, **extra_params)
+    result = pickle_data(var, request)
+    request_duration = (time.time_ns() - request_start_time)/1000.
+
     if var is not None:
         if len(var.time):
             log.debug(
-                f'{request_id}, Got data: data shape = {var.data.shape}, data start time = {ts_to_str(var.time[0])}, data stop time = {ts_to_str(var.time[-1])}')
+                f'{request_id}, duration = {request_duration}us, Got data: data shape = {var.data.shape}, data start time = {ts_to_str(var.time[0])}, data stop time = {ts_to_str(var.time[-1])}')
         else:
-            log.debug(f'{request_id},Got empty data')
+            log.debug(f'{request_id}, duration = {request_duration}us,Got empty data')
     else:
-        log.debug(f'{request_id}, Got None')
-    result = pickle_data(var, request)
+        log.debug(f'{request_id}, duration = {request_duration}us, Got None')
+
     del var
+
     return Response(content_type="application/python-pickle", body=result)

@@ -18,6 +18,7 @@ class ViewTests(unittest.TestCase):
     def test_my_view(self):
         from .views.default import my_view
         request = testing.DummyRequest()
+        request.user_agent = "blah"
         info = my_view(request)
         for key in ['entries', 'cache_disk_size', 'up_date', 'up_duration', 'cache_hits', 'cache_misses']:
             self.assertIn(key, info)
