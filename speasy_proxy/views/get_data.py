@@ -3,7 +3,7 @@ import time
 from pyramid.view import view_config
 from pyramid.response import Response
 import speasy
-from datetime import datetime, timezone
+from datetime import datetime
 from speasy import SpeasyVariable
 import logging
 import uuid
