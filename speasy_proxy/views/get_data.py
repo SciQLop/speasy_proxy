@@ -4,7 +4,8 @@ from pyramid.view import view_config
 from pyramid.response import Response
 import speasy
 from datetime import datetime
-from speasy import SpeasyVariable
+from speasy.products.variable import SpeasyVariable, to_dictionary
+import zstd
 import logging
 import uuid
 
@@ -19,6 +20,25 @@ def dt_to_str(dt: datetime):
 
 def ts_to_str(ts: float):
     return dt_to_str(datetime.utcfromtimestamp(ts))
+
+
+def encode_output(var, request):
+    data = None
+    if var is not None:
+        output_format = request.params.get("format", "python_dict")
+        if output_format == "python_dict":
+            data = to_dictionary(var)
+        elif output_format == 'speasy_variable':
+            data = var
+
+    return pickle_data(data, request), "application/python-pickle"
+
+
+def compress_if_asked(data, mime, request):
+    if request.params.get("zstd_compression", "false") == "true":
+        mime = "application/x-zstd-compressed"
+        data = zstd.compress(data)
+    return data, mime
 
 
 @view_config(route_name='get_data', openapi=True)
@@ -42,14 +62,17 @@ def get_data(request):
             extra_params[parameter] = request.params[parameter]
 
     log.debug(f'New request {request_id}: {product} {start_time} {stop_time}')
-    var: SpeasyVariable = speasy.get_data(product=product, start_time=start_time, stop_time=stop_time, **extra_params)
-    result = pickle_data(var, request)
-    request_duration = (time.time_ns() - request_start_time)/1000.
+
+    var = speasy.get_data(product=product, start_time=start_time, stop_time=stop_time, **extra_params)
+
+    result, mime = compress_if_asked(*encode_output(var, request), request)
+
+    request_duration = (time.time_ns() - request_start_time) / 1000.
 
     if var is not None:
         if len(var.time):
             log.debug(
-                f'{request_id}, duration = {request_duration}us, Got data: data shape = {var.data.shape}, data start time = {ts_to_str(var.time[0])}, data stop time = {ts_to_str(var.time[-1])}')
+                f'{request_id}, duration = {request_duration}us, Got data: data shape = {var.data.shape}, data start time = {var.time[0]}, data stop time = {var.time[-1]}')
         else:
             log.debug(f'{request_id}, duration = {request_duration}us,Got empty data')
     else:
