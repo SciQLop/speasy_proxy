@@ -28,6 +28,19 @@ paths:
             type: string
             minLength: 3
           example: amda/c1_b_gsm
+        - name: format
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [ python_dict, speasy_variable ]
+          example: python_dict
+        - name: zstd_compression
+          in: query
+          required: false
+          schema:
+            type: boolean
+          example: true
         - name: coordinate_system
           in: query
           required: false

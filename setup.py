@@ -9,7 +9,7 @@ with open(os.path.join(here, 'CHANGES.txt')) as f:
     CHANGES = f.read()
 
 requires = [
-    'apscheduler',
+    'apscheduler < 4.0.0',
     'plaster_pastedeploy',
     'pyramid',
     'pyramid_jinja2',
@@ -21,7 +21,8 @@ requires = [
     'apscheduler',
     'speasy>=0.10.2',
     'diskcache',
-    'jinja2'
+    'jinja2',
+    'zstd'
 ]
 
 tests_require = [

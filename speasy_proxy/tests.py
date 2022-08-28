@@ -2,8 +2,9 @@ import unittest
 
 import pickle
 from datetime import datetime, timezone
-from speasy.common.variable import SpeasyVariable
 
+import zstd
+from speasy.products.variable import SpeasyVariable, from_dictionary
 from pyramid import testing
 from pyramid.paster import get_appsettings
 
@@ -31,10 +32,16 @@ class FunctionalTests(unittest.TestCase):
         from webtest import TestApp
         self.testapp = TestApp(app)
 
-    def _get_data(self, path, start, stop):
-        res = self.testapp.get(url='/get_data', params={'start_time': start, 'stop_time': stop, 'path': path},
-                               status=200)
-        v = pickle.loads(res.body)
+    def _get_data(self, path, start, stop, format="speasy_variable", zstd_compression="false"):
+        res = self.testapp.get(url='/get_data',
+                               params={'start_time': start, 'stop_time': stop, 'path': path, 'format': format,
+                                       'zstd_compression': zstd_compression},
+                               status=200).body
+        if zstd_compression == 'true':
+            res = zstd.decompress(res)
+        v = pickle.loads(res)
+        if format == "python_dict":
+            v = from_dictionary(v)
         self.assertIsNotNone(v)
         self.assertIs(type(v), SpeasyVariable)
         self.assertGreater(len(v), 0)
@@ -49,12 +56,24 @@ class FunctionalTests(unittest.TestCase):
         path = 'amda/c1_b_gsm'
         self._get_data(path=path, start=start_time, stop=stop_time)
 
+    def test_get_data_as_python_dict(self):
+        start_time = datetime(2006, 1, 8, 1, 0, 0, tzinfo=timezone.utc)
+        stop_time = datetime(2006, 1, 8, 1, 0, 5, tzinfo=timezone.utc)
+        path = 'amda/c1_b_gsm'
+        self._get_data(path=path, start=start_time, stop=stop_time, format="python_dict")
+
+    def test_get_data_as_zstd_python_dict(self):
+        start_time = datetime(2006, 1, 8, 1, 0, 0, tzinfo=timezone.utc)
+        stop_time = datetime(2006, 1, 8, 1, 0, 5, tzinfo=timezone.utc)
+        path = 'amda/c1_b_gsm'
+        self._get_data(path=path, start=start_time, stop=stop_time, format="python_dict", zstd_compression='true')
+
     def test_get_data_time_format(self):
         stop_time = datetime(2006, 1, 8, 1, 0, 5, tzinfo=timezone.utc)
         path = 'amda/c1_b_gsm'
         for start_time in [datetime(2006, 1, 8, 1, 0, 0, tzinfo=timezone.utc),
                            datetime(2006, 1, 8, 1, 0, 0, tzinfo=timezone.utc).isoformat(),
-                           '2006-01-08 00:00:00','2006-01-08T00:00:00','2006-01-08T00:00:00Z']:
+                           '2006-01-08 00:00:00', '2006-01-08T00:00:00', '2006-01-08T00:00:00Z']:
             self._get_data(path=path, start=start_time, stop=stop_time)
 
     def test_get_cache_entries(self):
