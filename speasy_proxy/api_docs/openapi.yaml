@@ -18,6 +18,34 @@ paths:
       responses:
         200:
           description: proxy version
+  /get_inventory:
+    get:
+      parameters:
+        - name: provider
+          in: query
+          required: true
+          schema:
+            type: string
+            enum: [ amda, csa, cda, ssc, all ]
+          example: amda
+        - name: format
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [ json, python_dict ]
+          example: python_dict
+        - name: zstd_compression
+          in: query
+          required: false
+          schema:
+            type: boolean
+          example: true
+      responses:
+        200:
+          description: Returns requested inventory
+        400:
+          description: Bad Request
   /get_data:
     get:
       parameters:
@@ -46,14 +74,14 @@ paths:
           required: false
           schema:
             type: string
-            enum: [geo, gm, gse, gsm, sm, geitod, geij2000]
+            enum: [ geo, gm, gse, gsm, sm, geitod, geij2000 ]
           example: gse
         - $ref: "#/components/parameters/StartDateParam"
         - $ref: "#/components/parameters/StopDateParam"
         - $ref: '#/components/parameters/PickleProtocolParam'
       responses:
         200:
-          description: Returns pickled data
+          description: Returns data in the requested format
         400:
           description: Bad Request
   /get_cache_entries:

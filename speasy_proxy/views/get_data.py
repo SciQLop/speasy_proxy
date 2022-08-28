@@ -80,4 +80,4 @@ def get_data(request):
 
     del var
 
-    return Response(content_type="application/python-pickle", body=result)
+    return Response(content_type=mime, body=result)
