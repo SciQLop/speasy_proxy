@@ -5,8 +5,11 @@ from datetime import datetime, timezone
 
 import zstd
 from speasy.products.variable import SpeasyVariable, from_dictionary
+from speasy.core.inventory import indexes
 from pyramid import testing
 from pyramid.paster import get_appsettings
+from ddt import ddt, data, unpack
+import itertools
 
 
 class ViewTests(unittest.TestCase):
@@ -25,6 +28,7 @@ class ViewTests(unittest.TestCase):
             self.assertIn(key, info)
 
 
+@ddt
 class FunctionalTests(unittest.TestCase):
     def setUp(self):
         from speasy_proxy import main
@@ -45,6 +49,21 @@ class FunctionalTests(unittest.TestCase):
         self.assertIsNotNone(v)
         self.assertIs(type(v), SpeasyVariable)
         self.assertGreater(len(v), 0)
+
+    def _get_inventory(self, provider, format="python_dict", zstd_compression="false"):
+        res = self.testapp.get(url='/get_inventory',
+                               params={'provider': provider, 'format': format,
+                                       'zstd_compression': zstd_compression},
+                               status=200).body
+        if zstd_compression == 'true':
+            res = zstd.decompress(res)
+        if format == "python_dict":
+            v = pickle.loads(res)
+            v = indexes.from_dict(v)
+        else:
+            v = indexes.from_json(res)
+        self.assertIsNotNone(v)
+        self.assertIs(type(v), indexes.SpeasyIndex)
 
     def test_home(self):
         res = self.testapp.get('/', status=200)
@@ -67,6 +86,13 @@ class FunctionalTests(unittest.TestCase):
         stop_time = datetime(2006, 1, 8, 1, 0, 5, tzinfo=timezone.utc)
         path = 'amda/c1_b_gsm'
         self._get_data(path=path, start=start_time, stop=stop_time, format="python_dict", zstd_compression='true')
+
+    @data(
+        *list(itertools.product(['all', 'amda', 'csa', 'cda', 'ssc'], ['json', 'python_dict'], ['true', 'false']))
+    )
+    @unpack
+    def test_get_inventory_as_zstd_python_dict(self, provider, format, zstd_compression):
+        self._get_inventory(provider=provider, format=format, zstd_compression=zstd_compression)
 
     def test_get_data_time_format(self):
         stop_time = datetime(2006, 1, 8, 1, 0, 5, tzinfo=timezone.utc)
