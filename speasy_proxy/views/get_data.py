@@ -4,7 +4,8 @@ from pyramid.view import view_config
 from pyramid.response import Response
 import speasy
 from datetime import datetime
-from speasy.products.variable import SpeasyVariable, to_dictionary
+from speasy.products.variable import to_dictionary
+from ..inventory_updater import EnsureUpdatedInventory
 import zstd
 import logging
 import uuid
@@ -22,26 +23,7 @@ def ts_to_str(ts: float):
     return dt_to_str(datetime.utcfromtimestamp(ts))
 
 
-def encode_output(var, request):
-    data = None
-    if var is not None:
-        output_format = request.params.get("format", "python_dict")
-        if output_format == "python_dict":
-            data = to_dictionary(var)
-        elif output_format == 'speasy_variable':
-            data = var
-
-    return pickle_data(data, request), "application/python-pickle"
-
-
-def compress_if_asked(data, mime, request):
-    if request.params.get("zstd_compression", "false") == "true":
-        mime = "application/x-zstd-compressed"
-        data = zstd.compress(data)
-    return data, mime
-
-
-@view_config(route_name='get_data', openapi=True)
+@view_config(route_name='get_data', openapi=True, decorator=(EnsureUpdatedInventory(),))
 def get_data(request):
     request_start_time = time.time_ns()
     request_id = uuid.uuid4()
@@ -74,10 +56,29 @@ def get_data(request):
             log.debug(
                 f'{request_id}, duration = {request_duration}us, Got data: data shape = {var.data.shape}, data start time = {var.time[0]}, data stop time = {var.time[-1]}')
         else:
-            log.debug(f'{request_id}, duration = {request_duration}us,Got empty data')
+            log.debug(f'{request_id}, duration = {request_duration}us, Got empty data')
     else:
         log.debug(f'{request_id}, duration = {request_duration}us, Got None')
 
     del var
 
     return Response(content_type=mime, body=result)
+
+
+def encode_output(var, request):
+    data = None
+    if var is not None:
+        output_format = request.params.get("format", "python_dict")
+        if output_format == "python_dict":
+            data = to_dictionary(var)
+        elif output_format == 'speasy_variable':
+            data = var
+
+    return pickle_data(data, request), "application/python-pickle"
+
+
+def compress_if_asked(data, mime, request):
+    if request.params.get("zstd_compression", "false") == "true":
+        mime = "application/x-zstd-compressed"
+        data = zstd.compress(data)
+    return data, mime

@@ -7,9 +7,20 @@ import os
 from datetime import datetime
 from .index import index
 from apscheduler.schedulers.background import BackgroundScheduler
+import speasy as spz
+import logging
+
+log = logging.getLogger(__name__)
+
+
+def background_inventory_refresh():
+    log.info("Background inventory refresh")
+    spz.update_inventories(force_refresh=True)
 
 
 scheduler = BackgroundScheduler()
+
+scheduler.add_job(background_inventory_refresh, 'interval', hours=2)
 
 scheduler.start()
 
