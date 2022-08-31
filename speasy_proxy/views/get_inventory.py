@@ -4,6 +4,7 @@ from pyramid.view import view_config
 from pyramid.response import Response
 from speasy.core.inventory.indexes import to_json, to_dict, SpeasyIndex
 from speasy.inventories import tree
+from ..inventory_updater import EnsureUpdatedInventory
 import zstd
 import logging
 import uuid
@@ -36,7 +37,7 @@ def compress_if_asked(data, mime, request):
     return data, mime
 
 
-@view_config(route_name='get_inventory', openapi=True)
+@view_config(route_name='get_inventory', openapi=True, decorator=(EnsureUpdatedInventory(),))
 def get_inventory(request):
     request_start_time = time.time_ns()
     request_id = uuid.uuid4()
