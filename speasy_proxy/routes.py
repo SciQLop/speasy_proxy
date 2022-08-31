@@ -6,3 +6,4 @@ def includeme(config):
     config.add_route('get_speasy_version', '/get_speasy_version')
     config.add_route('get_version', '/get_version')
     config.add_route('get_inventory', '/get_inventory')
+    config.add_route('chart_roulette', '/chart_roulette')
