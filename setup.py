@@ -22,7 +22,9 @@ requires = [
     'speasy>=0.10.2',
     'diskcache',
     'jinja2',
-    'zstd'
+    'zstd',
+    'bokeh',
+    'matplotlib'
 ]
 
 tests_require = [
