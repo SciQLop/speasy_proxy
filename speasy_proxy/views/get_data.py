@@ -2,10 +2,11 @@ import time
 
 from pyramid.view import view_config
 from pyramid.response import Response
-import speasy
+import speasy as spz
 from datetime import datetime
 from speasy.products.variable import to_dictionary
 from ..inventory_updater import EnsureUpdatedInventory
+from ..bokeh_backend import plot_data
 import zstd
 import logging
 import uuid
@@ -45,7 +46,7 @@ def get_data(request):
 
     log.debug(f'New request {request_id}: {product} {start_time} {stop_time}')
 
-    var = speasy.get_data(product=product, start_time=start_time, stop_time=stop_time, **extra_params)
+    var = spz.get_data(product=product, start_time=start_time, stop_time=stop_time, **extra_params)
 
     result, mime = compress_if_asked(*encode_output(var, request), request)
 
@@ -73,6 +74,11 @@ def encode_output(var, request):
             data = to_dictionary(var)
         elif output_format == 'speasy_variable':
             data = var
+        elif output_format == 'html_bokeh':
+            if len(var) < 100000:
+                return plot_data(product=request.params.get("path", ""), data=var), 'text/html; charset=UTF-8'
+            else:
+                return plot_data(product=request.params.get("path", ""), data=var[:100000]), 'text/html; charset=UTF-8'
 
     return pickle_data(data, request), "application/python-pickle"
 
