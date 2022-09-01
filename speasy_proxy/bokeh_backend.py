@@ -1,8 +1,12 @@
+from math import prod
+
 from jinja2 import Template
 from speasy.products.variable import SpeasyVariable
 from speasy import SpeasyIndex
 from bokeh.plotting import figure
-from bokeh.models import CrosshairTool, DataRange1d, HoverTool, ColumnDataSource, CustomJS
+from bokeh.models import CrosshairTool, DataRange1d, HoverTool, ColumnDataSource, CustomJS, Div
+from bokeh.layouts import column, row
+from bokeh.events import PanEnd, PinchEnd, MouseWheel
 from bokeh.resources import CDN, INLINE
 from bokeh.embed import file_html, components
 from bokeh.palettes import Set1_9 as palette
@@ -34,17 +38,42 @@ TEMPLATE = Template('''
 </html>
 ''')
 
+JS_TEMPLATE = Template("""
+var plot_data = source.data;
+request_url.text = '<a href="' + server_url + '/get_data?format=html_bokeh&path=' + product + '&start_time=' + new Date(xr.start).toISOString() + '&stop_time=' + new Date(xr.end).toISOString()+'">Plot URL</a>';
+jQuery.ajax({
+    type: 'GET',
+    url: '/get_data?format=json&path=' + product + '&start_time=' + new Date(xr.start).toISOString() + '&stop_time=' + new Date(xr.end).toISOString(),
+    success: function (json_from_server) {
+        const data = source.data;
+        //console.log(json_from_server);
+{% for column in columns %}
+        data['{{ column }}']=json_from_server['values'][{{ loop.index0 }}];
+{% endfor %}
+        data['time']=json_from_server['time'].map(function(item) { return item/1000000 });
 
-def _plot_vector(plot, product, data):
+        source.change.emit();
+    },
+    error: function() {
+        /*alert("Oh no, something went wrong. Search for an error " +
+              "message in Flask log and browser developer tools.");*/
+    }
+});
+""")
+
+
+def _plot_vector(plot, product, data, server_url):
     if len(data) > 0:
         if isinstance(product, SpeasyIndex):
-            product = product.spz_uid()
+            product = f"{product.spz_provider()}/{product.spz_uid()}"
         colors = itertools.cycle(palette)
         if len(data.columns) != data.values.shape[1]:
             columns = [f'component {i}' for i in range(data.values.shape[1])]
         else:
             columns = data.columns
 
+        request_url = Div(
+            text=f'<a href="{server_url}/get_data?format=html_bokeh&path={product}&start_time={str(data.time[0])}&stop_time={str(data.time[-1])}">Plot URL</a>')
         source = ColumnDataSource()
         source.add(data=data.time, name='time')
         for comp in range(data.values.shape[1]):
@@ -59,24 +88,16 @@ def _plot_vector(plot, product, data):
                 mode='vline')
             )
 
-        callback = CustomJS(args=dict(source=source, xr=plot.x_range, product=product), code="""
-            var plot_data = source.data;
-            jQuery.ajax({
-                type: 'GET',
-                url: '/get_data?format=json&path=' + product + '&start_time=' + '2018-10-24T00:00:00' + '&stop_time=' + '2018-10-24T01:00:00',
-                success: function (json_from_server) {
-                    // alert(JSON.stringify(json_from_server));
-                    source.change.emit();
-                },
-                error: function() {
-                    alert("Oh no, something went wrong. Search for an error " +
-                          "message in Flask log and browser developer tools.");
-                }
-            });
-            """)
-        plot.x_range.js_on_change('start', callback)
+        js = JS_TEMPLATE.render(columns=columns, start=str(data.time[0]), stop=str(data.time[-1]))
+        callback = CustomJS(
+            args=dict(source=source, xr=plot.x_range, product=product, plot_title=plot.title, request_url=request_url,
+                      server_url=server_url),
+            code=js)
+        plot.js_on_event(PanEnd, callback)
+        plot.js_on_event(PinchEnd, callback)
+        plot.js_on_event(MouseWheel, callback)
         plot.legend.click_policy = "hide"
-        script, div = components(plot)
+        script, div = components(column(request_url, plot, sizing_mode='stretch_width'))
         html = TEMPLATE.render(plot_script=script,
                                plot_div=div,
                                js_resources=INLINE.render_js(),
@@ -84,13 +105,17 @@ def _plot_vector(plot, product, data):
         return html
 
 
-def _plot_spectrogram(plot, product, data: SpeasyVariable):
+def _plot_spectrogram(plot, product, data: SpeasyVariable, server_url):
     import matplotlib.pyplot as plt
     import matplotlib.colors as colors
     if len(data) > 0:
         plt.figure()
         plt.semilogy()
+        request_url = Div(
+            text=f'<a href="{server_url}/get_data?format=html_bokeh&path={product}&start_time={str(data.time[0])}&stop_time={str(data.time[-1])}">Plot URL</a>')
+
         cm = plt.pcolormesh(data.axes[0], data.axes[1].T, data.values.T,
+                            cmap='plasma',
                             norm=colors.LogNorm(vmin=max(np.nanmin(data.values), 1e-100), vmax=np.nanmax(data.values)))
         colors = cm.cmap(cm.norm(cm.get_array()))
         image = np.empty((data.values.shape[1], data.values.shape[0]), dtype=np.uint32)
@@ -104,28 +129,30 @@ def _plot_spectrogram(plot, product, data: SpeasyVariable):
                         dw=data.time[-1] - data.time[0], dh=cm.axes.get_ylim()[1])
         plot.add_tools(
             HoverTool(tooltips=[("x", "$x{%F %T}"), ("y", "$y"), ("value", "@image")], formatters={"$x": "datetime"}))
-        html = file_html(plot, CDN, "my plot")
+        html = file_html(column(request_url, plot, sizing_mode='stretch_width'), CDN, "my plot")
         return html
 
 
-def plot_data(product, data: SpeasyVariable):
+def plot_data(product, data: SpeasyVariable, request):
     if data is not None and len(data) > 0:
         y_axis_type = SCALES_LUT.get(data.meta.get('SCALETYP', 'linear').lower(), 'linear')
         plot = figure(plot_width=900, plot_height=500, x_axis_type="datetime", sizing_mode='stretch_both',
                       y_axis_type=y_axis_type
                       )
         if isinstance(product, SpeasyIndex):
-            plot.title.text = f"{product.spz_uid()} from {product.spz_provider()} between {str(data.time[0])} {str(data.time[-1])}"
+            title_text_template = f"{product.spz_uid()} from {product.spz_provider()}"
         else:
-            plot.title.text = f"{product} between {str(data.time[0])} {str(data.time[-1])}"
+            title_text_template = f"{product}"
+
+        plot.title.text = title_text_template
 
         plot.title.align = "center"
         plot.title.text_font_size = "25px"
         plot.xaxis.axis_label = 'Time'
         plot.add_tools(CrosshairTool())
         if len(data.values.shape) == 2 and data.meta.get('DISPLAY_TYPE', '') == 'spectrogram':
-            return _plot_spectrogram(plot, product, data)
+            return _plot_spectrogram(plot, product, data, server_url=request.host_url)
         if len(data.values.shape) == 2:
-            return _plot_vector(plot, product, data)
+            return _plot_vector(plot, product, data, server_url=request.host_url)
 
     log.debug(f"Can't plot {product}, data shape: {data.values.shape if data is not None else None}")

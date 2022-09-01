@@ -34,4 +34,4 @@ def get_product_random_range(product):
 @view_config(route_name='chart_roulette')
 def chart_roulette(request):
     log.debug(f'Client asking for random plot page from {request.user_agent}')
-    return Response(plot_data(*get_product_random_range(random_pick_product())) or "Oops try again")
+    return Response(plot_data(*get_product_random_range(random_pick_product()), request) or "Oops try again")

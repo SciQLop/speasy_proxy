@@ -3,6 +3,7 @@ import time
 from pyramid.view import view_config
 from pyramid.response import Response
 import speasy as spz
+from speasy.products.variable import SpeasyVariable
 from datetime import datetime
 from speasy.products.variable import to_dictionary
 from ..inventory_updater import EnsureUpdatedInventory
@@ -10,6 +11,9 @@ from ..bokeh_backend import plot_data
 import zstd
 import logging
 import uuid
+import json
+from astropy.units.quantity import Quantity
+import numpy as np
 
 from . import pickle_data
 
@@ -22,6 +26,23 @@ def dt_to_str(dt: datetime):
 
 def ts_to_str(ts: float):
     return dt_to_str(datetime.utcfromtimestamp(ts))
+
+
+def _values_as_array(values):
+    if type(values) is Quantity:
+        return values.view(np.ndarray)
+    return values
+
+
+def to_json(var: SpeasyVariable) -> str:
+    return json.dumps({
+        'metadata': var.meta,
+        'time': var.time.tolist(),
+        'values': [_values_as_array(var.values)[:, i].tolist() for i in range(var.values.shape[1])],
+        'extra_axes': [axis.tolist() if axis is not None else [] for axis in var.axes[1:]],
+        'extra_axes_labels': var.axes_labels[1:],
+        'columns': var.columns
+    })
 
 
 @view_config(route_name='get_data', openapi=True, decorator=(EnsureUpdatedInventory(),))
@@ -76,9 +97,14 @@ def encode_output(var, request):
             data = var
         elif output_format == 'html_bokeh':
             if len(var) < 100000:
-                return plot_data(product=request.params.get("path", ""), data=var), 'text/html; charset=UTF-8'
+                return plot_data(product=request.params.get("path", ""), data=var, request=request), 'text/html; charset=UTF-8'
             else:
-                return plot_data(product=request.params.get("path", ""), data=var[:100000]), 'text/html; charset=UTF-8'
+                return plot_data(product=request.params.get("path", ""), data=var[:100000], request=request), 'text/html; charset=UTF-8'
+        elif output_format == 'json':
+            if len(var) < 100000:
+                return to_json(var), 'application/json; charset=UTF-8'
+            else:
+                return to_json(var[:100000]), 'application/json; charset=UTF-8'
 
     return pickle_data(data, request), "application/python-pickle"
 
