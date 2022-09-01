@@ -1,9 +1,10 @@
+from jinja2 import Template
 from speasy.products.variable import SpeasyVariable
 from speasy import SpeasyIndex
 from bokeh.plotting import figure
-from bokeh.models import CrosshairTool, DataRange1d, HoverTool, ColumnDataSource
-from bokeh.resources import CDN
-from bokeh.embed import file_html
+from bokeh.models import CrosshairTool, DataRange1d, HoverTool, ColumnDataSource, CustomJS
+from bokeh.resources import CDN, INLINE
+from bokeh.embed import file_html, components
 from bokeh.palettes import Set1_9 as palette
 import itertools
 import logging
@@ -11,9 +12,33 @@ import numpy as np
 
 log = logging.getLogger(__name__)
 
+SCALES_LUT = {
+    'lin': 'linear',
+    'linear': 'linear',
+    'log': 'log',
+    'logarithmic': 'log'
+}
+
+TEMPLATE = Template('''
+<!DOCTYPE html>
+<html>
+    <head>
+        <script src="https://code.jquery.com/jquery-3.1.0.min.js"></script>
+        {{ js_resources }}
+        {{ css_resources }}
+    </head>
+    <body>
+    {{ plot_div }}
+    {{ plot_script }}
+    </body>
+</html>
+''')
+
 
 def _plot_vector(plot, product, data):
     if len(data) > 0:
+        if isinstance(product, SpeasyIndex):
+            product = product.spz_uid()
         colors = itertools.cycle(palette)
         if len(data.columns) != data.values.shape[1]:
             columns = [f'component {i}' for i in range(data.values.shape[1])]
@@ -33,8 +58,29 @@ def _plot_vector(plot, product, data):
                 formatters={"@time": "datetime"},
                 mode='vline')
             )
+
+        callback = CustomJS(args=dict(source=source, xr=plot.x_range, product=product), code="""
+            var plot_data = source.data;
+            jQuery.ajax({
+                type: 'GET',
+                url: '/get_data?format=json&path=' + product + '&start_time=' + '2018-10-24T00:00:00' + '&stop_time=' + '2018-10-24T01:00:00',
+                success: function (json_from_server) {
+                    // alert(JSON.stringify(json_from_server));
+                    source.change.emit();
+                },
+                error: function() {
+                    alert("Oh no, something went wrong. Search for an error " +
+                          "message in Flask log and browser developer tools.");
+                }
+            });
+            """)
+        plot.x_range.js_on_change('start', callback)
         plot.legend.click_policy = "hide"
-        html = file_html(plot, CDN, "my plot")
+        script, div = components(plot)
+        html = TEMPLATE.render(plot_script=script,
+                               plot_div=div,
+                               js_resources=INLINE.render_js(),
+                               css_resources=INLINE.render_css())
         return html
 
 
@@ -64,7 +110,7 @@ def _plot_spectrogram(plot, product, data: SpeasyVariable):
 
 def plot_data(product, data: SpeasyVariable):
     if data is not None and len(data) > 0:
-        y_axis_type = data.meta.get('SCALETYP', 'linear').lower()
+        y_axis_type = SCALES_LUT.get(data.meta.get('SCALETYP', 'linear').lower(), 'linear')
         plot = figure(plot_width=900, plot_height=500, x_axis_type="datetime", sizing_mode='stretch_both',
                       y_axis_type=y_axis_type
                       )
