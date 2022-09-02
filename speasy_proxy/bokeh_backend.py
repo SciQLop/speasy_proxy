@@ -27,7 +27,8 @@ TEMPLATE = Template('''
 <!DOCTYPE html>
 <html>
     <head>
-        <script src="https://code.jquery.com/jquery-3.1.0.min.js"></script>
+        <script src="https://code.jquery.com/jquery-3.6.1.min.js"></script>
+        <script src="https://unpkg.com/json5@2/dist/index.min.js"></script>
         <script type="text/javascript">
             var last_range = [-1, -1];
         </script>
@@ -42,7 +43,7 @@ TEMPLATE = Template('''
 ''')
 
 JS_TEMPLATE = Template("""
-if (cb_obj.x0 != cb_obj.x1 && last_range[0]!=xr.start && last_range[1]!=xr.end)
+if ((last_range[0] > xr.start) || (last_range[1] < xr.end))
 {
     last_range[0]=xr.start;
     last_range[1]=xr.end;
@@ -51,6 +52,11 @@ if (cb_obj.x0 != cb_obj.x1 && last_range[0]!=xr.start && last_range[1]!=xr.end)
     jQuery.ajax({
         type: 'GET',
         url: server_url+'/get_data?format=json&path=' + product + '&start_time=' + new Date(xr.start).toISOString() + '&stop_time=' + new Date(xr.end).toISOString(),
+        converters: {
+            'text json': function(result) {
+                return JSON5.parse(result);
+            }
+        },
         success: function (json_from_server) {
             const data = source.data;
             //console.log(json_from_server);
@@ -61,9 +67,10 @@ if (cb_obj.x0 != cb_obj.x1 && last_range[0]!=xr.start && last_range[1]!=xr.end)
     
             source.change.emit();
         },
-        error: function() {
-            /*alert("Oh no, something went wrong. Search for an error " +
-                  "message in Flask log and browser developer tools.");*/
+        error: function(xhr, ajaxOptions, thrownError) {
+            console.log(xhr);
+            console.log(ajaxOptions);
+            console.log(thrownError);
         }
     });
 }
