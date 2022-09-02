@@ -37,6 +37,7 @@ def _values_as_array(values):
 
 
 def to_json(var: SpeasyVariable) -> str:
+    var.replace_fillval_by_nan(inplace=True)
     return json.dumps({
         'metadata': var.meta,
         'time': var.time.tolist(),
