@@ -113,15 +113,15 @@ def _plot_spectrogram(plot, product, data: SpeasyVariable, host_url, request_url
 
         cm = plt.pcolormesh(data.axes[0], data.axes[1].T, data.values.T,
                             cmap='plasma',
-                            norm=colors.LogNorm(vmin=max(np.nanmin(data.values), 1e-100), vmax=np.nanmax(data.values)))
-        colors = cm.cmap(cm.norm(cm.get_array()))
+                            norm=colors.LogNorm(vmin=np.nanmin(data.values[np.nonzero(data.values)]), vmax=np.nanmax(data.values)))
+        flat_cmap = cm.cmap(cm.norm(cm.get_array()))
         image = np.empty((data.values.shape[1], data.values.shape[0]), dtype=np.uint32)
         view = image.view(dtype=np.uint8).reshape((image.shape[0], image.shape[1], 4))
 
-        view[:] = colors.reshape(view.shape) * 255
+        view[:] = flat_cmap.reshape(view.shape) * 255
         plot.x_range = DataRange1d(data.time[0], data.time[-1], max_interval=np.timedelta64(7, 'D'))
         plot.y_range = DataRange1d(*cm.axes.get_ylim())
-
+        plot.x_range.range_padding = plot.y_range.range_padding = 0
         plot.image_rgba(image=[image], x=data.time[0], y=cm.axes.get_ylim()[0],
                         dw=data.time[-1] - data.time[0], dh=cm.axes.get_ylim()[1])
         plot.add_tools(
@@ -130,6 +130,7 @@ def _plot_spectrogram(plot, product, data: SpeasyVariable, host_url, request_url
 
 def plot_data(product, data: SpeasyVariable, request):
     if data is not None and len(data) > 0:
+        data.replace_fillval_by_nan(inplace=True)
         y_axis_type = SCALES_LUT.get(data.meta.get('SCALETYP', 'linear').lower(), 'linear')
         plot = figure(plot_width=900, plot_height=500, x_axis_type="datetime", sizing_mode='stretch_both',
                       y_axis_type=y_axis_type
@@ -150,9 +151,10 @@ def plot_data(product, data: SpeasyVariable, request):
         request_url = Div(
             text=f'<a href="{request.application_url}/get_data?format=html_bokeh&path={product}&start_time={str(data.time[0])}&stop_time={str(data.time[-1])}">Plot URL</a>')
 
-        if len(data.values.shape) == 2 and data.meta.get('DISPLAY_TYPE', '') == 'spectrogram':
+        if len(data.values.shape) == 2 and (
+                data.meta.get('DISPLAY_TYPE', '') == 'spectrogram' or data.values.shape[1] > 10):
             _plot_spectrogram(plot, product, data, host_url=request.application_url, request_url=request_url)
-        if len(data.values.shape) == 2:
+        elif len(data.values.shape) == 2:
             _plot_vector(plot, product, data, host_url=request.application_url, request_url=request_url)
 
         script, div = components(column(request_url, plot, sizing_mode='stretch_width'))
