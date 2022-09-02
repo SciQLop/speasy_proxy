@@ -19,6 +19,8 @@ from . import pickle_data
 
 log = logging.getLogger(__name__)
 
+MAX_BOKEH_DATA_LENGTH = 1000000
+
 
 def dt_to_str(dt: datetime):
     return dt.isoformat()
@@ -84,7 +86,8 @@ def get_data(request):
 
     del var
 
-    return Response(content_type=mime, body=result)
+    return Response(content_type=mime, body=result,
+                    headerlist=[('Access-Control-Allow-Origin', '*'), ('Content-Type', mime)])
 
 
 def encode_output(var, request):
@@ -96,15 +99,17 @@ def encode_output(var, request):
         elif output_format == 'speasy_variable':
             data = var
         elif output_format == 'html_bokeh':
-            if len(var) < 100000:
-                return plot_data(product=request.params.get("path", ""), data=var, request=request), 'text/html; charset=UTF-8'
+            if len(var) < MAX_BOKEH_DATA_LENGTH:
+                return plot_data(product=request.params.get("path", ""), data=var,
+                                 request=request), 'text/html; charset=UTF-8'
             else:
-                return plot_data(product=request.params.get("path", ""), data=var[:100000], request=request), 'text/html; charset=UTF-8'
+                return plot_data(product=request.params.get("path", ""), data=var[:MAX_BOKEH_DATA_LENGTH],
+                                 request=request), 'text/html; charset=UTF-8'
         elif output_format == 'json':
-            if len(var) < 100000:
+            if len(var) < MAX_BOKEH_DATA_LENGTH:
                 return to_json(var), 'application/json; charset=UTF-8'
             else:
-                return to_json(var[:100000]), 'application/json; charset=UTF-8'
+                return to_json(var[:MAX_BOKEH_DATA_LENGTH]), 'application/json; charset=UTF-8'
 
     return pickle_data(data, request), "application/python-pickle"
 
