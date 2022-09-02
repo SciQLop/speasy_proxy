@@ -71,7 +71,7 @@ if (cb_obj.x0 != cb_obj.x1 && last_range[0]!=xr.start && last_range[1]!=xr.end)
 """)
 
 
-def _plot_vector(plot, product, data, server_url):
+def _plot_vector(plot, product, data, host_url, request_url):
     if len(data) > 0:
         if isinstance(product, SpeasyIndex):
             product = f"{product.spz_provider()}/{product.spz_uid()}"
@@ -81,8 +81,6 @@ def _plot_vector(plot, product, data, server_url):
         else:
             columns = data.columns
 
-        request_url = Div(
-            text=f'<a href="{server_url}/get_data?format=html_bokeh&path={product}&start_time={str(data.time[0])}&stop_time={str(data.time[-1])}">Plot URL</a>')
         source = ColumnDataSource()
         source.add(data=data.time, name='time')
         for comp in range(data.values.shape[1]):
@@ -96,30 +94,22 @@ def _plot_vector(plot, product, data, server_url):
                 formatters={"@time": "datetime"},
                 mode='vline')
             )
-
         js = JS_TEMPLATE.render(columns=columns, start=str(data.time[0]), stop=str(data.time[-1]))
         callback = CustomJS(
             args=dict(source=source, xr=plot.x_range, product=product, plot_title=plot.title, request_url=request_url,
-                      server_url=server_url),
+                      server_url=host_url),
             code=js)
         plot.js_on_event(RangesUpdate, callback)
+        plot.x_range.max_interval = np.timedelta64(7, 'D')
         plot.legend.click_policy = "hide"
-        script, div = components(column(request_url, plot, sizing_mode='stretch_width'))
-        html = TEMPLATE.render(plot_script=script,
-                               plot_div=div,
-                               js_resources=INLINE.render_js(),
-                               css_resources=INLINE.render_css())
-        return html
 
 
-def _plot_spectrogram(plot, product, data: SpeasyVariable, server_url):
+def _plot_spectrogram(plot, product, data: SpeasyVariable, host_url, request_url):
     import matplotlib.pyplot as plt
     import matplotlib.colors as colors
     if len(data) > 0:
         plt.figure()
         plt.semilogy()
-        request_url = Div(
-            text=f'<a href="{server_url}/get_data?format=html_bokeh&path={product}&start_time={str(data.time[0])}&stop_time={str(data.time[-1])}">Plot URL</a>')
 
         cm = plt.pcolormesh(data.axes[0], data.axes[1].T, data.values.T,
                             cmap='plasma',
@@ -129,15 +119,13 @@ def _plot_spectrogram(plot, product, data: SpeasyVariable, server_url):
         view = image.view(dtype=np.uint8).reshape((image.shape[0], image.shape[1], 4))
 
         view[:] = colors.reshape(view.shape) * 255
-        plot.x_range = DataRange1d(data.time[0], data.time[-1])
+        plot.x_range = DataRange1d(data.time[0], data.time[-1], max_interval=np.timedelta64(7, 'D'))
         plot.y_range = DataRange1d(*cm.axes.get_ylim())
 
         plot.image_rgba(image=[image], x=data.time[0], y=cm.axes.get_ylim()[0],
                         dw=data.time[-1] - data.time[0], dh=cm.axes.get_ylim()[1])
         plot.add_tools(
             HoverTool(tooltips=[("x", "$x{%F %T}"), ("y", "$y"), ("value", "@image")], formatters={"$x": "datetime"}))
-        html = file_html(column(request_url, plot, sizing_mode='stretch_width'), CDN, "my plot")
-        return html
 
 
 def plot_data(product, data: SpeasyVariable, request):
@@ -156,10 +144,22 @@ def plot_data(product, data: SpeasyVariable, request):
         plot.title.align = "center"
         plot.title.text_font_size = "25px"
         plot.xaxis.axis_label = 'Time'
+
         plot.add_tools(CrosshairTool())
+
+        request_url = Div(
+            text=f'<a href="{request.application_url}/get_data?format=html_bokeh&path={product}&start_time={str(data.time[0])}&stop_time={str(data.time[-1])}">Plot URL</a>')
+
         if len(data.values.shape) == 2 and data.meta.get('DISPLAY_TYPE', '') == 'spectrogram':
-            return _plot_spectrogram(plot, product, data, server_url=request.host_url)
+            _plot_spectrogram(plot, product, data, host_url=request.application_url, request_url=request_url)
         if len(data.values.shape) == 2:
-            return _plot_vector(plot, product, data, server_url=request.host_url)
+            _plot_vector(plot, product, data, host_url=request.application_url, request_url=request_url)
+
+        script, div = components(column(request_url, plot, sizing_mode='stretch_width'))
+        html = TEMPLATE.render(plot_script=script,
+                               plot_div=div,
+                               js_resources=INLINE.render_js(),
+                               css_resources=INLINE.render_css())
+        return html
 
     log.debug(f"Can't plot {product}, data shape: {data.values.shape if data is not None else None}")

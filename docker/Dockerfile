@@ -14,7 +14,8 @@ ENV SPEASY_CACHE_PATH=/data \
     PORT=$PORT
 
 RUN useradd speasy && mkdir -p $SPEASY_CACHE_PATH $SPEASY_INDEX_PATH \
-    && dnf install -y git python3.11.x86_64 python3.11-devel.x86_64 libxslt-devel gcc g++ \
+    && dnf install -y git python3 python3-devel libxslt libxslt-devel gcc g++ qhull-devel qhull \
+    glibc-langpack-en freetype-devel freetype libpng libpng-devel xorg-x11-server-Xvfb zlib-devel python3-matplotlib \
     && dnf clean all \
     && chown -R speasy $SPEASY_CACHE_PATH $SPEASY_INDEX_PATH \
     && mkdir -p $SPEASY_LOG_PATH/speasy \
@@ -28,10 +29,11 @@ USER speasy
 WORKDIR /home/speasy
 
 RUN cd speasy_proxy &&\
-    python3.11 -m ensurepip &&\
-    python3.11 -mpip install -U pip &&\
-    python3.11 -mpip install -U . &&\
-    python3.11 -mpip install -U $SPEASY
+    python3 -m ensurepip &&\
+    python3 -mpip install -U pip &&\
+    python3 -mpip install -U $SPEASY ddt &&\
+    python3 -mpip install -U .
+
 
 ADD speasy_proxy/docker/entry_point.sh /home/speasy/entry_point.sh
 
