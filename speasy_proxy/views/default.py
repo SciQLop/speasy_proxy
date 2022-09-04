@@ -4,9 +4,19 @@ from humanize import filesize, time
 from datetime import datetime
 import logging
 from ..index import index
-from ..inventory_updater import _last_update
+from ..inventory_updater import _last_update, ensure_update_inventory
+from threading import Thread
 
 log = logging.getLogger(__name__)
+
+_inventory_refresh_thread = None
+
+
+def _refresh_inventory():
+    global _inventory_refresh_thread
+    if _inventory_refresh_thread is None or not _inventory_refresh_thread.is_alive():
+        _inventory_refresh_thread = Thread(target=ensure_update_inventory)
+        _inventory_refresh_thread.start()
 
 
 @view_config(route_name='home', renderer='../templates/welcome.jinja2')
@@ -15,6 +25,7 @@ def home(request):
     up_since = index["up_since"]
     up_time = datetime.now() - up_since
     cache_stats = cache.stats()
+    _refresh_inventory()
     return {'entries': cache.cache_len(),
             'cache_disk_size': filesize.naturalsize(cache.cache_disk_size()),
             'up_date': time.naturaldate(up_since),
