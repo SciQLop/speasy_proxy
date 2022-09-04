@@ -2,9 +2,9 @@ from math import prod
 
 from jinja2 import Template
 from speasy.products.variable import SpeasyVariable
-from speasy import SpeasyIndex, provider_and_product
+from speasy import provider_and_product
 from bokeh.plotting import figure
-from bokeh.models import CrosshairTool, DataRange1d, HoverTool, ColumnDataSource, CustomJS, Div
+from bokeh.models import CrosshairTool, DataRange1d, HoverTool, ColumnDataSource, CustomJS, Div, WheelPanTool
 from bokeh.layouts import column
 from bokeh.events import RangesUpdate
 from bokeh.resources import INLINE
@@ -142,7 +142,8 @@ def plot_data(product, data: SpeasyVariable, request):
             data.replace_fillval_by_nan(inplace=True)
             y_axis_type = SCALES_LUT.get(data.meta.get('SCALETYP', 'linear').lower(), 'linear')
             plot = figure(plot_width=900, plot_height=500, x_axis_type="datetime", sizing_mode='stretch_both',
-                          y_axis_type=y_axis_type
+                          y_axis_type=y_axis_type,
+                          toolbar_location="above"
                           )
 
             plot.title.text = f"{product_uid} from {provider_uid}"
@@ -152,6 +153,7 @@ def plot_data(product, data: SpeasyVariable, request):
             plot.xaxis.axis_label = 'Time'
 
             plot.add_tools(CrosshairTool())
+            plot.add_tools(WheelPanTool())
 
             request_url = Div(
                 text=f'<a href="{request.application_url}/get_data?format=html_bokeh&path={provider_uid}/{product_uid}&start_time={str(data.time[0])}&stop_time={str(data.time[-1])}">Plot URL</a>')
