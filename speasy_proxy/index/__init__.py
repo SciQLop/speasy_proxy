@@ -1,6 +1,4 @@
-from ..config import index_path
+from ..config import index as index_cfg
 from diskcache import Index
 
-index = Index(index_path.get())
-
-
+index = Index(index_cfg.path())

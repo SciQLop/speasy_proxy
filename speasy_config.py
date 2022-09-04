@@ -1,6 +1,7 @@
-import argparse, os
-from speasy.config import cache_size, cache_path
-from speasy_proxy.config import index_path
+import argparse
+import os
+from speasy.config import cache as cache_cfg
+from speasy_proxy.config import index as index_cfg
 from jinja2 import Environment, PackageLoader, select_autoescape
 
 
@@ -27,14 +28,14 @@ def write_openapi_file(env, path, server_url, url_prefix):
 
 def configure_cache(size='', path=''):
     if size != '':
-        cache_size.set(size)
+        cache_cfg.size.set(size)
     if path != '':
-        cache_path.set(path)
+        cache_cfg.path.set(path)
 
 
 def configure_index(path=''):
     if path != '':
-        index_path.set(path)
+        index_cfg.path.set(path)
 
 
 if __name__ == "__main__":
