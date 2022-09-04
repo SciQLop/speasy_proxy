@@ -47,7 +47,8 @@ def get_inventory(request):
         log.error(f'Missing parameter: provider')
         return Response(
             content_type="text/plain",
-            body=f"Error: missing provider parameter"
+            body=f"Error: missing provider parameter",
+            headerlist=[('Access-Control-Allow-Origin', '*'), ('Content-Type', "text/plain")]
         )
 
     log.debug(f'New inventory request {request_id}: {provider}')
@@ -58,4 +59,5 @@ def get_inventory(request):
 
     log.debug(f'{request_id}, duration = {request_duration}us')
 
-    return Response(content_type=mime, body=result)
+    return Response(content_type=mime, body=result,
+                    headerlist=[('Access-Control-Allow-Origin', '*'), ('Content-Type', mime)])
