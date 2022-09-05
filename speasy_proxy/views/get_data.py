@@ -56,7 +56,12 @@ def get_data(request):
     product = request.params.get("path", None)
     start_time = request.params.get("start_time", None)
     stop_time = request.params.get("stop_time", None)
-
+    if 'X-Forwarded-For' in request.headers:
+        extra_http_headers = {'X-Forwarded-For': request.headers['X-Forwarded-For']}
+        client_chain = request.headers['X-Forwarded-For']
+    else:
+        client_chain = request.client_addr
+        extra_http_headers = None
     for value, name in ((product, "path"), (start_time, "start_time"), (stop_time, "stop_time")):
         if value is None:
             log.error(f'Missing parameter: {name}')
@@ -68,9 +73,10 @@ def get_data(request):
         if parameter in request.params:
             extra_params[parameter] = request.params[parameter]
 
-    log.debug(f'New request {request_id}: {product} {start_time} {stop_time}')
+    log.debug(f'New request {request_id}: {product} {start_time} {stop_time} from {client_chain}')
 
-    var = spz.get_data(product=product, start_time=start_time, stop_time=stop_time, **extra_params)
+    var = spz.get_data(product=product, start_time=start_time, stop_time=stop_time,
+                       extra_http_headers=extra_http_headers, **extra_params)
 
     result, mime = compress_if_asked(*encode_output(var, request), request)
 
