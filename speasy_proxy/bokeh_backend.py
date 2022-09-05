@@ -4,7 +4,8 @@ from jinja2 import Template
 from speasy.products.variable import SpeasyVariable
 from speasy import provider_and_product
 from bokeh.plotting import figure
-from bokeh.models import CrosshairTool, DataRange1d, HoverTool, ColumnDataSource, CustomJS, Div, WheelPanTool
+from bokeh.models.widgets import Panel, Tabs
+from bokeh.models import CrosshairTool, DataRange1d, HoverTool, ColumnDataSource, CustomJS, Div, Paragraph, WheelPanTool
 from bokeh.layouts import column
 from bokeh.events import RangesUpdate
 from bokeh.resources import INLINE
@@ -13,6 +14,8 @@ from bokeh.palettes import Set1_9 as palette
 import itertools
 import logging
 import numpy as np
+import traceback
+import json
 
 log = logging.getLogger(__name__)
 
@@ -77,6 +80,27 @@ if ((last_range[0] > xr.start) || (last_range[1] < xr.end))
 
 """)
 
+JSON_PANE_TEMPLATE = Template(
+    """
+<table style="width:100%">
+  <tr>
+    <th>Name</th>
+    <th>Value</th>
+  </tr>
+  {% for key, value in meta.items() %}
+  <tr>
+    <td>{{ key }}</td>
+    <td>{{ value }}</td>
+  </tr>
+  {% endfor %}
+</table>
+    """
+)
+
+
+def _metadata_viewer(data):
+    return Panel(child=Div(text=JSON_PANE_TEMPLATE.render(meta=data.meta)), title="Metadata")
+
 
 def _plot_vector(plot, provider_uid, product_uid, data, host_url, request_url):
     if len(data) > 0:
@@ -113,24 +137,28 @@ def _plot_vector(plot, provider_uid, product_uid, data, host_url, request_url):
 def _plot_spectrogram(plot, provider_uid, product_uid, data: SpeasyVariable, host_url, request_url):
     import matplotlib.pyplot as plt
     import matplotlib.colors as colors
-    if len(data) > 0:
+    if len(data) > 0 and not np.isnan(data.values).all():
         plt.figure()
         plt.semilogy()
 
-        cm = plt.pcolormesh(data.axes[0], data.axes[1].T, data.values.T,
+        values = data.values
+        x = data.time
+        y = data.axes[1] if data.axes[1] is not None else np.arange(values.shape[1])
+
+        cm = plt.pcolormesh(x, y.T, values.T,
                             cmap='plasma',
-                            norm=colors.LogNorm(vmin=np.nanmin(data.values[np.nonzero(data.values)]),
-                                                vmax=np.nanmax(data.values)))
+                            norm=colors.LogNorm(vmin=np.nanmin(values[np.nonzero(values)]),
+                                                vmax=np.nanmax(values)))
         flat_cmap = cm.cmap(cm.norm(cm.get_array()))
-        image = np.empty((data.values.shape[1], data.values.shape[0]), dtype=np.uint32)
+        image = np.empty((values.shape[1], values.shape[0]), dtype=np.uint32)
         view = image.view(dtype=np.uint8).reshape((image.shape[0], image.shape[1], 4))
 
         view[:] = flat_cmap.reshape(view.shape) * 255
-        plot.x_range = DataRange1d(data.time[0], data.time[-1], max_interval=np.timedelta64(7, 'D'))
+        plot.x_range = DataRange1d(x[0], x[-1], max_interval=np.timedelta64(7, 'D'))
         plot.y_range = DataRange1d(*cm.axes.get_ylim())
         plot.x_range.range_padding = plot.y_range.range_padding = 0
-        plot.image_rgba(image=[image], x=data.time[0], y=cm.axes.get_ylim()[0],
-                        dw=data.time[-1] - data.time[0], dh=cm.axes.get_ylim()[1])
+        plot.image_rgba(image=[image], x=x[0], y=cm.axes.get_ylim()[0],
+                        dw=x[-1] - x[0], dh=cm.axes.get_ylim()[1])
         plot.add_tools(
             HoverTool(tooltips=[("x", "$x{%F %T}"), ("y", "$y"), ("value", "@image")], formatters={"$x": "datetime"}))
 
@@ -138,7 +166,7 @@ def _plot_spectrogram(plot, provider_uid, product_uid, data: SpeasyVariable, hos
 def plot_data(product, data: SpeasyVariable, request):
     provider_uid, product_uid = provider_and_product(product)
     try:
-        if data is not None and len(data) > 0:
+        if data is not None and len(data):
             data.replace_fillval_by_nan(inplace=True)
             y_axis_type = SCALES_LUT.get(data.meta.get('SCALETYP', 'linear').lower(), 'linear')
             plot = figure(plot_width=900, plot_height=500, x_axis_type="datetime", sizing_mode='stretch_both',
@@ -146,10 +174,9 @@ def plot_data(product, data: SpeasyVariable, request):
                           toolbar_location="above"
                           )
 
-            plot.title.text = f"{product_uid} from {provider_uid}"
-
-            plot.title.align = "center"
-            plot.title.text_font_size = "25px"
+            plot_title = Div(
+                text=f'<h1>{product_uid} from {provider_uid}</h1>', align='center')
+            product_meta = Paragraph(text="")
             plot.xaxis.axis_label = 'Time'
 
             plot.add_tools(CrosshairTool())
@@ -166,7 +193,9 @@ def plot_data(product, data: SpeasyVariable, request):
                 _plot_vector(plot, provider_uid, product_uid, data, host_url=request.application_url,
                              request_url=request_url)
 
-            script, div = components(column(request_url, plot, sizing_mode='stretch_width'))
+            script, div = components(Tabs(
+                tabs=[Panel(child=column(plot_title, product_meta, request_url, plot, sizing_mode='stretch_width'),
+                            title="Plot"), _metadata_viewer(data)]))
             html = TEMPLATE.render(plot_script=script,
                                    plot_div=div,
                                    js_resources=INLINE.render_js(),
@@ -174,6 +203,7 @@ def plot_data(product, data: SpeasyVariable, request):
             return html
 
         log.debug(f"Can't plot {product}, data shape: {data.values.shape if data is not None else None}")
-    except:
-        pass
+
+    except Exception as e:
+        log.debug(''.join(traceback.format_exception(e)))
     return f"Oops, unable to plot {product_uid} from {provider_uid}"
