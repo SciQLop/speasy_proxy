@@ -2,7 +2,7 @@ from math import prod
 
 from jinja2 import Template
 from speasy.products.variable import SpeasyVariable
-from speasy import provider_and_product
+from speasy.core.requests_scheduling.request_dispatch import provider_and_product
 from bokeh.plotting import figure
 from bokeh.models.widgets import Panel, Tabs
 from bokeh.models import CrosshairTool, DataRange1d, HoverTool, ColumnDataSource, CustomJS, Div, Paragraph, WheelPanTool
@@ -34,6 +34,10 @@ TEMPLATE = Template('''
         <script src="https://unpkg.com/json5@2/dist/index.min.js"></script>
         <script type="text/javascript">
             var last_range = [-1, -1];
+            function transpose(array)
+            {
+                return array[0].map((_, colIndex) => array.map(row => row[colIndex]));
+            }
         </script>
         {{ js_resources }}
         {{ css_resources }}
@@ -62,11 +66,12 @@ if ((last_range[0] > xr.start) || (last_range[1] < xr.end))
         },
         success: function (json_from_server) {
             const data = source.data;
+            var values = transpose(json_from_server['values']['values']);
             //console.log(json_from_server);
     {% for column in columns %}
-            data['{{ column }}']=json_from_server['values'][{{ loop.index0 }}];
+            data['{{ column }}']=values[{{ loop.index0 }}];
     {% endfor %}
-            data['time']=json_from_server['time'].map(function(item) { return item/1000000 });
+            data['time']=json_from_server['axes'][0]['values'].map(function(item) { return item/1000000 });
     
             source.change.emit();
         },
@@ -143,7 +148,10 @@ def _plot_spectrogram(plot, provider_uid, product_uid, data: SpeasyVariable, hos
 
         values = data.values
         x = data.time
-        y = data.axes[1] if data.axes[1] is not None else np.arange(values.shape[1])
+        if len(data.axes) >= 2:
+            y = data.axes[1].values
+        else:
+            y = np.arange(values.shape[1]).T
 
         cm = plt.pcolormesh(x, y.T, values.T,
                             cmap='plasma',
@@ -163,7 +171,7 @@ def _plot_spectrogram(plot, provider_uid, product_uid, data: SpeasyVariable, hos
             HoverTool(tooltips=[("x", "$x{%F %T}"), ("y", "$y"), ("value", "@image")], formatters={"$x": "datetime"}))
 
 
-def plot_data(product, data: SpeasyVariable, request):
+def plot_data(product, data: SpeasyVariable, start_time, stop_time, request):
     provider_uid, product_uid = provider_and_product(product)
     try:
         if data is not None and len(data):
@@ -203,6 +211,8 @@ def plot_data(product, data: SpeasyVariable, request):
             return html
 
         log.debug(f"Can't plot {product}, data shape: {data.values.shape if data is not None else None}")
+        if data is not None and len(data) == 0:
+            return f"No data for {product_uid} from {provider_uid} betweeen {start_time} and {stop_time}"
 
     except Exception as e:
         log.debug(''.join(traceback.format_exception(e)))
