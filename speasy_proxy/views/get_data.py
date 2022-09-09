@@ -38,14 +38,7 @@ def _values_as_array(values):
 
 def to_json(var: SpeasyVariable) -> str:
     var.replace_fillval_by_nan(inplace=True)
-    return json.dumps({
-        'metadata': var.meta,
-        'time': var.time.tolist(),
-        'values': [_values_as_array(var.values)[:, i].tolist() for i in range(var.values.shape[1])],
-        'extra_axes': [axis.tolist() if axis is not None else [] for axis in var.axes[1:]],
-        'extra_axes_labels': var.axes_labels[1:],
-        'columns': var.columns
-    })
+    return json.dumps(var.to_dictionary(array_to_list=True))
 
 
 @view_config(route_name='get_data', openapi=True, decorator=(EnsureUpdatedInventory(),))
@@ -85,7 +78,7 @@ def get_data(request):
     if var is not None:
         if len(var.time):
             log.debug(
-                f'{request_id}, duration = {request_duration}us, Got data: data shape = {var.data.shape}, data start time = {var.time[0]}, data stop time = {var.time[-1]}')
+                f'{request_id}, duration = {request_duration}us, Got data: data shape = {var.values.shape}, data start time = {var.time[0]}, data stop time = {var.time[-1]}')
         else:
             log.debug(f'{request_id}, duration = {request_duration}us, Got empty data')
     else:
@@ -108,9 +101,11 @@ def encode_output(var, request):
         elif output_format == 'html_bokeh':
             if len(var) < MAX_BOKEH_DATA_LENGTH:
                 return plot_data(product=request.params.get("path", ""), data=var,
+                                 start_time=request.params.get("start_time"), stop_time=request.params.get("stop_time"),
                                  request=request), 'text/html; charset=UTF-8'
             else:
                 return plot_data(product=request.params.get("path", ""), data=var[:MAX_BOKEH_DATA_LENGTH],
+                                 start_time=request.params.get("start_time"), stop_time=request.params.get("stop_time"),
                                  request=request), 'text/html; charset=UTF-8'
         elif output_format == 'json':
             if len(var) < MAX_BOKEH_DATA_LENGTH:

@@ -33,8 +33,8 @@ def get_product_random_range(product, request):
             log.debug(f'Got data, shape: {data.values.shape}')
             if len(data) > 10000:
                 data = data[:10000]
-            return product, data.replace_fillval_by_nan(inplace=True)
-    return product, None
+            return product, data.replace_fillval_by_nan(inplace=True), start, stop
+    return product, None, start, stop
 
 
 @view_config(route_name='chart_roulette')
