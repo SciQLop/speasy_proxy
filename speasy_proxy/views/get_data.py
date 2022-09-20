@@ -49,9 +49,9 @@ def get_data(request):
     product = request.params.get("path", None)
     start_time = request.params.get("start_time", None)
     stop_time = request.params.get("stop_time", None)
-    if 'X-Forwarded-For' in request.headers:
-        extra_http_headers = {'X-Forwarded-For': request.headers['X-Forwarded-For']}
-        client_chain = request.headers['X-Forwarded-For']
+    if 'X-Real-IP' in request.headers:
+        extra_http_headers = {'X-Forwarded-For': request.headers['X-Real-IP']}
+        client_chain = request.headers['X-Real-IP']
     else:
         client_chain = request.client_addr
         extra_http_headers = None
@@ -73,16 +73,16 @@ def get_data(request):
 
     result, mime = compress_if_asked(*encode_output(var, request), request)
 
-    request_duration = (time.time_ns() - request_start_time) / 1000.
+    request_duration = (time.time_ns() - request_start_time) / 1000000.
 
     if var is not None:
         if len(var.time):
             log.debug(
-                f'{request_id}, duration = {request_duration}us, Got data: data shape = {var.values.shape}, data start time = {var.time[0]}, data stop time = {var.time[-1]}')
+                f'{request_id}, duration = {request_duration}ms, Got data: data shape = {var.values.shape}, data start time = {var.time[0]}, data stop time = {var.time[-1]}')
         else:
-            log.debug(f'{request_id}, duration = {request_duration}us, Got empty data')
+            log.debug(f'{request_id}, duration = {request_duration}ms, Got empty data')
     else:
-        log.debug(f'{request_id}, duration = {request_duration}us, Got None')
+        log.debug(f'{request_id}, duration = {request_duration}ms, Got None')
 
     del var
 
