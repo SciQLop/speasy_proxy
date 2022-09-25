@@ -1,21 +1,21 @@
-from math import prod
-
-from jinja2 import Template
-from speasy.products.variable import SpeasyVariable
-from speasy.core.requests_scheduling.request_dispatch import provider_and_product
-from bokeh.plotting import figure
-from bokeh.models.widgets import Panel, Tabs
-from bokeh.models import CrosshairTool, DataRange1d, HoverTool, ColumnDataSource, CustomJS, Div, Paragraph, WheelPanTool
-from bokeh.layouts import column
-from bokeh.events import RangesUpdate
-from bokeh.resources import INLINE
-from bokeh.embed import components
-from bokeh.palettes import Set1_9 as palette
 import itertools
 import logging
-import numpy as np
 import traceback
-import json
+
+import numpy as np
+from bokeh.embed import components
+from bokeh.events import RangesUpdate
+from bokeh.layouts import column
+from bokeh.models import (ColumnDataSource, CrosshairTool, CustomJS,
+                          DataRange1d, Div, HoverTool, Paragraph, WheelPanTool)
+from bokeh.models.widgets import Panel, Tabs
+from bokeh.palettes import Set1_9 as palette
+from bokeh.plotting import figure
+from bokeh.resources import INLINE
+from jinja2 import Template
+from speasy.core.requests_scheduling.request_dispatch import \
+    provider_and_product
+from speasy.products.variable import SpeasyVariable
 
 log = logging.getLogger(__name__)
 
@@ -140,8 +140,8 @@ def _plot_vector(plot, provider_uid, product_uid, data, host_url, request_url):
 
 
 def _plot_spectrogram(plot, provider_uid, product_uid, data: SpeasyVariable, host_url, request_url):
-    import matplotlib.pyplot as plt
     import matplotlib.colors as colors
+    import matplotlib.pyplot as plt
     if len(data) > 0 and not np.isnan(data.values).all():
         plt.figure()
         plt.semilogy()
