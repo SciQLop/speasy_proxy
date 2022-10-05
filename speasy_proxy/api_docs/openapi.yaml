@@ -46,6 +46,8 @@ paths:
           description: Returns requested inventory
         400:
           description: Bad Request
+        304:
+          description: if inventory hasn't changed since date given in If-Modified-Since header field
   /get_data:
     get:
       parameters:

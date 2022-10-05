@@ -1,7 +1,7 @@
 import unittest
 
 import pickle
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 
 import zstd
 from speasy.products.variable import SpeasyVariable, from_dictionary
@@ -65,6 +65,21 @@ class FunctionalTests(unittest.TestCase):
         self.assertIsNotNone(v)
         self.assertIs(type(v), indexes.SpeasyIndex)
 
+    def _get_inventory_up_to_date(self, provider='amda', format="python_dict", zstd_compression="false"):
+        res = self.testapp.get(url='/get_inventory',
+                               headers={"If-Modified-Since": datetime.now().ctime()},
+                               params={'provider': provider, 'format': format,
+                                       'zstd_compression': zstd_compression},
+                               status=304)
+
+    def _get_inventory_outdated(self, provider='amda', format="python_dict", zstd_compression="false"):
+        res = self.testapp.get(url='/get_inventory',
+                               headers={"If-Modified-Since": (datetime.now() - timedelta(days=200)).ctime()},
+                               params={'provider': provider, 'format': format,
+                                       'zstd_compression': zstd_compression},
+                               status=200)
+        self.assertIsNotNone(res.body)
+
     def test_home(self):
         res = self.testapp.get('/', status=200)
         self.assertTrue(b'SPEASY proxy' in res.body)
@@ -93,6 +108,8 @@ class FunctionalTests(unittest.TestCase):
     @unpack
     def test_get_inventory_as_zstd_python_dict(self, provider, format, zstd_compression):
         self._get_inventory(provider=provider, format=format, zstd_compression=zstd_compression)
+        self._get_inventory_up_to_date(provider=provider, format=format, zstd_compression=zstd_compression)
+        self._get_inventory_outdated(provider=provider, format=format, zstd_compression=zstd_compression)
 
     def test_get_data_time_format(self):
         stop_time = datetime(2006, 1, 8, 1, 0, 5, tzinfo=timezone.utc)
