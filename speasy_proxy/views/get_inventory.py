@@ -1,9 +1,12 @@
 import time
+from dateutil import parser
 
 from pyramid.view import view_config
 from pyramid.response import Response
+from pyramid.httpexceptions import HTTPNotModified
 from speasy.core.inventory.indexes import to_json, to_dict, SpeasyIndex
 from speasy.inventories import tree
+from speasy import list_providers
 from ..inventory_updater import EnsureUpdatedInventory
 import zstd
 import logging
@@ -16,6 +19,9 @@ log = logging.getLogger(__name__)
 
 def _get_inventory(provider):
     if provider == "all":
+        if 'build_date' not in tree.__dict__:
+            build_dates = [parser.parse(tree.__dict__[provider].build_date) for provider in tree.__dict__.keys()]
+            tree.__dict__["build_date"] = max(build_dates).isoformat()
         return SpeasyIndex(name="all", provider="speasy_proxy", uid="", meta=tree.__dict__)
     return tree.__dict__[provider]
 
@@ -53,8 +59,13 @@ def get_inventory(request):
 
     log.debug(f'New inventory request {request_id}: {provider}')
 
-    result, mime = compress_if_asked(*encode_output(_get_inventory(provider), request), request)
+    inventory = _get_inventory(provider)
+    if "If-Modified-Since" in request.headers:
+        if parser.parse(request.headers["If-Modified-Since"]) >= parser.parse(inventory.build_date):
+            log.debug(f'{request_id}, client inventory is up to date')
+            return HTTPNotModified()
 
+    result, mime = compress_if_asked(*encode_output(inventory, request), request)
     request_duration = (time.time_ns() - request_start_time) / 1000.
 
     log.debug(f'{request_id}, duration = {request_duration}us')
