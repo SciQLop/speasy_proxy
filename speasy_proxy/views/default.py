@@ -1,5 +1,6 @@
 from pyramid.view import view_config
 from speasy.core import cache
+from speasy import inventories
 from humanize import filesize, time
 from datetime import datetime
 import logging
@@ -32,5 +33,7 @@ def home(request):
             'up_duration': time.naturaldelta(up_time),
             'cache_hits': str(cache_stats['hit']),
             'cache_misses': str(cache_stats['misses']),
-            'inventory_update': str(_last_update.isoformat())
+            'inventory_update': str(_last_update.isoformat()),
+            'inventory_size': str(
+                sum(map(lambda p: len(p.parameters), set(inventories.flat_inventories.__dict__.values()))))
             }
