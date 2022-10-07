@@ -15,7 +15,7 @@ log = logging.getLogger(__name__)
 
 def background_inventory_refresh():
     log.info("Background inventory refresh")
-    spz.update_inventories(force_refresh=True)
+    spz.update_inventories()
 
 
 scheduler = BackgroundScheduler()
