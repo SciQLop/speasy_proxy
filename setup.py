@@ -19,7 +19,7 @@ requires = [
     'waitress',
     'humanize',
     'apscheduler',
-    'speasy>=1.0.2',
+    'speasy>=1.0.3',
     'diskcache',
     'jinja2',
     'zstd',
