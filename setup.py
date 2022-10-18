@@ -36,7 +36,7 @@ tests_require = [
 
 setup(
     name='speasy_proxy',
-    version='0.7.2',
+    version='0.7.3',
     description='speasy-proxy',
     long_description=README + '\n\n' + CHANGES,
     classifiers=[
