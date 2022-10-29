@@ -6,7 +6,7 @@ import numpy as np
 from bokeh.embed import components
 from bokeh.events import RangesUpdate
 from bokeh.layouts import column
-from bokeh.models import (ColumnDataSource, CrosshairTool, CustomJS,
+from bokeh.models import (ColumnDataSource, CrosshairTool, CustomJS, DatetimeTickFormatter,
                           DataRange1d, Div, HoverTool, Paragraph, WheelPanTool)
 from bokeh.models.widgets import Panel, Tabs
 from bokeh.palettes import Set1_9 as palette
@@ -137,7 +137,6 @@ def _plot_vector(plot, provider_uid, product_uid, data, host_url, request_url):
         plot.js_on_event(RangesUpdate, callback)
         plot.x_range.max_interval = np.timedelta64(7, 'D')
         plot.legend.click_policy = "hide"
-        plot.xaxis.axis_label = None
         plot.yaxis.axis_label = f"{data.name} ({data.unit})"
 
 
@@ -183,11 +182,19 @@ def plot_data(product, data: SpeasyVariable, start_time, stop_time, request):
                           y_axis_type=y_axis_type,
                           toolbar_location="above"
                           )
-
+            plot.xaxis.formatter = DatetimeTickFormatter(years="%Y/%m/%d %H:%M:%S",
+                                                         months="%Y/%m/%d %H:%M:%S",
+                                                         days="%Y/%m/%d %H:%M:%S",
+                                                         hours="%Y/%m/%d %H:%M:%S",
+                                                         hourmin="%Y/%m/%d %H:%M:%S",
+                                                         minutes="%Y/%m/%d %H:%M:%S",
+                                                         minsec="%Y/%m/%d %H:%M:%S",
+                                                         seconds="%Y/%m/%d %H:%M:%S.%3N",
+                                                         milliseconds="%Y/%m/%d %H:%M:%S.%3N",
+                                                         microseconds="%Y/%m/%d %H:%M:%S.%f")
             plot_title = Div(
                 text=f'<h1>{product_uid} from {provider_uid}</h1>', align='center')
             product_meta = Paragraph(text="")
-            plot.xaxis.axis_label = 'Time'
 
             plot.add_tools(CrosshairTool())
             plot.add_tools(WheelPanTool())
