@@ -151,6 +151,7 @@ def _plot_spectrogram(plot, provider_uid, product_uid, data: SpeasyVariable, hos
         x = data.time
         if len(data.axes) >= 2:
             y = data.axes[1].values
+            plot.yaxis.axis_label = f"{data.axes[1].name} ({data.axes[1].unit})"
         else:
             y = np.arange(values.shape[1]).T
 
