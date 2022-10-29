@@ -116,7 +116,7 @@ def _plot_vector(plot, provider_uid, product_uid, data, host_url, request_url):
             columns = data.columns
 
         source = ColumnDataSource()
-        source.add(data=data.time, name='time')
+        source.add(data=data.time, name="time")
         for comp in range(data.values.shape[1]):
             source.add(data=data.values[:, comp], name=columns[comp])
 
@@ -137,6 +137,8 @@ def _plot_vector(plot, provider_uid, product_uid, data, host_url, request_url):
         plot.js_on_event(RangesUpdate, callback)
         plot.x_range.max_interval = np.timedelta64(7, 'D')
         plot.legend.click_policy = "hide"
+        plot.xaxis.axis_label = None
+        plot.yaxis.axis_label = f"{data.name} ({data.unit})"
 
 
 def _plot_spectrogram(plot, provider_uid, product_uid, data: SpeasyVariable, host_url, request_url):
