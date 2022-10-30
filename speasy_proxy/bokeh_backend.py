@@ -16,6 +16,14 @@ from jinja2 import Template
 from speasy.core.requests_scheduling.request_dispatch import \
     provider_and_product
 from speasy.products.variable import SpeasyVariable
+import enum
+
+
+class PlotType(enum.Enum):
+    NONE = 0
+    LINE = 1
+    SPECTRO = 2
+
 
 log = logging.getLogger(__name__)
 
@@ -107,6 +115,16 @@ def _metadata_viewer(data):
     return Panel(child=Div(text=JSON_PANE_TEMPLATE.render(meta=data.meta)), title="Metadata")
 
 
+def _data_type(data: SpeasyVariable):
+    if data is not None:
+        if len(data.values.shape) == 2 and (
+                data.meta.get('DISPLAY_TYPE', '') == 'spectrogram' or data.values.shape[1] > 10):
+            return PlotType.SPECTRO
+        if len(data.values.shape) == 2:
+            return PlotType.LINE
+    return PlotType.NONE
+
+
 def _plot_vector(plot, provider_uid, product_uid, data, host_url, request_url):
     if len(data) > 0:
         colors = itertools.cycle(palette)
@@ -122,12 +140,17 @@ def _plot_vector(plot, provider_uid, product_uid, data, host_url, request_url):
 
         for comp, color in zip(range(data.values.shape[1]), colors):
             l = plot.line(x='time', y=columns[comp], source=source, legend_label=columns[comp], line_color=color)
-            plot.add_tools(HoverTool(
-                renderers=[l],
-                tooltips=[("time", "@time{%F %T}"), (columns[comp], '$y{0.000}')],
-                formatters={"@time": "datetime"},
-                mode='vline')
-            )
+
+        plot.add_tools(HoverTool(
+            renderers=[l],
+            tooltips=[("time", "@time{%F %T}")] + [
+                (columns[comp], f'@{columns[comp]}{{0.000}} {str(data.unit)}') for
+                comp in
+                range(data.values.shape[1])],
+            formatters={"@time": "datetime"},
+            mode='vline')
+        )
+
         js = JS_TEMPLATE.render(columns=columns, start=str(data.time[0]), stop=str(data.time[-1]))
         callback = CustomJS(
             args=dict(source=source, xr=plot.x_range, product=f"{provider_uid}/{product_uid}", plot_title=plot.title,
@@ -170,13 +193,14 @@ def _plot_spectrogram(plot, provider_uid, product_uid, data: SpeasyVariable, hos
         plot.image_rgba(image=[image], x=x[0], y=cm.axes.get_ylim()[0],
                         dw=x[-1] - x[0], dh=cm.axes.get_ylim()[1])
         plot.add_tools(
-            HoverTool(tooltips=[("x", "$x{%F %T}"), ("y", "$y")], formatters={"$x": "datetime"}))
+            HoverTool(tooltips=[("x", "$x{%F %T}"), ("y", f"$y {data.axes[1].unit}")], formatters={"$x": "datetime"}))
 
 
 def plot_data(product, data: SpeasyVariable, start_time, stop_time, request):
     provider_uid, product_uid = provider_and_product(product)
     try:
         if data is not None and len(data):
+            plot_type = _data_type(data)
             data.replace_fillval_by_nan(inplace=True)
             y_axis_type = SCALES_LUT.get(data.meta.get('SCALETYP', 'linear').lower(), 'linear')
             plot = figure(plot_width=900, plot_height=500, x_axis_type="datetime", sizing_mode='stretch_both',
@@ -203,11 +227,10 @@ def plot_data(product, data: SpeasyVariable, start_time, stop_time, request):
             request_url = Div(
                 text=f'<a href="{request.application_url}/get_data?format=html_bokeh&path={provider_uid}/{product_uid}&start_time={str(data.time[0])}&stop_time={str(data.time[-1])}">Plot URL</a>')
 
-            if len(data.values.shape) == 2 and (
-                    data.meta.get('DISPLAY_TYPE', '') == 'spectrogram' or data.values.shape[1] > 10):
+            if plot_type == PlotType.SPECTRO:
                 _plot_spectrogram(plot, provider_uid, product_uid, data, host_url=request.application_url,
                                   request_url=request_url)
-            elif len(data.values.shape) == 2:
+            elif plot_type == PlotType.LINE:
                 _plot_vector(plot, provider_uid, product_uid, data, host_url=request.application_url,
                              request_url=request_url)
 
