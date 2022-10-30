@@ -170,7 +170,7 @@ def _plot_spectrogram(plot, provider_uid, product_uid, data: SpeasyVariable, hos
         plot.image_rgba(image=[image], x=x[0], y=cm.axes.get_ylim()[0],
                         dw=x[-1] - x[0], dh=cm.axes.get_ylim()[1])
         plot.add_tools(
-            HoverTool(tooltips=[("x", "$x{%F %T}"), ("y", "$y"), ("value", "@image")], formatters={"$x": "datetime"}))
+            HoverTool(tooltips=[("x", "$x{%F %T}"), ("y", "$y")], formatters={"$x": "datetime"}))
 
 
 def plot_data(product, data: SpeasyVariable, start_time, stop_time, request):
