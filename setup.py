@@ -23,7 +23,7 @@ requires = [
     'diskcache',
     'jinja2',
     'zstd',
-    'bokeh',
+    'bokeh<=2.4.3',
     'matplotlib'
 ]
 
