@@ -8,7 +8,7 @@ from bokeh.events import RangesUpdate
 from bokeh.layouts import column
 from bokeh.models import (ColumnDataSource, CrosshairTool, CustomJS, DatetimeTickFormatter,
                           DataRange1d, Div, HoverTool, Paragraph, WheelPanTool)
-from bokeh.models.widgets import Panel, Tabs
+from bokeh.models import TabPanel, Tabs
 from bokeh.palettes import Set1_9 as palette
 from bokeh.plotting import figure
 from bokeh.resources import INLINE
@@ -112,7 +112,7 @@ JSON_PANE_TEMPLATE = Template(
 
 
 def _metadata_viewer(data):
-    return Panel(child=Div(text=JSON_PANE_TEMPLATE.render(meta=data.meta)), title="Metadata")
+    return TabPanel(child=Div(text=JSON_PANE_TEMPLATE.render(meta=data.meta)), title="Metadata")
 
 
 def _data_type(data: SpeasyVariable):
@@ -204,7 +204,9 @@ def plot_data(product, data: SpeasyVariable, start_time, stop_time, request):
             plot_type = _data_type(data)
             data.replace_fillval_by_nan(inplace=True)
             y_axis_type = SCALES_LUT.get(data.meta.get('SCALETYP', 'linear').lower(), 'linear')
-            plot = figure(plot_width=900, plot_height=500, x_axis_type="datetime", sizing_mode='stretch_both',
+            plot = figure(min_width=900, min_height=500, x_axis_type="datetime", sizing_mode='stretch_both',
+                          height_policy="max",
+                          width_policy="max",
                           y_axis_type=y_axis_type,
                           toolbar_location="above"
                           )
@@ -235,9 +237,10 @@ def plot_data(product, data: SpeasyVariable, start_time, stop_time, request):
                 _plot_vector(plot, provider_uid, product_uid, data, host_url=request.application_url,
                              request_url=request_url)
 
-            script, div = components(Tabs(
-                tabs=[Panel(child=column(plot_title, product_meta, request_url, plot, sizing_mode='stretch_width'),
-                            title="Plot"), _metadata_viewer(data)]))
+            script, div = components(Tabs(sizing_mode='stretch_both', resizable=True,
+                                          tabs=[TabPanel(child=column(plot_title, product_meta, request_url, plot,
+                                                                      sizing_mode='stretch_both'),
+                                                         title="Plot"), _metadata_viewer(data)]))
             html = TEMPLATE.render(plot_script=script,
                                    plot_div=div,
                                    js_resources=INLINE.render_js(),
