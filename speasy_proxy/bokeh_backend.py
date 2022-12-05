@@ -8,7 +8,7 @@ from bokeh.events import RangesUpdate
 from bokeh.layouts import column
 from bokeh.models import (ColumnDataSource, CrosshairTool, CustomJS, DatetimeTickFormatter,
                           DataRange1d, Div, HoverTool, Paragraph, WheelPanTool)
-from bokeh.models import TabPanel, Tabs
+from bokeh.models import TabPanel, Tabs, Spacer
 from bokeh.palettes import Set1_9 as palette
 from bokeh.plotting import figure
 from bokeh.resources import INLINE
@@ -112,7 +112,10 @@ JSON_PANE_TEMPLATE = Template(
 
 
 def _metadata_viewer(data):
-    return TabPanel(child=Div(text=JSON_PANE_TEMPLATE.render(meta=data.meta)), title="Metadata")
+    return TabPanel(
+        child=column(Div(text=JSON_PANE_TEMPLATE.render(meta=data.meta), sizing_mode='stretch_both'), Spacer(sizing_mode='stretch_both'),
+                     sizing_mode='stretch_both'),
+        title="Metadata")
 
 
 def _data_type(data: SpeasyVariable):
@@ -187,8 +190,9 @@ def _plot_spectrogram(plot, provider_uid, product_uid, data: SpeasyVariable, hos
         view = image.view(dtype=np.uint8).reshape((image.shape[0], image.shape[1], 4))
 
         view[:] = flat_cmap.reshape(view.shape) * 255
-        plot.x_range = DataRange1d(x[0], x[-1], max_interval=np.timedelta64(7, 'D'))
-        plot.y_range = DataRange1d(*cm.axes.get_ylim())
+        plot.x_range = DataRange1d(start=x[0], end=x[-1], max_interval=np.timedelta64(7, 'D'))
+        ylim = cm.axes.get_ylim()
+        plot.y_range = DataRange1d(start=ylim[0], end=ylim[1])
         plot.x_range.range_padding = plot.y_range.range_padding = 0
         plot.image_rgba(image=[image], x=x[0], y=cm.axes.get_ylim()[0],
                         dw=x[-1] - x[0], dh=cm.axes.get_ylim()[1])
@@ -237,7 +241,7 @@ def plot_data(product, data: SpeasyVariable, start_time, stop_time, request):
                 _plot_vector(plot, provider_uid, product_uid, data, host_url=request.application_url,
                              request_url=request_url)
 
-            script, div = components(Tabs(sizing_mode='stretch_both', resizable=True,
+            script, div = components(Tabs(sizing_mode='stretch_both',
                                           tabs=[TabPanel(child=column(plot_title, product_meta, request_url, plot,
                                                                       sizing_mode='stretch_both'),
                                                          title="Plot"), _metadata_viewer(data)]))
