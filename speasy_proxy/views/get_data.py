@@ -1,21 +1,21 @@
-import time
-
-from pyramid.view import view_config
-from pyramid.response import Response
-import speasy as spz
-from speasy.products.variable import SpeasyVariable
-from datetime import datetime
-from speasy.products.variable import to_dictionary
-from ..inventory_updater import EnsureUpdatedInventory
-from ..bokeh_backend import plot_data
-import zstd
-import logging
-import uuid
 import json
-from astropy.units.quantity import Quantity
+import logging
+import time
+import uuid
+from datetime import datetime
+
 import numpy as np
+import speasy as spz
+import zstd
+from astropy.units.quantity import Quantity
+from pyramid.response import Response
+from pyramid.view import view_config
+from speasy.products.variable import SpeasyVariable
+from speasy.products.variable import to_dictionary
 
 from . import pickle_data
+from ..bokeh_backend import plot_data
+from ..inventory_updater import EnsureUpdatedInventory
 
 log = logging.getLogger(__name__)
 
@@ -62,7 +62,7 @@ def get_data(request):
                 content_type="text/plain",
                 body=f"Error: missing {name} parameter"
             )
-    for parameter in ("coordinate_system",):
+    for parameter in ("coordinate_system", "output_format"):
         if parameter in request.params:
             extra_params[parameter] = request.params[parameter]
 

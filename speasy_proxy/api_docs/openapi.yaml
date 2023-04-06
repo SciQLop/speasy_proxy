@@ -71,9 +71,18 @@ paths:
           schema:
             type: boolean
           example: true
+        - name: output_format
+          in: query
+          required: false
+          description: Data format used to retrieve data from remote server (such as AMDA), not the data format of the current request. Only available with AMDA.
+          schema:
+            type: string
+            enum: [ ASCII, CDF_ISTP ]
+          example: gse
         - name: coordinate_system
           in: query
           required: false
+          description: Only available with SSCWEB.
           schema:
             type: string
             enum: [ geo, gm, gse, gsm, sm, geitod, geij2000 ]
