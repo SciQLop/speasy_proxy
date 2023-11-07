@@ -2,10 +2,14 @@ __author__ = """Alexis Jeandet"""
 __email__ = 'alexis.jeandet@member.fsf.org'
 __version__ = '0.8.0'
 
-from pyramid.config import Configurator
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 import os
 from datetime import datetime
 from .index import index
+from .api.v1 import api_router as v1_api_router
+from .frontend import frontend_router
 from apscheduler.schedulers.background import BackgroundScheduler
 import speasy as spz
 import logging
@@ -25,15 +29,26 @@ scheduler.add_job(background_inventory_refresh, 'interval', hours=2)
 scheduler.start()
 
 
-def main(global_config, **settings):
-    """ This function returns a Pyramid WSGI application.
-    """
+def get_application() -> FastAPI:
+    _app = FastAPI(
+        title="speasy-proxy",
+        description="A fast speasy cache server",
+        debug=True,
+    )
+    _app.include_router(frontend_router)
+    _app.include_router(v1_api_router)
+    _app.mount("/static", StaticFiles(directory=f"{os.path.dirname(os.path.abspath(__file__))}/static"), name="static")
+
     index["up_since"] = datetime.now()
-    with Configurator(settings=settings) as config:
-        config.include('pyramid_jinja2')
-        config.include('.routes')
-        config.scan()
-        config.pyramid_openapi3_spec(os.path.join(os.path.dirname(__file__), config.registry.settings["api_doc_path"]),
-                                     route='/api/v1/spec')
-        config.pyramid_openapi3_add_explorer(route='/api/v1/')
-    return config.make_wsgi_app()
+
+    _app.add_middleware(
+        CORSMiddleware,
+        allow_origins=[str(origin) for origin in []],
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
+
+    return _app
+
+
+app = get_application()

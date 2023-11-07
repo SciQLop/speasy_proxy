@@ -3,19 +3,24 @@ import logging
 import time
 import uuid
 from datetime import datetime
-
+from typing import Optional, Annotated
 import numpy as np
 import speasy as spz
 import zstd
 from astropy.units.quantity import Quantity
-from pyramid.response import Response
-from pyramid.view import view_config
+from dateutil import parser
+from fastapi import Response, Request, Query
+from pydantic import Field
+from fastapi.responses import PlainTextResponse
+from .routes import router
+
 from speasy.products.variable import SpeasyVariable
 from speasy.products.variable import to_dictionary
 
-from . import pickle_data
-from ..bokeh_backend import plot_data
-from ..inventory_updater import EnsureUpdatedInventory
+from speasy_proxy.api import pickle_data
+from .query_parameters import QueryProvider, QueryZstd, QueryPickleProto, QueryDataFormat
+from speasy_proxy.bokeh_backend import plot_data
+from speasy_proxy.inventory_updater import ensure_update_inventory
 
 log = logging.getLogger(__name__)
 
@@ -41,37 +46,40 @@ def to_json(var: SpeasyVariable) -> str:
     return json.dumps(var.to_dictionary(array_to_list=True))
 
 
-@view_config(route_name='get_data', openapi=True, decorator=(EnsureUpdatedInventory(),))
-def get_data(request):
+@router.get('/get_data', description='Get data from cache or remote server')
+def get_data(request: Request, path: str = Query(example="amda/c1_b_gsm"),
+             start_time: datetime = Query(example="2018-10-24T00:00:00"),
+             stop_time: datetime = Query(example="2018-10-24T02:00:00"),
+             format: str = QueryDataFormat,
+             zstd_compression: bool = QueryZstd,
+             output_format: Optional[str] = Query(None, enum=["CDF_ISTP", "ASCII"],
+                                                  description="Data format used to retrieve data from remote server (such as AMDA), not the data format of the current request. Only available with AMDA."),
+             coordinate_system: Optional[str] = None,
+             pickle_proto: int = QueryPickleProto):
     request_start_time = time.time_ns()
+    ensure_update_inventory()
     request_id = uuid.uuid4()
     extra_params = {}
-    product = request.params.get("path", None)
-    start_time = request.params.get("start_time", None)
-    stop_time = request.params.get("stop_time", None)
+    product = path
     if 'X-Real-IP' in request.headers:
         extra_http_headers = {'X-Forwarded-For': request.headers['X-Real-IP']}
         client_chain = request.headers['X-Real-IP']
     else:
-        client_chain = request.client_addr
+        client_chain = str(request.client.host)
         extra_http_headers = None
-    for value, name in ((product, "path"), (start_time, "start_time"), (stop_time, "stop_time")):
-        if value is None:
-            log.error(f'Missing parameter: {name}')
-            return Response(
-                content_type="text/plain",
-                body=f"Error: missing {name} parameter"
-            )
-    for parameter in ("coordinate_system", "output_format"):
-        if parameter in request.params:
-            extra_params[parameter] = request.params[parameter]
+
+    if coordinate_system:
+        extra_params["coordinate_system"] = coordinate_system
+    if output_format:
+        extra_params["output_format"] = output_format
 
     log.debug(f'New request {request_id}: {product} {start_time} {stop_time} from {client_chain}')
 
     var = spz.get_data(product=product, start_time=start_time, stop_time=stop_time,
                        extra_http_headers=extra_http_headers, **extra_params)
 
-    result, mime = compress_if_asked(*encode_output(var, request), request)
+    result, mime = compress_if_asked(*encode_output(var, path, start_time, stop_time, format, request, pickle_proto),
+                                     zstd_compression)
 
     request_duration = (time.time_ns() - request_start_time) / 1000000.
 
@@ -86,26 +94,27 @@ def get_data(request):
 
     del var
 
-    return Response(content_type=mime, body=result,
-                    headerlist=[('Access-Control-Allow-Origin', '*'), ('Content-Type', mime)])
+    return Response(media_type=mime, content=result,
+                    headers={'Access-Control-Allow-Origin': '*', 'Content-Type': mime})
 
 
-def encode_output(var, request):
+def encode_output(var, path: str, start_time: str, stop_time: str, format: str, request: Request,
+                  pickle_proto: int = 3):
     data = None
     if var is not None:
-        output_format = request.params.get("format", "python_dict")
+        output_format = format
         if output_format == "python_dict":
             data = to_dictionary(var)
         elif output_format == 'speasy_variable':
             data = var
         elif output_format == 'html_bokeh':
             if len(var) < MAX_BOKEH_DATA_LENGTH:
-                return plot_data(product=request.params.get("path", ""), data=var,
-                                 start_time=request.params.get("start_time"), stop_time=request.params.get("stop_time"),
+                return plot_data(product=path, data=var,
+                                 start_time=start_time, stop_time=stop_time,
                                  request=request), 'text/html; charset=UTF-8'
             else:
-                return plot_data(product=request.params.get("path", ""), data=var[:MAX_BOKEH_DATA_LENGTH],
-                                 start_time=request.params.get("start_time"), stop_time=request.params.get("stop_time"),
+                return plot_data(product=path, data=var[:MAX_BOKEH_DATA_LENGTH],
+                                 start_time=start_time, stop_time=stop_time,
                                  request=request), 'text/html; charset=UTF-8'
         elif output_format == 'json':
             if len(var) < MAX_BOKEH_DATA_LENGTH:
@@ -113,11 +122,11 @@ def encode_output(var, request):
             else:
                 return to_json(var[:MAX_BOKEH_DATA_LENGTH]), 'application/json; charset=UTF-8'
 
-    return pickle_data(data, request), "application/python-pickle"
+    return pickle_data(data, pickle_proto), "application/python-pickle"
 
 
-def compress_if_asked(data, mime, request):
-    if request.params.get("zstd_compression", "false") == "true":
+def compress_if_asked(data, mime, zstd_compression: bool = False):
+    if zstd_compression:
         mime = "application/x-zstd-compressed"
         data = zstd.compress(data)
     return data, mime
