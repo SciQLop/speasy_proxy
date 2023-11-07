@@ -2,6 +2,7 @@ import itertools
 import logging
 import traceback
 
+from fastapi import Request
 import numpy as np
 from bokeh.embed import components
 from bokeh.events import RangesUpdate
@@ -63,10 +64,10 @@ if ((last_range[0] > xr.start) || (last_range[1] < xr.end))
     last_range[0]=xr.start;
     last_range[1]=xr.end;
     var plot_data = source.data;
-    request_url.text = '<a href="' + server_url + '/get_data?format=html_bokeh&path=' + product + '&start_time=' + new Date(xr.start).toISOString() + '&stop_time=' + new Date(xr.end).toISOString()+'">Plot URL</a>';
+    request_url.text = '<a href="' + server_url + 'get_data?format=html_bokeh&path=' + product + '&start_time=' + new Date(xr.start).toISOString() + '&stop_time=' + new Date(xr.end).toISOString()+'">Plot URL</a>';
     jQuery.ajax({
         type: 'GET',
-        url: server_url+'/get_data?format=json&path=' + product + '&start_time=' + new Date(xr.start).toISOString() + '&stop_time=' + new Date(xr.end).toISOString(),
+        url: server_url+'get_data?format=json&path=' + product + '&start_time=' + new Date(xr.start).toISOString() + '&stop_time=' + new Date(xr.end).toISOString(),
         converters: {
             'text json': function(result) {
                 return JSON5.parse(result);
@@ -113,7 +114,8 @@ JSON_PANE_TEMPLATE = Template(
 
 def _metadata_viewer(data):
     return TabPanel(
-        child=column(Div(text=JSON_PANE_TEMPLATE.render(meta=data.meta), sizing_mode='stretch_both'), Spacer(sizing_mode='stretch_both'),
+        child=column(Div(text=JSON_PANE_TEMPLATE.render(meta=data.meta), sizing_mode='stretch_both'),
+                     Spacer(sizing_mode='stretch_both'),
                      sizing_mode='stretch_both'),
         title="Metadata")
 
@@ -201,7 +203,7 @@ def _plot_spectrogram(plot, provider_uid, product_uid, data: SpeasyVariable, hos
                       formatters={"$x": "datetime"}))
 
 
-def plot_data(product, data: SpeasyVariable, start_time, stop_time, request):
+def plot_data(product, data: SpeasyVariable, start_time, stop_time, request: Request):
     provider_uid, product_uid = provider_and_product(product)
     try:
         if data is not None and len(data):
@@ -232,13 +234,13 @@ def plot_data(product, data: SpeasyVariable, start_time, stop_time, request):
             plot.add_tools(WheelPanTool())
 
             request_url = Div(
-                text=f'<a href="{request.application_url}/get_data?format=html_bokeh&path={provider_uid}/{product_uid}&start_time={str(data.time[0])}&stop_time={str(data.time[-1])}">Plot URL</a>')
+                text=f'<a href="{request.base_url}get_data?format=html_bokeh&path={provider_uid}/{product_uid}&start_time={str(data.time[0])}&stop_time={str(data.time[-1])}">Plot URL</a>')
 
             if plot_type == PlotType.SPECTRO:
-                _plot_spectrogram(plot, provider_uid, product_uid, data, host_url=request.application_url,
+                _plot_spectrogram(plot, provider_uid, product_uid, data, host_url=str(request.base_url),
                                   request_url=request_url)
             elif plot_type == PlotType.LINE:
-                _plot_vector(plot, provider_uid, product_uid, data, host_url=request.application_url,
+                _plot_vector(plot, provider_uid, product_uid, data, host_url=str(request.base_url),
                              request_url=request_url)
 
             script, div = components(Tabs(sizing_mode='stretch_both',

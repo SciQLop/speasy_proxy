@@ -20,7 +20,7 @@ class ViewTests(unittest.TestCase):
         testing.tearDown()
 
     def test_home(self):
-        from .views.default import home
+        from speasy_proxy.frontend.default import home
         request = testing.DummyRequest()
         request.user_agent = "blah"
         info = home(request)

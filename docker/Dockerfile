@@ -1,4 +1,4 @@
-FROM fedora:37
+FROM fedora:39
 
 ARG PORT=6543
 ARG SPEASY=speasy
@@ -21,8 +21,8 @@ RUN useradd speasy && mkdir -p $SPEASY_CACHE_PATH $SPEASY_INDEX_PATH \
     && mkdir -p $SPEASY_LOG_PATH/speasy \
     && chown -R speasy $SPEASY_LOG_PATH/speasy
 
-COPY speasy_proxy/*.ini speasy_proxy/*.py speasy_proxy/*.txt /home/speasy/speasy_proxy/
-COPY speasy_proxy/speasy_proxy /home/speasy/speasy_proxy/speasy_proxy
+COPY *.cfg *.yaml *.toml *.txt *.md /home/speasy/speasy_proxy/
+COPY speasy_proxy /home/speasy/speasy_proxy/speasy_proxy
 RUN chown -R speasy /home/speasy/speasy_proxy
 
 USER speasy
@@ -35,7 +35,7 @@ RUN cd speasy_proxy &&\
     python3 -mpip install -U .
 
 
-ADD speasy_proxy/docker/entry_point.sh /home/speasy/entry_point.sh
+ADD docker/entry_point.sh /home/speasy/entry_point.sh
 
 VOLUME $SPEASY_CACHE_PATH
 VOLUME $SPEASY_LOG_PATH

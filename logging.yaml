@@ -1,0 +1,53 @@
+version: 1
+disable_existing_loggers: False
+formatters:
+  default:
+    # "()": uvicorn.logging.DefaultFormatter
+    format: 'format = %(asctime)s %(levelname)-5.5s [%(name)s:%(lineno)s][%(threadName)s] %(message)s'
+  access:
+    # "()": uvicorn.logging.AccessFormatter
+    format: '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+handlers:
+  default:
+    formatter: default
+    class: logging.StreamHandler
+    stream: ext://sys.stderr
+  access:
+    formatter: access
+    class: logging.StreamHandler
+    stream: ext://sys.stdout
+  console:
+    class: logging.StreamHandler
+    formatter: default
+    stream: ext://sys.stdout
+  filelog:
+      class: logging.handlers.RotatingFileHandler
+      formatter: default
+      filename: /var/log/speasy_proxy.log
+      maxBytes: 10485760
+      backupCount: 20
+      encoding: utf8
+      delay: true
+loggers:
+  uvicorn.error:
+    level: INFO
+    handlers:
+      - default
+    propagate: no
+  uvicorn.access:
+    level: INFO
+    handlers:
+      - access
+    propagate: no
+  speasy_proxy:
+    level: DEBUG
+    handlers:
+      - console
+      - filelog
+    qualname: speasy_proxy
+    propagate: no
+root:
+  level: DEBUG
+  handlers:
+    - default
+  propagate: no
