@@ -13,7 +13,7 @@ class TestApi(unittest.TestCase):
         self.client = TestClient(app)
 
     def test_home(self):
-        response = self.client.get("/home")
+        response = self.client.get("/")
         self.assertEqual(response.status_code, 200)
         self.assertIn(b'SPEASY proxy', response.content)
 

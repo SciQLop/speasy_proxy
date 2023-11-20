@@ -6,7 +6,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 import os
-from datetime import datetime
+from datetime import datetime, UTC
 from .index import index
 from .api.v1 import api_router as v1_api_router
 from .frontend import frontend_router
@@ -39,7 +39,7 @@ def get_application() -> FastAPI:
     _app.include_router(v1_api_router)
     _app.mount("/static", StaticFiles(directory=f"{os.path.dirname(os.path.abspath(__file__))}/static"), name="static")
 
-    index["up_since"] = datetime.now()
+    index["up_since"] = datetime.now(UTC)
 
     _app.add_middleware(
         CORSMiddleware,

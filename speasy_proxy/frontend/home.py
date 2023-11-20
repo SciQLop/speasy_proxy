@@ -6,7 +6,7 @@ from .routes import router
 from speasy.core import cache
 from speasy import inventories
 from humanize import filesize, time
-from datetime import datetime
+from datetime import datetime, UTC
 import logging
 from speasy_proxy.index import index
 from speasy_proxy.inventory_updater import _last_update, ensure_update_inventory
@@ -28,11 +28,11 @@ def _refresh_inventory():
 templates = Jinja2Templates(directory=f"{os.path.dirname(os.path.abspath(__file__))}/../templates")
 
 
-@router.get('/home', response_class=HTMLResponse)
+@router.get('/', response_class=HTMLResponse)
 def home(request: Request, user_agent: Annotated[str | None, Header()] = None):
     log.debug(f'Client asking for home page from {user_agent}')
     up_since = index["up_since"]
-    up_time = datetime.now() - up_since
+    up_time = datetime.now(UTC) - up_since
     cache_stats = cache.stats()
     _refresh_inventory()
     return templates.TemplateResponse("welcome.html",
