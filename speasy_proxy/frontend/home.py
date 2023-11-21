@@ -47,5 +47,6 @@ def home(request: Request, user_agent: Annotated[str | None, Header()] = None):
                                        'inventory_update': str(_last_update.isoformat()),
                                        'inventory_size': str(
                                            sum(map(lambda p: len(p.parameters),
-                                                   set(inventories.flat_inventories.__dict__.values()))))
+                                                   set(inventories.flat_inventories.__dict__.values())))),
+                                       'docs': f"{request.url.scheme}://{request.url.netloc}/docs",
                                        })

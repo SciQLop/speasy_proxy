@@ -28,12 +28,15 @@ scheduler.add_job(background_inventory_refresh, 'interval', hours=2)
 
 scheduler.start()
 
+root_path = os.environ.get('SPEASY_PROXY_PREFIX', '')
+
 
 def get_application() -> FastAPI:
     _app = FastAPI(
         title="speasy-proxy",
         description="A fast speasy cache server",
-        debug=True,
+        debug=False,
+        root_path=root_path,
     )
     _app.include_router(frontend_router)
     _app.include_router(v1_api_router)
