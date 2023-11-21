@@ -11,7 +11,8 @@ ENV SPEASY_CACHE_PATH=/data \
     SPEASY_PROXY_PREFIX="" \
     SPEASY_PROXY_SERVER_URL="" \
     SPEASY_PROXY_LOG_LEVEL="WARN"\
-    PORT=$PORT
+    PORT=$PORT\
+    SPEASY_PROXY_LOG_CONFIG_FILE="/home/speasy/speasy_proxy/logging.yaml"
 
 RUN useradd speasy && mkdir -p $SPEASY_CACHE_PATH $SPEASY_INDEX_PATH \
     && dnf install -y git python3 python3-devel libxslt libxslt-devel gcc g++ qhull-devel qhull \
@@ -31,7 +32,7 @@ WORKDIR /home/speasy
 RUN cd speasy_proxy &&\
     python3 -m ensurepip &&\
     python3 -mpip install -U pip &&\
-    python3 -mpip install -U $SPEASY ddt &&\
+    python3 -mpip install -U $SPEASY ddt gunicorn &&\
     python3 -mpip install -U .
 
 
