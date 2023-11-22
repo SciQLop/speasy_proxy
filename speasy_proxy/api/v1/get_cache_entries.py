@@ -9,6 +9,6 @@ log = logging.getLogger(__name__)
 
 
 @router.get('/get_cache_entries', description='Get the all cache entries keys actually in the cache')
-def get_cache_entries(pickle_proto: int = QueryPickleProto):
+async def get_cache_entries(pickle_proto: int = QueryPickleProto):
     log.debug(f'Client asking for cache entries')
     return Response(media_type="application/python-pickle", content=pickle_data(cache.entries(), pickle_proto))

@@ -8,10 +8,7 @@ import numpy as np
 import speasy as spz
 import zstd
 from astropy.units.quantity import Quantity
-from dateutil import parser
-from fastapi import Response, Request, Query
-from pydantic import Field
-from fastapi.responses import PlainTextResponse
+from fastapi import Response, Request, Query, BackgroundTasks
 from .routes import router
 
 from speasy.products.variable import SpeasyVariable
@@ -47,17 +44,17 @@ def to_json(var: SpeasyVariable) -> str:
 
 
 @router.get('/get_data', description='Get data from cache or remote server')
-def get_data(request: Request, path: str = Query(example="amda/c1_b_gsm"),
-             start_time: datetime = Query(example="2018-10-24T00:00:00"),
-             stop_time: datetime = Query(example="2018-10-24T02:00:00"),
-             format: str = QueryDataFormat,
-             zstd_compression: bool = QueryZstd,
-             output_format: Optional[str] = Query(None, enum=["CDF_ISTP", "ASCII"],
-                                                  description="Data format used to retrieve data from remote server (such as AMDA), not the data format of the current request. Only available with AMDA."),
-             coordinate_system: Optional[str] = None,
-             pickle_proto: int = QueryPickleProto):
+async def get_data(request: Request, background_tasks: BackgroundTasks, path: str = Query(example="amda/c1_b_gsm"),
+                   start_time: datetime = Query(example="2018-10-24T00:00:00"),
+                   stop_time: datetime = Query(example="2018-10-24T02:00:00"),
+                   format: str = QueryDataFormat,
+                   zstd_compression: bool = QueryZstd,
+                   output_format: Optional[str] = Query(None, enum=["CDF_ISTP", "ASCII"],
+                                                        description="Data format used to retrieve data from remote server (such as AMDA), not the data format of the current request. Only available with AMDA."),
+                   coordinate_system: Optional[str] = None,
+                   pickle_proto: int = QueryPickleProto):
     request_start_time = time.time_ns()
-    ensure_update_inventory()
+    background_tasks.add_task(ensure_update_inventory)
     request_id = uuid.uuid4()
     extra_params = {}
     product = path

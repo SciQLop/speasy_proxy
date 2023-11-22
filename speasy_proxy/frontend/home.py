@@ -12,6 +12,7 @@ from speasy_proxy.index import index
 from speasy_proxy.inventory_updater import _last_update, ensure_update_inventory
 import os
 from threading import Thread
+from urllib.parse import urljoin
 
 log = logging.getLogger(__name__)
 
@@ -48,5 +49,5 @@ def home(request: Request, user_agent: Annotated[str | None, Header()] = None):
                                        'inventory_size': str(
                                            sum(map(lambda p: len(p.parameters),
                                                    set(inventories.flat_inventories.__dict__.values())))),
-                                       'docs': f"{request.base_url}/docs",
+                                       'docs': urljoin(str(request.base_url), "docs"),
                                        })
