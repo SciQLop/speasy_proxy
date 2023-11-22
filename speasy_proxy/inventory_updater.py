@@ -14,7 +14,7 @@ def ensure_update_inventory():
     if datetime.now(UTC) > (_last_update + timedelta(minutes=30)):
         log.debug("Updating runtime inventory")
         spz.update_inventories()
-        _last_update = datetime.utcnow()
+        _last_update = datetime.now(UTC)
 
 
 class EnsureUpdatedInventory(object):
