@@ -1,15 +1,13 @@
 import time
 from dateutil import parser
 from datetime import UTC
-from fastapi import Response, Query, Request
-from fastapi.responses import PlainTextResponse
+from fastapi import Response, Request
 from .routes import router
 from fastapi import status
 
 from speasy.core.inventory.indexes import to_json, to_dict, SpeasyIndex
 from speasy.inventories import tree
-from speasy import list_providers
-from speasy_proxy.inventory_updater import ensure_update_inventory
+from speasy_proxy.backend.inventory_updater import ensure_update_inventory
 import zstd
 import logging
 import uuid

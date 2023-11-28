@@ -1,13 +1,13 @@
 from datetime import datetime, timedelta, UTC
 
-from fastapi import Response, Request, Header
+from fastapi import Request, Header
 from typing import Annotated
 from fastapi.responses import HTMLResponse
 from .routes import router
 import speasy as spz
 import logging
 from random import choice, uniform
-from speasy_proxy.bokeh_backend import plot_data
+from speasy_proxy.backend.bokeh_backend import plot_data
 
 log = logging.getLogger(__name__)
 

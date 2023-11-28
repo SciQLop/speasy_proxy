@@ -3,7 +3,7 @@ import logging
 import time
 import uuid
 from datetime import datetime
-from typing import Optional, Annotated
+from typing import Optional
 import numpy as np
 import speasy as spz
 import zstd
@@ -15,9 +15,9 @@ from speasy.products.variable import SpeasyVariable
 from speasy.products.variable import to_dictionary
 
 from speasy_proxy.api import pickle_data
-from .query_parameters import QueryProvider, QueryZstd, QueryPickleProto, QueryDataFormat
-from speasy_proxy.bokeh_backend import plot_data
-from speasy_proxy.inventory_updater import ensure_update_inventory
+from .query_parameters import QueryZstd, QueryPickleProto, QueryDataFormat
+from speasy_proxy.backend.bokeh_backend import plot_data
+from speasy_proxy.backend.inventory_updater import ensure_update_inventory
 
 log = logging.getLogger(__name__)
 

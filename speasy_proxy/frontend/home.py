@@ -1,4 +1,4 @@
-from fastapi import Response, Request, Header
+from fastapi import Request, Header
 from typing import Annotated
 from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
@@ -9,7 +9,7 @@ from humanize import filesize, time
 from datetime import datetime, UTC
 import logging
 from speasy_proxy.index import index
-from speasy_proxy.inventory_updater import _last_update, ensure_update_inventory
+from speasy_proxy.backend.inventory_updater import _last_update, ensure_update_inventory
 import os
 from threading import Thread
 from urllib.parse import urljoin

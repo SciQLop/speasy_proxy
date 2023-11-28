@@ -13,18 +13,13 @@ from .frontend import frontend_router
 from apscheduler.schedulers.background import BackgroundScheduler
 import speasy as spz
 import logging
+from .backend.inventory_updater import ensure_update_inventory
 
 log = logging.getLogger(__name__)
 
-
-def background_inventory_refresh():
-    log.info("Background inventory refresh")
-    spz.update_inventories()
-
-
 scheduler = BackgroundScheduler()
 
-scheduler.add_job(background_inventory_refresh, 'interval', hours=2)
+scheduler.add_job(ensure_update_inventory, 'interval', hours=2)
 
 scheduler.start()
 
