@@ -5,21 +5,21 @@ import speasy as spz
 from speasy.core.cache import CacheCall
 import logging
 import threading
-
-_last_update = datetime.now(UTC)
+from ..index import IndexEntry
 
 log = logging.getLogger(__name__)
 lock = threading.Lock()
 
+last_update = IndexEntry("last_update", datetime.now(UTC) - timedelta(days=1))
+
 
 @CacheCall(cache_retention=timedelta(minutes=30))
 def ensure_update_inventory():
-    global _last_update
-    if datetime.now(UTC) > (_last_update + timedelta(minutes=30)):
+    if datetime.now(UTC) > (last_update.value() + timedelta(minutes=30)):
         with lock:
             log.debug("Updating runtime inventory")
             spz.update_inventories()
-            _last_update = datetime.now(UTC)
+            last_update.set(datetime.now(UTC))
 
 
 class EnsureUpdatedInventory(object):

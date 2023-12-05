@@ -7,11 +7,10 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 import os
 from datetime import datetime, UTC
-from .index import index
+from .index import up_since
 from .api.v1 import api_router as v1_api_router
 from .frontend import frontend_router
 from apscheduler.schedulers.background import BackgroundScheduler
-import speasy as spz
 import logging
 from .backend.inventory_updater import ensure_update_inventory
 
@@ -37,7 +36,7 @@ def get_application() -> FastAPI:
     _app.include_router(v1_api_router)
     _app.mount("/static", StaticFiles(directory=f"{os.path.dirname(os.path.abspath(__file__))}/static"), name="static")
 
-    index["up_since"] = datetime.now(UTC)
+    up_since.set(datetime.now(UTC))
 
     _app.add_middleware(
         CORSMiddleware,
