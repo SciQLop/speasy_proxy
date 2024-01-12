@@ -16,42 +16,10 @@ from urllib.parse import urljoin
 
 log = logging.getLogger(__name__)
 
-_inventory_refresh_thread = None
-
-
-def _refresh_inventory():
-    global _inventory_refresh_thread
-    if _inventory_refresh_thread is None or not _inventory_refresh_thread.is_alive():
-        _inventory_refresh_thread = Thread(target=ensure_update_inventory)
-        _inventory_refresh_thread.start()
-
-
-templates = Jinja2Templates(directory=f"{os.path.dirname(os.path.abspath(__file__))}/../templates")
+index_html = open(f'{os.path.dirname(os.path.abspath(__file__))}/../static/index.html').read()
 
 
 @router.get('/', response_class=HTMLResponse)
 def home(request: Request, user_agent: Annotated[str | None, Header()] = None):
     log.debug(f'Client asking for home page from {user_agent}')
-    _up_since = up_since.value()
-    up_time = datetime.now(UTC) - _up_since
-
-    with _cache.transact():
-        cache_stats = _cache.stats()
-        cache_len = len(_cache)
-        cache_disk = _cache.disk_size()
-    _refresh_inventory()
-    return templates.TemplateResponse("welcome.html",
-                                      {"request": request,
-                                       'entries': cache_len,
-                                       'cache_disk_size': filesize.naturalsize(
-                                           cache_disk),
-                                       'up_date': time.naturaldate(_up_since),
-                                       'up_duration': time.naturaldelta(up_time),
-                                       'cache_hits': str(cache_stats['hit']),
-                                       'cache_misses': str(cache_stats['misses']),
-                                       'inventory_update': str(last_update.value().isoformat()),
-                                       'inventory_size': str(
-                                           sum(map(lambda p: len(p.parameters),
-                                                   set(inventories.flat_inventories.__dict__.values())))),
-                                       'docs': urljoin(str(request.base_url), "docs"),
-                                       })
+    return HTMLResponse(content=index_html, status_code=200)

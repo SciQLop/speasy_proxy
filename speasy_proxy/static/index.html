@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Speasy Cache Server</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="static/theme.css" type="text/css">
+    <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.7.1/jquery.min.js"></script>
+    <script src="//cdnjs.cloudflare.com/ajax/libs/numeral.js/2.0.6/numeral.min.js"></script>
+    <script src="static/status.js"></script>
+    <script>
+        $(document).ready(function () {
+            update_status();
+            setInterval(update_status, 10000);
+        });
+    </script>
+</head>
+<body>
+<header>
+    <div class="container" style="display: flex; align-items: center; justify-content: center;">
+        <div class="logo">
+            <img src="static/logo_speasy.svg" alt="Speasy logo" height="80px">
+        </div>
+        <div class="title">
+            <h1>Speasy Cache Server</h1>
+        </div>
+    </div>
+</header>
+
+<div class="container" style="height: 90%; text-align: center; justify-content: center;">
+    <section class="container" style="height: 100%">
+        <p> This the shared cache server for the Speasy project. It allows to share Speasy requests results between
+            users across the world.
+        </p>
+        <p>You can access and experiment with the API <a href="/docs">here</a>.</p>
+        <p>The source code is available on <a href="https://github.com/SciQLop/speasy_proxy">GitHub</a>.
+        </p>
+    </section>
+
+    <div class="container">
+        <h2>Cache Status</h2>
+        <div class="container" style="text-align: center;">
+            <ul class="container" id="status-container" style="height: 100%; text-align: left; display: inline-block;">
+                <li class="last-updated">Last updated: 2024-01-11 18:31 CET</li>
+                <li class="version"></li>
+                <li class="up-since"></li>
+                <li class="cache-size"></li>
+                <li class="cache-entries"></li>
+                <li class="cache-hits"></li>
+                <li class="cache-misses"></li>
+                <li class="uptime"></li>
+            </ul>
+        </div>
+    </div>
+</div>
+
+<div class="container" style="position: fixed; bottom: 2.5rem; right:0;  width: 40%; height: 2.5rem;">
+    <img src="static/logo_LPP.png" alt="Speasy logo" height="80px">
+    <img src="static/logo_CDPP.jpg" alt="Speasy logo" height="80px">
+</div>
+<footer style="position: absolute; bottom: 0; width: 40%; height: 2.5rem">
+    Copyright &copy; 2024 Laboratory of Plasma Physics
+</footer>
+</body>
+</html>

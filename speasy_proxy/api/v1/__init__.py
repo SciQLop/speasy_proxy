@@ -4,4 +4,5 @@ from .get_data import *
 from .get_inventory import *
 from .get_speasy_version import *
 from .get_version import *
+from .get_statistics import *
 from .routes import router as api_router
