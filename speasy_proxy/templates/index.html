@@ -4,10 +4,10 @@
     <meta charset="UTF-8">
     <title>Speasy Cache Server</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <link rel="stylesheet" href="static/theme.css" type="text/css">
+    <link rel="stylesheet" href="{{ base_url }}/static/theme.css" type="text/css">
     <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.7.1/jquery.min.js"></script>
     <script src="//cdnjs.cloudflare.com/ajax/libs/numeral.js/2.0.6/numeral.min.js"></script>
-    <script src="static/status.js"></script>
+    <script src="{{ base_url }}/static/status.js"></script>
     <script>
         $(document).ready(function () {
             update_status();
@@ -19,7 +19,7 @@
 <header>
     <div class="container" style="display: flex; align-items: center; justify-content: center;">
         <div class="logo">
-            <img src="static/logo_speasy.svg" alt="Speasy logo" height="80px">
+            <img src="{{ base_url }}/static/logo_speasy.svg" alt="Speasy logo" height="80px">
         </div>
         <div class="title">
             <h1>Speasy Cache Server</h1>
@@ -32,7 +32,7 @@
         <p> This the shared cache server for the Speasy project. It allows to share Speasy requests results between
             users across the world.
         </p>
-        <p>You can access and experiment with the API <a href="/docs">here</a>.</p>
+        <p>You can access and experiment with the API <a href="{{ base_url }}/docs">here</a>.</p>
         <p>The source code is available on <a href="https://github.com/SciQLop/speasy_proxy">GitHub</a>.
         </p>
     </section>

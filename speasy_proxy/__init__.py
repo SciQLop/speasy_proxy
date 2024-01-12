@@ -26,6 +26,16 @@ root_path = os.environ.get('SPEASY_PROXY_PREFIX', '')
 
 
 def get_application() -> FastAPI:
+    global root_path
+    if root_path:
+        log.info(f'Root path set to {root_path}')
+        if not root_path.startswith('/'):
+            root_path = '/' + root_path
+        if root_path.endswith('/'):
+            root_path = root_path[:-1]
+    else:
+        root_path = ''
+
     _app = FastAPI(
         title="speasy-proxy",
         description="A fast speasy cache server",
@@ -34,7 +44,7 @@ def get_application() -> FastAPI:
     )
     _app.include_router(frontend_router)
     _app.include_router(v1_api_router)
-    _app.mount("/static", StaticFiles(directory=f"{os.path.dirname(os.path.abspath(__file__))}/static"), name="static")
+    _app.mount("/static/", StaticFiles(directory=f"{os.path.dirname(os.path.abspath(__file__))}/static"), name="static")
 
     up_since.set(datetime.now(UTC))
 
