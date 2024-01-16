@@ -6,13 +6,12 @@ from datetime import datetime, UTC
 import speasy as spz
 
 
-def statistics():
+def status():
     """Return statistics about the backend."""
     _up_since = up_since.value()
     up_time = datetime.now(UTC) - _up_since
 
     with _cache.transact():
-        cache_stats = _cache.stats()
         cache_len = len(_cache)
         cache_disk = _cache.disk_size()
     return {
@@ -20,8 +19,6 @@ def statistics():
         'cache_disk_size': cache_disk,
         'up_since': _up_since.isoformat(),
         'up_duration': up_time.total_seconds(),
-        'cache_hits': cache_stats['hit'],
-        'cache_misses': cache_stats['misses'],
         'inventory_update': last_update.value().isoformat(),
         'inventory_size': str(
             sum(map(lambda p: len(p.parameters),
