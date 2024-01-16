@@ -22,11 +22,9 @@ scheduler.add_job(ensure_update_inventory, 'interval', hours=2)
 
 scheduler.start()
 
-root_path = os.environ.get('SPEASY_PROXY_PREFIX', '')
-
 
 def get_application() -> FastAPI:
-    global root_path
+    root_path = os.environ.get('SPEASY_PROXY_PREFIX', '')
     if root_path:
         log.info(f'Root path set to {root_path}')
         if not root_path.startswith('/'):
