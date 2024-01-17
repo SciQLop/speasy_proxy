@@ -19,7 +19,7 @@ def status():
         'cache_disk_size': cache_disk,
         'up_since': _up_since.isoformat(),
         'up_duration': up_time.total_seconds(),
-        'inventory_update': last_update.value().isoformat(),
+        'last_inventory_update': last_update.value().isoformat(),
         'inventory_size': str(
             sum(map(lambda p: len(p.parameters),
                     set(spz.inventories.flat_inventories.__dict__.values())))),
