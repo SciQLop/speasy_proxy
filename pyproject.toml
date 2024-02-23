@@ -4,7 +4,7 @@ requires = ["flit_core"]
 
 [project]
 name = 'speasy_proxy'
-version = "0.9.0"
+version = "0.9.1"
 description = "A fast Speasy cache server."
 keywords = ["satellite", "plasma-physics", "nasa-data", "amda", "cdpp", "CDF"]
 authors = [
@@ -31,7 +31,7 @@ classifiers = [
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
 ]
-dependencies = ['apscheduler < 4.0.0', 'humanize', 'speasy>=1.2.1', 'diskcache', 'jinja2', 'zstd', 'bokeh>=3.0.0', 'matplotlib', 'fastapi[all]']
+dependencies = ['apscheduler < 4.0.0', 'humanize', 'speasy>=1.2.3', 'diskcache', 'jinja2', 'zstd', 'bokeh>=3.0.0', 'matplotlib', 'fastapi[all]']
 [project.urls]
 homepage = "https://github.com/SciQLop/speasy_proxy"
 
