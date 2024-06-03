@@ -51,7 +51,11 @@ async def get_data(request: Request, background_tasks: BackgroundTasks, path: st
                    zstd_compression: bool = QueryZstd,
                    output_format: Optional[str] = Query(None, enum=["CDF_ISTP", "ASCII"],
                                                         description="Data format used to retrieve data from remote server (such as AMDA), not the data format of the current request. Only available with AMDA."),
-                   coordinate_system: Optional[str] = None,
+                   coordinate_system: Optional[str] = Query(None, enum=["geo", "gm", "gse", "gsm", "sm", "geitod",
+                                                                        "geij2000"],
+                                                            description="Coordinate system used to retrieve trajectories from SSCWeb."),
+                   method: Optional[str] = Query(None, enum=["API", "BEST", "FILE"],
+                                                 description="Method used to retrieve data from CDA."),
                    pickle_proto: int = QueryPickleProto):
     request_start_time = time.time_ns()
     background_tasks.add_task(ensure_update_inventory)
@@ -69,6 +73,8 @@ async def get_data(request: Request, background_tasks: BackgroundTasks, path: st
         extra_params["coordinate_system"] = coordinate_system
     if output_format:
         extra_params["output_format"] = output_format
+    if method:
+        extra_params["method"] = method
 
     log.debug(f'New request {request_id}: {product} {start_time} {stop_time} from {client_chain}')
 
