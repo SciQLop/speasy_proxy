@@ -1,4 +1,4 @@
-FROM fedora:39
+FROM fedora:40
 
 ARG PORT=6543
 ARG SPEASY=speasy
@@ -11,6 +11,7 @@ ENV SPEASY_CACHE_PATH=/data \
     SPEASY_PROXY_PREFIX="" \
     SPEASY_PROXY_SERVER_URL="" \
     SPEASY_PROXY_LOG_LEVEL="WARN"\
+    SPEASY_CORE_HTTP_REWRITE_RULES=""\
     PORT=$PORT\
     SPEASY_PROXY_LOG_CONFIG_FILE="/home/speasy/speasy_proxy/logging.yaml"
 
