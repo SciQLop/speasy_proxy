@@ -15,7 +15,7 @@ class TestApi(unittest.TestCase):
     def test_home(self):
         response = self.client.get("/")
         self.assertEqual(response.status_code, 200)
-        self.assertIn(b'SPEASY proxy', response.content)
+        self.assertIn(b'Speasy', response.content)
 
     def test_get_version(self):
         response = self.client.get("/get_version")

@@ -45,9 +45,9 @@ def compress_if_asked(data, mime, zstd_compression: bool = False):
 
 @router.get('/get_inventory', response_class=Response, description='Get the inventory of a provider or all providers',
             responses={304: {"description": "Client inventory is up to date"}, 200: {"description": "Inventory data"}})
-def get_inventory(request: Request, provider: str = QueryProvider,
-                  format: str = QueryFormat, pickle_proto: int = QueryPickleProto,
-                  zstd_compression: bool = QueryZstd):
+async def get_inventory(request: Request, provider: str = QueryProvider,
+                        format: str = QueryFormat, pickle_proto: int = QueryPickleProto,
+                        zstd_compression: bool = QueryZstd):
     request_start_time = time.time_ns()
     ensure_update_inventory()
     request_id = uuid.uuid4()

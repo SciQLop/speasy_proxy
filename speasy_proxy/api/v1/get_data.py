@@ -9,6 +9,8 @@ import speasy as spz
 import zstd
 from astropy.units.quantity import Quantity
 from fastapi import Response, Request, Query, BackgroundTasks
+from starlette.concurrency import run_in_threadpool
+
 from .routes import router
 
 from speasy.products.variable import SpeasyVariable
@@ -41,6 +43,11 @@ def _values_as_array(values):
 def to_json(var: SpeasyVariable) -> str:
     var.replace_fillval_by_nan(inplace=True)
     return json.dumps(var.to_dictionary(array_to_list=True))
+
+
+async def _get_data(product, start_time, stop_time, extra_http_headers, **extra_params):
+    return spz.get_data(product=product, start_time=start_time, stop_time=stop_time,
+                        extra_http_headers=extra_http_headers, **extra_params)
 
 
 @router.get('/get_data', description='Get data from cache or remote server')
@@ -78,11 +85,12 @@ async def get_data(request: Request, background_tasks: BackgroundTasks, path: st
 
     log.debug(f'New request {request_id}: {product} {start_time} {stop_time} from {client_chain}')
 
-    var = spz.get_data(product=product, start_time=start_time, stop_time=stop_time,
-                       extra_http_headers=extra_http_headers, **extra_params)
+    var = await run_in_threadpool(_get_data, product=product, start_time=start_time, stop_time=stop_time,
+                                  extra_http_headers=extra_http_headers, **extra_params)
 
-    result, mime = compress_if_asked(*encode_output(var, path, start_time, stop_time, format, request, pickle_proto),
-                                     zstd_compression)
+    result, mime = await run_in_threadpool(_compress_and_encode_output, var, path, start_time, stop_time, format,
+                                           request, pickle_proto,
+                                           zstd_compression)
 
     request_duration = (time.time_ns() - request_start_time) / 1000000.
 
@@ -133,3 +141,9 @@ def compress_if_asked(data, mime, zstd_compression: bool = False):
         mime = "application/x-zstd-compressed"
         data = zstd.compress(data)
     return data, mime
+
+
+async def _compress_and_encode_output(var, path, start_time, stop_time, format, request, pickle_proto,
+                                      zstd_compression: bool = False):
+    return compress_if_asked(*encode_output(var, path, start_time, stop_time, format, request, pickle_proto),
+                             zstd_compression=zstd_compression)
