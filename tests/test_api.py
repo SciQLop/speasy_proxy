@@ -42,6 +42,11 @@ class TestApi(unittest.TestCase):
         response = self.client.get("/get_inventory?provider=ssc", headers={"If-Modified-Since": if_modified_since})
         self.assertEqual(response.status_code, code)
 
+    def test_get_data(self):
+        response = self.client.get("/get_data?path=amda/c1_b_gsm&start_time=2018-10-24T00:00:00&stop_time=2018-10-24T02:00:00&format=python_dict&zstd_compression=False")
+        self.assertEqual(response.status_code, 200)
+        self.assertIsNotNone(response.content)
+
     def test_get_cache_entries(self):
         response = self.client.get("/get_cache_entries")
         self.assertEqual(response.status_code, 200)

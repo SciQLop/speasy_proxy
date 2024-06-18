@@ -45,7 +45,7 @@ def to_json(var: SpeasyVariable) -> str:
     return json.dumps(var.to_dictionary(array_to_list=True))
 
 
-async def _get_data(product, start_time, stop_time, extra_http_headers, **extra_params):
+def _get_data(product, start_time, stop_time, extra_http_headers, **extra_params):
     return spz.get_data(product=product, start_time=start_time, stop_time=stop_time,
                         extra_http_headers=extra_http_headers, **extra_params)
 
@@ -143,7 +143,7 @@ def compress_if_asked(data, mime, zstd_compression: bool = False):
     return data, mime
 
 
-async def _compress_and_encode_output(var, path, start_time, stop_time, format, request, pickle_proto,
+def _compress_and_encode_output(var, path, start_time, stop_time, format, request, pickle_proto,
                                       zstd_compression: bool = False):
     return compress_if_asked(*encode_output(var, path, start_time, stop_time, format, request, pickle_proto),
                              zstd_compression=zstd_compression)
