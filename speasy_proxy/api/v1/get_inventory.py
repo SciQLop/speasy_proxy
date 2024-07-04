@@ -8,7 +8,7 @@ from fastapi import status
 from speasy.core.inventory.indexes import to_json, to_dict, SpeasyIndex
 from speasy.inventories import tree
 from speasy_proxy.backend.inventory_updater import ensure_update_inventory
-import zstd
+import pyzstd
 import logging
 import uuid
 from .query_parameters import QueryProvider, QueryZstd, QueryFormat, QueryPickleProto
@@ -39,7 +39,7 @@ def compress_if_asked(data, mime, zstd_compression: bool = False):
         if type(data) is str:
             data = data.encode()
         mime = "application/x-zstd-compressed"
-        data = zstd.compress(data)
+        data = pyzstd.compress(data)
     return data, mime
 
 

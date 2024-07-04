@@ -6,7 +6,7 @@ from datetime import datetime
 from typing import Optional
 import numpy as np
 import speasy as spz
-import zstd
+import pyzstd
 from astropy.units.quantity import Quantity
 from fastapi import Response, Request, Query, BackgroundTasks
 from starlette.concurrency import run_in_threadpool
@@ -139,7 +139,7 @@ def encode_output(var, path: str, start_time: str, stop_time: str, format: str, 
 def compress_if_asked(data, mime, zstd_compression: bool = False):
     if zstd_compression:
         mime = "application/x-zstd-compressed"
-        data = zstd.compress(data)
+        data = pyzstd.compress(data)
     return data, mime
 
 
