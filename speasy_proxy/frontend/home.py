@@ -12,9 +12,10 @@ templates = Jinja2Templates(directory=f"{os.path.dirname(os.path.abspath(__file_
 
 
 @router.get('/', response_class=HTMLResponse)
-def home(request: Request, user_agent: Annotated[str | None, Header()] = None):
+def home(request: Request, user_agent: Annotated[str | None, Header()] = None, x_scheme: Annotated[str | None, Header()] = None):
     log.debug(f'Client asking for home page from {user_agent}')
-    base_url = str(request.base_url)
+    scheme = x_scheme or request.url.scheme
+    base_url = base_url = str(scheme) + "://" + str(request.url.netloc)
     if base_url.endswith('/'):
         base_url = base_url[:-1]
     return templates.TemplateResponse("index.html", {"request": request, 'base_url': base_url})
