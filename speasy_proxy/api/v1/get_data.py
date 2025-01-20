@@ -9,6 +9,7 @@ import speasy as spz
 import pyzstd
 from astropy.units.quantity import Quantity
 from fastapi import Response, Request, Query, BackgroundTasks
+from pydantic.types import Json
 from starlette.concurrency import run_in_threadpool
 
 from .routes import router
@@ -63,6 +64,7 @@ async def get_data(request: Request, background_tasks: BackgroundTasks, path: st
                                                             description="Coordinate system used to retrieve trajectories from SSCWeb."),
                    method: Optional[str] = Query(None, enum=["API", "BEST", "FILE"],
                                                  description="Method used to retrieve data from CDA."),
+                   additional_arguments: Optional[Json] = Query(None, description="Additional arguments (in JSON format) used by provider to retrieve data"),
                    pickle_proto: int = QueryPickleProto):
     request_start_time = time.time_ns()
     background_tasks.add_task(ensure_update_inventory)
@@ -82,6 +84,8 @@ async def get_data(request: Request, background_tasks: BackgroundTasks, path: st
         extra_params["output_format"] = output_format
     if method:
         extra_params["method"] = method
+    if additional_arguments:
+        extra_params["additional_arguments"] = additional_arguments
 
     log.debug(f'New request {request_id}: {product} {start_time} {stop_time} from {client_chain}')
 
