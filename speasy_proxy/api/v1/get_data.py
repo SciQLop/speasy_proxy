@@ -13,8 +13,9 @@ from starlette.concurrency import run_in_threadpool
 
 from .routes import router
 
-from speasy.products.variable import SpeasyVariable
+from speasy.products.variable import SpeasyVariable, VariableTimeAxis, DataContainer
 from speasy.products.variable import to_dictionary
+from speasy.core.codecs import get_codec
 
 from speasy_proxy.api import pickle_data
 from .query_parameters import QueryZstd, QueryPickleProto, QueryDataFormat
@@ -112,10 +113,18 @@ async def get_data(request: Request, background_tasks: BackgroundTasks, path: st
 def encode_output(var, path: str, start_time: str, stop_time: str, format: str, request: Request,
                   pickle_proto: int = 3):
     data = None
+
+    if var is None and format == "cdf":
+        # create an empty speasy variable to be able to save it in CDF format
+        var = SpeasyVariable(axes=[VariableTimeAxis(values=np.array([], dtype='datetime64[ns]'), meta={})],
+                             values=DataContainer(values=np.array([]), meta={}, name="Unknown"))
     if var is not None:
         output_format = format
         if output_format == "python_dict":
             data = to_dictionary(var)
+        elif output_format == "cdf":
+            data = get_codec('application/x-cdf').save_variables([var])
+            return bytes(data), "application/x-cdf"
         elif output_format == 'speasy_variable':
             data = var
         elif output_format == 'html_bokeh':

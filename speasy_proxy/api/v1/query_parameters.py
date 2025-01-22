@@ -7,4 +7,4 @@ QueryZstd = Query(default=False, example=False)
 QueryFormat = Query(default="json", example="json", enum=["json", "python_dict"])
 QueryPickleProto = Query(default=3, example=3, ge=0, le=5)
 QueryDataFormat = Query(default="python_dict", example="python_dict",
-                        enum=["python_dict", "speasy_variable", "html_bokeh", "json"])
+                        enum=["python_dict", "speasy_variable", "html_bokeh", "json", "cdf"])
