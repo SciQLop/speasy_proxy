@@ -23,7 +23,7 @@ RUN useradd speasy && mkdir -p $SPEASY_CACHE_PATH $SPEASY_INDEX_PATH \
     && mkdir -p $SPEASY_LOG_PATH/speasy \
     && chown -R speasy $SPEASY_LOG_PATH/speasy
 
-COPY *.cfg *.yaml *.toml *.txt *.md /home/speasy/speasy_proxy/
+COPY *.cfg *.yaml *.toml *.txt *.md LICENSE /home/speasy/speasy_proxy/
 COPY speasy_proxy /home/speasy/speasy_proxy/speasy_proxy
 RUN chown -R speasy /home/speasy/speasy_proxy
 
