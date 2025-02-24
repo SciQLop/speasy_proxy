@@ -4,7 +4,7 @@ requires = ["flit_core"]
 
 [project]
 name = 'speasy_proxy'
-version = "0.11.2"
+version = "0.12.0"
 description = "A fast Speasy cache server."
 keywords = ["satellite", "plasma-physics", "nasa-data", "amda", "cdpp", "CDF"]
 authors = [
