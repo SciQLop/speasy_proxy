@@ -57,7 +57,7 @@ async def get_data(request: Request, background_tasks: BackgroundTasks, path: st
                    stop_time: datetime = Query(example="2018-10-24T02:00:00"),
                    format: str = QueryDataFormat,
                    zstd_compression: bool = QueryZstd,
-                   output_format: Optional[str] = Query(None, enum=["CDF_ISTP", "ASCII"],
+                   output_format: Optional[str] = Query(None, enum=["CDF_ISTP"],
                                                         description="Data format used to retrieve data from remote server (such as AMDA), not the data format of the current request. Only available with AMDA."),
                    coordinate_system: Optional[str] = Query(None, enum=["geo", "gm", "gse", "gsm", "sm", "geitod",
                                                                         "geij2000"],
