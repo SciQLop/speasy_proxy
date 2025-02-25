@@ -27,9 +27,9 @@ def _get_inventory(provider):
     return tree.__dict__[provider]
 
 
-def encode_output(inventory: SpeasyIndex, format, pickle_proto):
+def encode_output(inventory: SpeasyIndex, format, pickle_proto, version):
     if format == "python_dict":
-        return pickle_data(to_dict(inventory), pickle_proto), "application/python-pickle"
+        return pickle_data(to_dict(inventory, version=version), pickle_proto), "application/python-pickle"
     elif format == 'json':
         return to_json(inventory), "application/json; charset=utf-8"
 
@@ -47,6 +47,7 @@ def compress_if_asked(data, mime, zstd_compression: bool = False):
             responses={304: {"description": "Client inventory is up to date"}, 200: {"description": "Inventory data"}})
 async def get_inventory(request: Request, provider: str = QueryProvider,
                         format: str = QueryFormat, pickle_proto: int = QueryPickleProto,
+                        version: int = 1,
                         zstd_compression: bool = QueryZstd):
     request_start_time = time.time_ns()
     ensure_update_inventory()
@@ -61,7 +62,7 @@ async def get_inventory(request: Request, provider: str = QueryProvider,
             log.debug(f'{request_id}, client inventory is up to date')
             return Response(status_code=status.HTTP_304_NOT_MODIFIED)
 
-    result, mime = compress_if_asked(*encode_output(inventory, format, pickle_proto), zstd_compression)
+    result, mime = compress_if_asked(*encode_output(inventory, format, pickle_proto, version=version), zstd_compression)
     request_duration = (time.time_ns() - request_start_time) / 1000.
 
     log.debug(f'{request_id}, duration = {request_duration}us')
