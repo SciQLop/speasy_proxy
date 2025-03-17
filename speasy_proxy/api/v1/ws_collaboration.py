@@ -11,11 +11,11 @@ if collab_endpoint.enable():
     from .routes import router
 
 
-    @router.websocket("/collaboration")
-    async def websocket_endpoint(websocket: WebSocket):
+    @router.websocket("/collaboration/{path:path}")
+    async def websocket_endpoint(path: str, websocket: WebSocket):
         await websocket.accept()
         websocket_server = await get_websocket_server()
-        await websocket_server.serve(HttpxWebsocket(websocket, "collaboration"))
+        await websocket_server.serve(HttpxWebsocket(websocket, path))
 
 
     async def get_websocket_server():
