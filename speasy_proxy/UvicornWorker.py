@@ -1,4 +1,4 @@
-from uvicorn.workers import UvicornWorker
+from uvicorn_worker import UvicornWorker
 import os
 
 
