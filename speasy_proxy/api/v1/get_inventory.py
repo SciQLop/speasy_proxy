@@ -32,6 +32,7 @@ def encode_output(inventory: SpeasyIndex, format, pickle_proto, version):
         return pickle_data(to_dict(inventory, version=version), pickle_proto), "application/python-pickle"
     elif format == 'json':
         return to_json(inventory), "application/json; charset=utf-8"
+    raise ValueError(f"Unsupported format: {format}. Supported formats are 'python_dict' and 'json'.")
 
 
 def compress_if_asked(data, mime, zstd_compression: bool = False):
