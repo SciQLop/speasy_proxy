@@ -31,7 +31,18 @@ classifiers = [
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
 ]
-dependencies = ['apscheduler < 4.0.0', 'humanize', 'speasy>=1.5.2', 'pycdfpp>=0.7.3', 'diskcache', 'jinja2', 'pyzstd', 'bokeh>=3.0.0', 'matplotlib', 'fastapi[all]', 'uvicorn', 'uvicorn-worker', 'pycrdt-websocket >=0.15.4,<0.16.0']
+dependencies = ['humanize', 'speasy>=1.5.2', 'pycdfpp>=0.7.3', 'diskcache', 'jinja2', 'pyzstd', 'bokeh>=3.0.0', 'matplotlib', 'fastapi[all]', 'fastapi-utilities', 'uvicorn', 'uvicorn-worker', 'pycrdt-websocket >=0.15.4,<0.16.0']
+[project.dependencies.optional]
+dev = [
+    'pytest',
+    'ddt',
+    'pytest-asyncio',
+    'pytest-cov',
+    'black',
+    'isort',
+    'mypy',
+    'flake8',
+]
 [project.urls]
 homepage = "https://github.com/SciQLop/speasy_proxy"
 

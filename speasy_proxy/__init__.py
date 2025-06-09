@@ -10,20 +10,14 @@ from datetime import datetime, UTC
 from .index import up_since
 from .api.v1 import api_router as v1_api_router
 from .frontend import frontend_router
-from apscheduler.schedulers.background import BackgroundScheduler
 import logging
-from .backend.inventory_updater import ensure_update_inventory
+from .backend.inventory_updater import update_inventory
+from contextlib import asynccontextmanager
 
 log = logging.getLogger(__name__)
 
-scheduler = BackgroundScheduler()
 
-scheduler.add_job(ensure_update_inventory, 'interval', hours=2)
-
-scheduler.start()
-
-
-def get_application() -> FastAPI:
+def get_application(lifespan=None) -> FastAPI:
     root_path = os.environ.get('SPEASY_PROXY_PREFIX', '')
     if root_path:
         log.info(f'Root path set to {root_path}')
@@ -39,6 +33,7 @@ def get_application() -> FastAPI:
         description="A fast speasy cache server",
         debug=False,
         root_path=root_path,
+        lifespan=lifespan
     )
     _app.include_router(frontend_router)
     _app.include_router(v1_api_router)
@@ -56,4 +51,16 @@ def get_application() -> FastAPI:
     return _app
 
 
-app = get_application()
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """
+    Lifespan context manager for the FastAPI application.
+    This is used to perform startup and shutdown tasks.
+    """
+    log.info("Starting up speasy-proxy...")
+    await update_inventory()
+    yield
+    log.info("Shutting down speasy-proxy...")
+
+app = get_application(lifespan=lifespan)
+

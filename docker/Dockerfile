@@ -13,7 +13,8 @@ ENV SPEASY_CACHE_PATH=/data \
     SPEASY_PROXY_LOG_LEVEL="WARN"\
     SPEASY_CORE_HTTP_REWRITE_RULES=""\
     PORT=$PORT\
-    SPEASY_PROXY_LOG_CONFIG_FILE="/home/speasy/speasy_proxy/logging.yaml"
+    SPEASY_PROXY_LOG_CONFIG_FILE="/home/speasy/speasy_proxy/logging.yaml"\
+    SPEASY_PROXY_CORE_INVENTORY_UPDATE_INTERVAL="7200"
 
 RUN useradd speasy && mkdir -p $SPEASY_CACHE_PATH $SPEASY_INDEX_PATH \
     && dnf install -y git python3 python3-devel libxslt libxslt-devel gcc g++ qhull-devel qhull \

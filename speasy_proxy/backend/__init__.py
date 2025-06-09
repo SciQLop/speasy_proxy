@@ -2,7 +2,8 @@ from speasy.core.cache import _cache
 from speasy_proxy.index import up_since
 from speasy_proxy import __version__
 from speasy_proxy.backend.inventory_updater import ensure_update_inventory, last_update
-from datetime import datetime, UTC
+from speasy_proxy.config import core as config
+from datetime import datetime, UTC, timedelta
 import speasy as spz
 
 
@@ -25,5 +26,6 @@ def status():
                     set(spz.inventories.flat_inventories.__dict__.values())))),
         'docs': 'https://speasyproxy.readthedocs.io/en/latest/',
         'speasy_version': spz.__version__,
-        'version': __version__
+        'version': __version__,
+        'inventory_update_interval': str(timedelta(seconds=config.inventory_update_interval.get())),
     }
