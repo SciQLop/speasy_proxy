@@ -31,7 +31,7 @@ classifiers = [
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
 ]
-dependencies = ['humanize', 'speasy>=1.5.2', 'pycdfpp>=0.7.3', 'diskcache', 'jinja2', 'pyzstd', 'bokeh>=3.0.0', 'matplotlib', 'fastapi[all]', 'fastapi-utilities', 'uvicorn', 'uvicorn-worker', 'pycrdt-websocket >=0.15.4,<0.16.0']
+dependencies = ['humanize', 'speasy>=1.6.0', 'pycdfpp>=0.7.3', 'diskcache', 'jinja2', 'pyzstd', 'bokeh>=3.0.0', 'matplotlib', 'fastapi[all]', 'fastapi-utilities', 'uvicorn', 'uvicorn-worker', 'pycrdt-websocket >=0.15.4,<0.16.0']
 [project.optional-dependencies]
 dev = [
     'pytest',
