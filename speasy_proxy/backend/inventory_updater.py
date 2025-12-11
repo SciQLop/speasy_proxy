@@ -26,27 +26,13 @@ inventories: Dict[str, IndexEntry] = {}
 __INVENTORY_KEY__ = "inventory/{provider}/{fmt}"
 
 
-def get_inventory(provider: str, fmt: str, version: int = 1, pickle_proto: int = None, if_newer_than: str = None) -> \
-        Optional[SpeasyIndex]:
-    global inventories
-    if if_newer_than is not None:
-        if provider == "all":
-            if parser.parse(tree.build_date).astimezone(UTC) < parser.parse(if_newer_than).astimezone(UTC):
-                log.debug(f"Inventory for 'all' is not newer than {if_newer_than}. Returning None.")
-                return None
-        else:
-            if parser.parse(tree.__dict__[provider].build_date).astimezone(UTC) < parser.parse(
-                    if_newer_than).astimezone(UTC):
-                log.debug(f"Inventory for '{provider}' is not newer than {if_newer_than}. Returning None.")
-                return None
+def _inventory_key(provider: str, fmt: str, version: int = 1, pickle_proto: int = None) -> str:
     if fmt == "python_dict":
         if pickle_proto is None:
             raise ValueError("pickle_proto must be specified when format is 'python_dict'.")
-        key = __INVENTORY_KEY__.format(provider=provider, fmt=f"pickle_proto_{pickle_proto}_version_{version}")
-        return inventories[key].value()
+        return __INVENTORY_KEY__.format(provider=provider, fmt=f"pickle_proto_{pickle_proto}_version_{version}")
     else:
-        key = __INVENTORY_KEY__.format(provider=provider, fmt=fmt)
-        return inventories[key].value()
+        return __INVENTORY_KEY__.format(provider=provider, fmt=fmt)
 
 
 def _save_inventory_as_json(inventory: SpeasyIndex, provider: str):
@@ -103,6 +89,45 @@ def ensure_update_inventory():
             spz.update_inventories()
             _save_all_inventories_combination()
             last_update.set(datetime.now(UTC))
+
+
+def _get_inventory_cached(provider: str, fmt: str, version: int = 1, pickle_proto: int = None) -> \
+        Optional[SpeasyIndex]:
+    global inventories
+    key = _inventory_key(provider, fmt, version, pickle_proto)
+    def _try_get():
+        with lock:
+            if key in inventories:
+                return inventories[key].value()
+        return None
+    result = _try_get()
+    if result is None:
+        ensure_update_inventory()
+        result = _try_get()
+    return result
+
+
+def get_inventory(provider: str, fmt: str, version: int = 1, pickle_proto: int = None, if_newer_than: str = None) -> \
+        Optional[SpeasyIndex]:
+    global inventories
+    if if_newer_than is not None:
+        if provider == "all":
+            if parser.parse(tree.build_date).astimezone(UTC) < parser.parse(if_newer_than).astimezone(UTC):
+                log.debug(f"Inventory for 'all' is not newer than {if_newer_than}. Returning None.")
+                return None
+        else:
+            if parser.parse(tree.__dict__[provider].build_date).astimezone(UTC) < parser.parse(
+                    if_newer_than).astimezone(UTC):
+                log.debug(f"Inventory for '{provider}' is not newer than {if_newer_than}. Returning None.")
+                return None
+    if fmt == "python_dict":
+        if pickle_proto is None:
+            raise ValueError("pickle_proto must be specified when format is 'python_dict'.")
+        key = __INVENTORY_KEY__.format(provider=provider, fmt=f"pickle_proto_{pickle_proto}_version_{version}")
+        return inventories[key].value()
+    else:
+        key = __INVENTORY_KEY__.format(provider=provider, fmt=fmt)
+        return inventories[key].value()
 
 
 @repeat_every(seconds=config.inventory_update_interval.get())
