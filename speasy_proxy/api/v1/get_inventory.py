@@ -8,6 +8,7 @@ from fastapi import status
 from speasy.core.inventory.indexes import to_json, to_dict, SpeasyIndex
 from speasy.inventories import tree
 from speasy_proxy.backend.inventory_updater import ensure_update_inventory, get_inventory as _get_inventory
+from speasy import list_providers
 import pyzstd
 import logging
 import uuid
@@ -65,6 +66,9 @@ async def get_inventory(request: Request, provider: str = QueryProvider,
     request_start_time = time.time_ns()
     request_id = uuid.uuid4()
     log.debug(f'New inventory request {request_id}: {provider}')
+    if provider not in list_providers() and provider != "all":
+        log.debug(f'{request_id}, unknown provider: {provider}')
+        return Response(status_code=status.HTTP_400_BAD_REQUEST, content=f"Unknown or disabled provider: {provider}")
     data, mime = encode_output(provider, format, pickle_proto, version,
                                if_newer_than=request.headers.get("If-Modified-Since"))
     if data is None:

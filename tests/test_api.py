@@ -34,6 +34,11 @@ class TestApi(unittest.TestCase):
         self.assertIsNotNone(response.json())
         self.assertIn('Trajectories', response.json())
 
+    def test_get_inventory_of_unknown_provider(self):
+        response = self.client.get("/get_inventory?provider=unknown_provider")
+        self.assertEqual(response.status_code, 400)
+        self.assertIn('Unknown or disabled provider', response.text)
+
     @data(("Sat, 01 Jan 2000 00:00:00 GMT", 200), ("Sat, 01 Jan 2000 00:00:00 UTC", 200),
           ("Sat, 01 Jan 2100 00:00:00 GMT", 304), (datetime.now().isoformat(), 304),
           (datetime.now(UTC).isoformat(), 304))
