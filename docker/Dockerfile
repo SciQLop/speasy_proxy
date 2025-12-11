@@ -6,6 +6,7 @@ ARG SPEASY=speasy
 ENV SPEASY_CACHE_PATH=/data \
     SPEASY_CACHE_SIZE="20e9" \
     SPEASY_INDEX_PATH=/index \
+    SPEASY_CDAWEB_INVENTORY_DATA_PATH=/index/cdaweb_inventory_data \
     SPEASY_LOG_PATH=/log \
     SPEASY_PROXY="true" \
     SPEASY_PROXY_PREFIX="" \
@@ -14,15 +15,17 @@ ENV SPEASY_CACHE_PATH=/data \
     SPEASY_CORE_HTTP_REWRITE_RULES=""\
     PORT=$PORT\
     SPEASY_PROXY_LOG_CONFIG_FILE="/home/speasy/speasy_proxy/logging.yaml"\
-    SPEASY_PROXY_CORE_INVENTORY_UPDATE_INTERVAL="7200"
+    SPEASY_PROXY_CORE_INVENTORY_UPDATE_INTERVAL="7200"\
+    SPEASY_CORE_HTTP_REWRITE_RULES="{'https://cdaweb.gsfc.nasa.gov/pub/': 'http://sciqlop.lpp.polytechnique.fr/cdaweb-data/pub/'}"
 
 RUN useradd speasy && mkdir -p $SPEASY_CACHE_PATH $SPEASY_INDEX_PATH \
+    && dnf update -y \
     && dnf install -y git python3 python3-devel libxslt libxslt-devel gcc g++ qhull-devel qhull \
     glibc-langpack-en freetype-devel freetype libpng libpng-devel xorg-x11-server-Xvfb zlib-devel python3-matplotlib \
     && dnf clean all \
     && chown -R speasy $SPEASY_CACHE_PATH $SPEASY_INDEX_PATH \
-    && mkdir -p $SPEASY_LOG_PATH/speasy \
-    && chown -R speasy $SPEASY_LOG_PATH/speasy
+    && mkdir -p $SPEASY_LOG_PATH/speasy $SPEASY_CDAWEB_INVENTORY_DATA_PATH \
+    && chown -R speasy $SPEASY_LOG_PATH/speasy $SPEASY_CDAWEB_INVENTORY_DATA_PATH
 
 COPY *.cfg *.yaml *.toml *.txt *.md LICENSE /home/speasy/speasy_proxy/
 COPY speasy_proxy /home/speasy/speasy_proxy/speasy_proxy
