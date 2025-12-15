@@ -1,6 +1,6 @@
 __author__ = """Alexis Jeandet"""
 __email__ = 'alexis.jeandet@member.fsf.org'
-__version__ = '0.13.2'
+__version__ = '0.13.3'
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
