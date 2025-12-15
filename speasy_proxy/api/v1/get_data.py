@@ -111,7 +111,7 @@ async def get_data(request: Request, background_tasks: BackgroundTasks, path: st
     del var
 
     return Response(media_type=mime, content=result,
-                    headers={'Access-Control-Allow-Origin': '*', 'Content-Type': mime})
+                    headers={'Content-Type': mime})
 
 
 def encode_output(var, path: str, start_time: str, stop_time: str, format: str, request: Request,

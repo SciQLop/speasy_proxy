@@ -80,4 +80,4 @@ async def get_inventory(request: Request, provider: str = QueryProvider,
     log.debug(f'{request_id}, duration = {request_duration}us')
 
     return Response(media_type=mime, content=result,
-                    headers={'Access-Control-Allow-Origin': '*', 'Content-Type': mime})
+                    headers={'Content-Type': mime})

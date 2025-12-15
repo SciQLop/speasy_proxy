@@ -43,7 +43,7 @@ def get_application(lifespan=None) -> FastAPI:
 
     _app.add_middleware(
         CORSMiddleware,
-        allow_origins=[str(origin) for origin in []],
+        allow_origins=["*"],
         allow_methods=["*"],
         allow_headers=["*"],
     )
