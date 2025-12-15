@@ -5,5 +5,6 @@ from .get_inventory import *
 from .get_speasy_version import *
 from .get_version import *
 from .get_server_status import *
+from .is_up import *
 from .routes import router as api_router
 from .ws_collaboration import *

@@ -34,6 +34,27 @@ class TestApi(unittest.TestCase):
         self.assertIsNotNone(response.json())
         self.assertIn('Trajectories', response.json())
 
+    def test_is_up_known_provider(self):
+        response = self.client.get("/is_up?provider=ssc")
+        self.assertEqual(response.status_code, 200)
+        json_response = response.json()
+        self.assertIn('provider', json_response)
+        self.assertIn('is_up', json_response)
+        self.assertEqual(json_response['provider'], 'ssc')
+        self.assertIsInstance(json_response['is_up'], bool)
+        self.assertEqual(json_response['is_up'], True)
+
+    def test_is_up_unknown_provider(self):
+        response = self.client.get("/is_up?provider=unknown_provider")
+        self.assertEqual(response.status_code, 404)
+        json_response = response.json()
+        self.assertIn('provider', json_response)
+        self.assertIn('is_up', json_response)
+        self.assertIn('error', json_response)
+        self.assertEqual(json_response['provider'], 'unknown_provider')
+        self.assertEqual(json_response['is_up'], False)
+        self.assertIn('Provider unknown_provider not found', json_response['error'])
+
     def test_get_inventory_of_unknown_provider(self):
         response = self.client.get("/get_inventory?provider=unknown_provider")
         self.assertEqual(response.status_code, 400)
