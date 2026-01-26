@@ -1,11 +1,10 @@
-from functools import wraps
 from datetime import datetime, timedelta, UTC
-from typing import Callable, Dict, Optional
+from typing import Dict, Optional
 import speasy as spz
 from speasy.core.inventory.indexes import to_json, to_dict, SpeasyIndex
 from speasy.inventories import tree
 from speasy.core.requests_scheduling.request_dispatch import PROVIDERS
-from speasy.core.cache import CacheCall
+
 import logging
 import threading
 from ..index import IndexEntry
@@ -15,7 +14,6 @@ from dateutil import parser
 
 from ..config import core as config
 from fastapi_utilities import repeat_every
-from contextlib import asynccontextmanager
 
 log = logging.getLogger(__name__)
 lock = threading.Lock()
@@ -124,9 +122,15 @@ def get_inventory(provider: str, fmt: str, version: int = 1, pickle_proto: int =
         if pickle_proto is None:
             raise ValueError("pickle_proto must be specified when format is 'python_dict'.")
         key = __INVENTORY_KEY__.format(provider=provider, fmt=f"pickle_proto_{pickle_proto}_version_{version}")
+        if key not in inventories:
+            log.warning(f"Inventory for '{provider}' is not available in requested format (key={key}). Updating inventory.")
+            update_inventory()
         return inventories[key].value()
     else:
         key = __INVENTORY_KEY__.format(provider=provider, fmt=fmt)
+        if key not in inventories:
+            log.warning(f"Inventory for '{provider}' is not available in requested format (key={key}). Updating inventory.")
+            update_inventory()
         return inventories[key].value()
 
 
