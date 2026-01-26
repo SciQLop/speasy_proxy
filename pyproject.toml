@@ -4,7 +4,7 @@ requires = ["flit_core"]
 
 [project]
 name = 'speasy_proxy'
-version = "0.13.4"
+version = "0.13.5"
 description = "A fast Speasy cache server."
 keywords = ["satellite", "plasma-physics", "nasa-data", "amda", "cdpp", "CDF"]
 authors = [
@@ -51,7 +51,7 @@ homepage = "https://github.com/SciQLop/speasy_proxy"
 
 
 [tool.bumpversion]
-current_version = "0.13.4"
+current_version = "0.13.5"
 commit = true
 tag = true
 tag_name = "v{new_version}"
