@@ -34,10 +34,12 @@ RUN chown -R speasy /home/speasy/speasy_proxy
 USER speasy
 WORKDIR /home/speasy
 
+# Jupyter-console is for admin/debug purposes
+
 RUN cd speasy_proxy &&\
     python3 -m ensurepip &&\
     python3 -mpip install -U pip &&\
-    python3 -mpip install -U $SPEASY ddt gunicorn jupyter-console &&\ # Jupyter-console is for admin/debug purposes
+    python3 -mpip install -U $SPEASY ddt gunicorn jupyter-console &&\
     python3 -mpip install -U .
 
 
