@@ -49,3 +49,23 @@ dev = [
 homepage = "https://github.com/SciQLop/speasy_proxy"
 
 
+
+[tool.bumpversion]
+current_version = "0.13.3"
+commit = true
+tag = true
+tag_name = "v{new_version}"
+
+
+[[tool.bumpversion.files]]
+filename = "pyproject.toml"
+
+
+[[tool.bumpversion.files]]
+filename = "speasy_proxy/__init__.py"
+search = "__version__ = '{current_version}'"
+replace = "__version__ = '{new_version}'"
+
+[[tool.bumpversion.files]]
+filename = "VERSION"
+
