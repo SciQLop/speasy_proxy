@@ -25,13 +25,15 @@ classifiers = [
     "License :: OSI Approved :: MIT License",
     "Natural Language :: English",
     "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.8",
-    "Programming Language :: Python :: 3.9",
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
 ]
-dependencies = ['humanize', 'speasy>=1.6.0', 'pycdfpp>=0.7.3', 'diskcache', 'jinja2', 'pyzstd', 'bokeh>=3.0.0', 'matplotlib', 'fastapi[all]', 'fastapi-utilities', 'uvicorn', 'uvicorn-worker', 'pycrdt-websocket >=0.15.4,<0.16.0']
+dependencies = ['humanize', 'speasy>=1.6.0', 'pycdfpp>=0.7.3', 'diskcache', 'jinja2',
+    'pyzstd', 'bokeh>=3.0.0', 'matplotlib', 'fastapi[all]', 'fastapi-utilities',
+    'uvicorn', 'uvicorn-worker', 'pycrdt-websocket >=0.15.4,<0.16.0']
 [project.optional-dependencies]
 dev = [
     'pytest',
