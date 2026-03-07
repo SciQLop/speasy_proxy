@@ -11,7 +11,8 @@ from .index import up_since
 from .api.v1 import api_router as v1_api_router
 from .frontend import frontend_router
 import logging
-from .backend.inventory_updater import update_inventory
+from .backend.inventory_updater import InventoryManager
+from .config import core as config
 from contextlib import asynccontextmanager
 
 log = logging.getLogger(__name__)
@@ -53,12 +54,10 @@ def get_application(lifespan=None) -> FastAPI:
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """
-    Lifespan context manager for the FastAPI application.
-    This is used to perform startup and shutdown tasks.
-    """
     log.info("Starting up speasy-proxy...")
-    await update_inventory()
+    mgr = InventoryManager(update_interval_seconds=config.inventory_update_interval.get())
+    app.state.inventory_manager = mgr
+    mgr.update_sync()
     yield
     log.info("Shutting down speasy-proxy...")
 
