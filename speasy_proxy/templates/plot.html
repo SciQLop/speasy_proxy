@@ -683,63 +683,32 @@
         return merged;
     }
 
-    function lttbDownsample(times, values, threshold) {
-        const len = times.length;
-        if (threshold >= len || threshold <= 2) {
-            return times.map((t, i) => [t, values[i]]);
+    function buildSeriesData(times, values) {
+        const data = new Array(times.length);
+        for (let i = 0; i < times.length; i++) {
+            data[i] = [times[i], values[i]];
         }
-        const sampled = [];
-        sampled.push([times[0], values[0]]);
-        const bucketSize = (len - 2) / (threshold - 2);
-        let a = 0;
-        for (let i = 1; i < threshold - 1; i++) {
-            const bucketStart = Math.floor((i - 1) * bucketSize) + 1;
-            const bucketEnd = Math.min(Math.floor(i * bucketSize) + 1, len);
-            const nextBucketStart = Math.min(Math.floor(i * bucketSize) + 1, len);
-            const nextBucketEnd = Math.min(Math.floor((i + 1) * bucketSize) + 1, len);
-
-            // Average of next bucket
-            let avgX = 0, avgY = 0, cnt = 0;
-            for (let j = nextBucketStart; j < nextBucketEnd; j++) {
-                avgX += times[j];
-                avgY += (values[j] === null ? 0 : values[j]);
-                cnt++;
-            }
-            if (cnt > 0) { avgX /= cnt; avgY /= cnt; }
-
-            // Find point in current bucket with max triangle area
-            let maxArea = -1, maxIdx = bucketStart;
-            const ax = times[a], ay = values[a] === null ? 0 : values[a];
-            for (let j = bucketStart; j < bucketEnd; j++) {
-                const area = Math.abs((ax - avgX) * ((values[j] === null ? 0 : values[j]) - ay) -
-                                      (ax - times[j]) * (avgY - ay));
-                if (area > maxArea) { maxArea = area; maxIdx = j; }
-            }
-            sampled.push([times[maxIdx], values[maxIdx]]);
-            a = maxIdx;
-        }
-        sampled.push([times[len - 1], values[len - 1]]);
-        return sampled;
+        return data;
     }
 
     function renderChart() {
         const times = cachedData.times;
         const columnNames = cachedData.columnNames;
-        const threshold = Math.min(4000, times.length);
 
         const series = [];
         for (let c = 0; c < columnNames.length; c++) {
             const colName = columnNames[c];
             const vals = cachedData.columns[colName];
-            const sampledData = lttbDownsample(times, vals, threshold);
             series.push({
                 name: colName,
                 type: 'line',
                 showSymbol: false,
                 lineStyle: { width: 1.2 },
                 color: CHART_COLORS[c % CHART_COLORS.length],
-                data: sampledData,
-                sampling: 'lttb'
+                data: buildSeriesData(times, vals),
+                sampling: 'lttb',
+                large: true,
+                largeThreshold: 5000
             });
         }
 
@@ -927,7 +896,6 @@
         // Update series data and extend the axis range so user can keep panning
         const times = cachedData.times;
         const columnNames = cachedData.columnNames;
-        const threshold = Math.min(4000, times.length);
 
         const series = [];
         for (let c = 0; c < columnNames.length; c++) {
@@ -939,8 +907,10 @@
                 showSymbol: false,
                 lineStyle: { width: 1.2 },
                 color: CHART_COLORS[c % CHART_COLORS.length],
-                data: lttbDownsample(times, vals, threshold),
-                sampling: 'lttb'
+                data: buildSeriesData(times, vals),
+                sampling: 'lttb',
+                large: true,
+                largeThreshold: 5000
             });
         }
 
