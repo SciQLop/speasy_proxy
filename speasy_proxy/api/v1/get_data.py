@@ -2,11 +2,10 @@ import json
 import logging
 import time
 import uuid
-from datetime import datetime
+from datetime import datetime, UTC
 from typing import Optional
 import numpy as np
 import speasy as spz
-import pyzstd
 from astropy.units.quantity import Quantity
 from fastapi import Response, Request, Query, BackgroundTasks
 from pydantic.types import Json
@@ -19,7 +18,8 @@ from speasy.products.variable import to_dictionary
 from speasy.core.codecs import get_codec
 
 from speasy_proxy.api import pickle_data
-from .query_parameters import QueryZstd, QueryPickleProto, QueryDataFormat
+from .query_parameters import ZstdCompression, PickleProtocol, DataFormat
+from speasy_proxy.api.compression import compress_if_asked
 from speasy_proxy.backend.bokeh_backend import plot_data
 from speasy_proxy.backend.inventory_updater import ensure_update_inventory
 
@@ -33,7 +33,7 @@ def dt_to_str(dt: datetime):
 
 
 def ts_to_str(ts: float):
-    return dt_to_str(datetime.utcfromtimestamp(ts))
+    return dt_to_str(datetime.fromtimestamp(ts, tz=UTC))
 
 
 def _values_as_array(values):
@@ -53,11 +53,13 @@ def _get_data(product, start_time, stop_time, extra_http_headers, **extra_params
 
 
 @router.get('/get_data', description='Get data from cache or remote server')
-async def get_data(request: Request, background_tasks: BackgroundTasks, path: str = Query(example="amda/c1_b_gsm"),
+async def get_data(request: Request, background_tasks: BackgroundTasks,
+                   format: DataFormat,
+                   zstd_compression: ZstdCompression,
+                   pickle_proto: PickleProtocol,
+                   path: str = Query(example="amda/c1_b_gsm"),
                    start_time: datetime = Query(example="2018-10-24T00:00:00"),
                    stop_time: datetime = Query(example="2018-10-24T02:00:00"),
-                   format: str = QueryDataFormat,
-                   zstd_compression: bool = QueryZstd,
                    output_format: Optional[str] = Query(None, enum=["CDF_ISTP"],
                                                         description="Data format used to retrieve data from remote server (such as AMDA), not the data format of the current request. Only available with AMDA."),
                    coordinate_system: Optional[str] = Query(None, enum=["geo", "gm", "gse", "gsm", "sm", "geitod",
@@ -65,8 +67,7 @@ async def get_data(request: Request, background_tasks: BackgroundTasks, path: st
                                                             description="Coordinate system used to retrieve trajectories from SSCWeb."),
                    method: Optional[str] = Query(None, enum=["API", "BEST", "FILE"],
                                                  description="Method used to retrieve data from CDA."),
-                   product_inputs: Optional[Json] = Query(None, description="Product input parameters (in JSON format) used used for example in AMDA templates parameters"),
-                   pickle_proto: int = QueryPickleProto):
+                   product_inputs: Optional[Json] = Query(None, description="Product input parameters (in JSON format) used used for example in AMDA templates parameters")):
     request_start_time = time.time_ns()
     background_tasks.add_task(ensure_update_inventory)
     request_id = uuid.uuid4()
@@ -148,12 +149,6 @@ def encode_output(var, path: str, start_time: str, stop_time: str, format: str, 
 
     return pickle_data(data, pickle_proto), "application/python-pickle"
 
-
-def compress_if_asked(data, mime, zstd_compression: bool = False):
-    if zstd_compression:
-        mime = "application/x-zstd-compressed"
-        data = pyzstd.compress(data)
-    return data, mime
 
 
 def _compress_and_encode_output(var, path, start_time, stop_time, format, request, pickle_proto,
