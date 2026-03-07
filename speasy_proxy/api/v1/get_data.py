@@ -7,7 +7,7 @@ from typing import Optional
 import numpy as np
 import speasy as spz
 from astropy.units.quantity import Quantity
-from fastapi import Response, Request, Query, BackgroundTasks
+from fastapi import Response, Request, Query, Depends
 from pydantic.types import Json
 from starlette.concurrency import run_in_threadpool
 
@@ -21,7 +21,7 @@ from speasy_proxy.api import pickle_data
 from .query_parameters import ZstdCompression, PickleProtocol, DataFormat
 from speasy_proxy.api.compression import compress_if_asked
 from speasy_proxy.backend.bokeh_backend import plot_data
-from speasy_proxy.backend.inventory_updater import ensure_update_inventory
+from speasy_proxy.dependencies import trigger_inventory_check
 
 log = logging.getLogger(__name__)
 
@@ -53,7 +53,7 @@ def _get_data(product, start_time, stop_time, extra_http_headers, **extra_params
 
 
 @router.get('/get_data', description='Get data from cache or remote server')
-async def get_data(request: Request, background_tasks: BackgroundTasks,
+async def get_data(request: Request,
                    path: str = Query(examples=["amda/c1_b_gsm"]),
                    start_time: datetime = Query(examples=["2018-10-24T00:00:00"]),
                    stop_time: datetime = Query(examples=["2018-10-24T02:00:00"]),
@@ -67,9 +67,9 @@ async def get_data(request: Request, background_tasks: BackgroundTasks,
                    method: Optional[str] = Query(None, enum=["API", "BEST", "FILE"],
                                                  description="Method used to retrieve data from CDA."),
                    product_inputs: Optional[Json] = Query(None, description="Product input parameters (in JSON format) used used for example in AMDA templates parameters"),
-                   pickle_proto: PickleProtocol = 3):
+                   pickle_proto: PickleProtocol = 3,
+                   _=Depends(trigger_inventory_check)):
     request_start_time = time.time_ns()
-    background_tasks.add_task(ensure_update_inventory)
     request_id = uuid.uuid4()
     extra_params = {}
     product = path
