@@ -18,6 +18,8 @@ ENV SPEASY_CACHE_PATH=/data \
     SPEASY_PROXY_CORE_INVENTORY_UPDATE_INTERVAL="7200"\
     SPEASY_CORE_HTTP_REWRITE_RULES="{'https://cdaweb.gsfc.nasa.gov/pub/': 'http://sciqlop.lpp.polytechnique.fr/cdaweb-data/pub/'}"
 
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /usr/local/bin/
+
 RUN useradd speasy && mkdir -p $SPEASY_CACHE_PATH $SPEASY_INDEX_PATH \
     && dnf update -y \
     && dnf install -y git python3 python3-devel libxslt libxslt-devel gcc g++ qhull-devel qhull \
@@ -27,21 +29,14 @@ RUN useradd speasy && mkdir -p $SPEASY_CACHE_PATH $SPEASY_INDEX_PATH \
     && mkdir -p $SPEASY_LOG_PATH/speasy $SPEASY_CDAWEB_INVENTORY_DATA_PATH \
     && chown -R speasy $SPEASY_LOG_PATH/speasy $SPEASY_CDAWEB_INVENTORY_DATA_PATH
 
-COPY *.cfg *.yaml *.toml *.txt *.md LICENSE /home/speasy/speasy_proxy/
-COPY speasy_proxy /home/speasy/speasy_proxy/speasy_proxy
+COPY . /home/speasy/speasy_proxy/
 RUN chown -R speasy /home/speasy/speasy_proxy
 
 USER speasy
-WORKDIR /home/speasy
+WORKDIR /home/speasy/speasy_proxy
 
-# Jupyter-console is for admin/debug purposes
-
-RUN cd speasy_proxy &&\
-    python3 -m ensurepip &&\
-    python3 -mpip install -U pip &&\
-    python3 -mpip install -U $SPEASY ddt gunicorn jupyter-console &&\
-    python3 -mpip install -U .
-
+RUN uv sync --no-dev && \
+    uv pip install $SPEASY gunicorn jupyter-console
 
 ADD docker/entry_point.sh /home/speasy/entry_point.sh
 

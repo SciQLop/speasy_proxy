@@ -33,17 +33,16 @@ podman run -d -p 6543:6543 \
 
 ### From source
 
+Requires [uv](https://docs.astral.sh/uv/).
+
 ```bash
-python3 -m venv venv
-source venv/bin/activate
-pip install -e .
+uv sync
 
 # Development
-uvicorn speasy_proxy:app --reload
+uv run uvicorn speasy_proxy:app --reload
 
 # Production
-pip install gunicorn
-gunicorn speasy_proxy:app -k speasy_proxy.UvicornWorker.SpeasyUvicornWorker
+uv run gunicorn speasy_proxy:app -k speasy_proxy.UvicornWorker.SpeasyUvicornWorker
 ```
 
 ## Configuration
@@ -77,8 +76,8 @@ Key endpoints:
 ## Development
 
 ```bash
-pip install -e ".[dev]"
-pytest
+uv sync --dev
+uv run pytest
 ```
 
 ## License

@@ -1,3 +1,0 @@
-[run]
-source = speasy_proxy
-omit = speasy_proxy/test*

@@ -1,21 +1,19 @@
 [build-system]
-build-backend = "flit_core.buildapi"
-requires = ["flit_core"]
+build-backend = "hatchling.build"
+requires = ["hatchling"]
 
 [project]
-name = 'speasy_proxy'
+name = "speasy-proxy"
 version = "0.13.5"
 description = "A fast Speasy cache server."
 keywords = ["satellite", "plasma-physics", "nasa-data", "amda", "cdpp", "CDF"]
 authors = [
     { name = "Alexis Jeandet", email = "alexis.jeandet@member.fsf.org" }
 ]
-
 maintainers = [
     { name = "Alexis Jeandet", email = "alexis.jeandet@member.fsf.org" }
 ]
-
-requires-python = ">=3.8"
+requires-python = ">=3.10"
 license = { file = "LICENSE" }
 readme = "README.md"
 classifiers = [
@@ -31,24 +29,47 @@ classifiers = [
     "Programming Language :: Python :: 3.13",
     "Programming Language :: Python :: 3.14",
 ]
-dependencies = ['humanize', 'speasy>=1.6.0', 'pycdfpp>=0.7.3', 'diskcache', 'jinja2',
-    'pyzstd', 'bokeh>=3.0.0', 'matplotlib', 'fastapi[all]', 'fastapi-utilities',
-    'uvicorn', 'uvicorn-worker', 'pycrdt-websocket >=0.15.4,<0.16.0']
+dependencies = [
+    "humanize",
+    "speasy>=1.6.0",
+    "pycdfpp>=0.7.3",
+    "diskcache",
+    "jinja2",
+    "pyzstd",
+    "bokeh>=3.0.0",
+    "matplotlib",
+    "fastapi[all]",
+    "fastapi-utilities",
+    "uvicorn",
+    "uvicorn-worker",
+    "pycrdt-websocket>=0.15.4,<0.16.0",
+]
+
 [project.optional-dependencies]
 dev = [
-    'pytest',
-    'ddt',
-    'pytest-asyncio',
-    'pytest-cov',
-    'black',
-    'isort',
-    'mypy',
-    'flake8',
+    "pytest",
+    "ddt",
+    "pytest-asyncio",
+    "pytest-cov",
+    "black",
+    "isort",
+    "mypy",
+    "flake8",
 ]
+
 [project.urls]
 homepage = "https://github.com/SciQLop/speasy_proxy"
 
+[tool.hatch.build.targets.wheel]
+packages = ["speasy_proxy"]
 
+[tool.pytest.ini_options]
+testpaths = ["speasy_proxy"]
+python_files = ["test*.py"]
+
+[tool.coverage.run]
+source = ["speasy_proxy"]
+omit = ["speasy_proxy/test*"]
 
 [tool.bumpversion]
 current_version = "0.13.5"
@@ -56,10 +77,8 @@ commit = true
 tag = true
 tag_name = "v{new_version}"
 
-
 [[tool.bumpversion.files]]
 filename = "pyproject.toml"
-
 
 [[tool.bumpversion.files]]
 filename = "speasy_proxy/__init__.py"
@@ -68,4 +87,3 @@ replace = "__version__ = '{new_version}'"
 
 [[tool.bumpversion.files]]
 filename = "VERSION"
-
