@@ -834,20 +834,34 @@
     let isFetching = false;
     const BUFFER_RATIO = 1.0; // pre-fetch 1x view width on each side
 
+    function getVisibleRange() {
+        // Read the actual axis extent from the chart — most reliable source
+        const option = chart.getOption();
+        if (!option || !option.dataZoom || option.dataZoom.length === 0) return null;
+        const dz = option.dataZoom[0];
+
+        // If startValue/endValue are set, use them directly
+        if (dz.startValue != null && dz.endValue != null) {
+            return { start: dz.startValue, end: dz.endValue };
+        }
+
+        // Fallback: compute from percentages relative to xAxis min/max
+        const xAxis = option.xAxis[0];
+        const axisMin = xAxis.min;
+        const axisMax = xAxis.max;
+        if (axisMin != null && axisMax != null && dz.start != null && dz.end != null) {
+            const range = axisMax - axisMin;
+            return {
+                start: axisMin + range * (dz.start / 100),
+                end: axisMin + range * (dz.end / 100)
+            };
+        }
+        return null;
+    }
+
     function setupZoomHandler() {
         chart.off('datazoom');
-        chart.on('datazoom', (params) => {
-            // Extract the actual visible range from the event
-            if (params.batch && params.batch.length > 0) {
-                const b = params.batch[0];
-                if (b.startValue != null && b.endValue != null) {
-                    currentView.start = b.startValue;
-                    currentView.end = b.endValue;
-                }
-            } else if (params.startValue != null && params.endValue != null) {
-                currentView.start = params.startValue;
-                currentView.end = params.endValue;
-            }
+        chart.on('datazoom', () => {
             if (zoomDebounceTimer) clearTimeout(zoomDebounceTimer);
             zoomDebounceTimer = setTimeout(onZoomPan, 200);
         });
@@ -856,7 +870,11 @@
     async function onZoomPan() {
         if (!cachedData || cachedData.times.length === 0) return;
         if (isFetching) return;
-        if (currentView.start == null || currentView.end == null) return;
+
+        const view = getVisibleRange();
+        if (!view) return;
+        currentView.start = view.start;
+        currentView.end = view.end;
 
         const viewStart = currentView.start;
         const viewEnd = currentView.end;
@@ -927,13 +945,17 @@
         }
 
         const viewRange = viewEnd - viewStart;
-        const axisBuffer = viewRange * 2; // axis extends 2x view width beyond data
+        const axisBuffer = viewRange * 3; // axis extends 3x view width beyond data edges
+
+        // Never shrink the axis range — only expand
+        const option = chart.getOption();
+        const curMin = option.xAxis[0].min;
+        const curMax = option.xAxis[0].max;
+        const newMin = Math.min(curMin != null ? curMin : Infinity, cachedData.times[0] - axisBuffer, viewStart - axisBuffer);
+        const newMax = Math.max(curMax != null ? curMax : -Infinity, cachedData.times[cachedData.times.length - 1] + axisBuffer, viewEnd + axisBuffer);
 
         chart.setOption({
-            xAxis: {
-                min: cachedData.times[0] - axisBuffer,
-                max: cachedData.times[cachedData.times.length - 1] + axisBuffer
-            },
+            xAxis: { min: newMin, max: newMax },
             dataZoom: [
                 { type: 'inside', startValue: viewStart, endValue: viewEnd },
                 { type: 'slider', startValue: viewStart, endValue: viewEnd }
