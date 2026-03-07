@@ -4,62 +4,377 @@
     <meta charset="UTF-8">
     <title>Speasy Cache Server</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <link rel="stylesheet" href="static/theme.css" type="text/css">
-    <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.7.1/jquery.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/numeral.js/2.0.6/numeral.min.js"></script>
-    <script src="static/status.js"></script>
-    <script>
-        $(document).ready(function () {
-            update_status();
-            setInterval(update_status, 10000);
-        });
-    </script>
+    <style>
+        *, *::before, *::after {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            font-weight: 400;
+            color: #e0e6f0;
+            background: #0b0e17;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+
+        a {
+            color: #7eb8ff;
+            text-decoration: none;
+        }
+
+        a:hover {
+            text-decoration: underline;
+        }
+
+        /* Hero */
+        .hero {
+            background: linear-gradient(135deg, #0d1b2a 0%, #1b2a4a 40%, #2a1a3e 70%, #0d1b2a 100%);
+            text-align: center;
+            padding: 3rem 1.5rem 2.5rem;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .hero::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background:
+                radial-gradient(1px 1px at 20% 30%, rgba(255,255,255,0.4), transparent),
+                radial-gradient(1px 1px at 40% 70%, rgba(255,255,255,0.3), transparent),
+                radial-gradient(1px 1px at 60% 20%, rgba(255,255,255,0.3), transparent),
+                radial-gradient(1px 1px at 80% 50%, rgba(255,255,255,0.2), transparent),
+                radial-gradient(1.5px 1.5px at 10% 80%, rgba(255,255,255,0.35), transparent),
+                radial-gradient(1px 1px at 70% 85%, rgba(255,255,255,0.25), transparent),
+                radial-gradient(1.5px 1.5px at 50% 10%, rgba(255,255,255,0.3), transparent),
+                radial-gradient(1px 1px at 90% 15%, rgba(255,255,255,0.2), transparent);
+            pointer-events: none;
+        }
+
+        .hero-logo {
+            margin-bottom: 1rem;
+        }
+
+        .hero-logo img {
+            height: 90px;
+            filter: drop-shadow(0 0 20px rgba(120, 160, 255, 0.3));
+        }
+
+        .hero h1 {
+            font-size: 2.4rem;
+            font-weight: 600;
+            color: #ffffff;
+            margin-bottom: 0.5rem;
+            letter-spacing: -0.02em;
+        }
+
+        .hero .tagline {
+            font-size: 1.1rem;
+            color: #8ea4c8;
+            margin-bottom: 1.8rem;
+            max-width: 600px;
+            margin-left: auto;
+            margin-right: auto;
+            line-height: 1.5;
+        }
+
+        .hero-buttons {
+            display: flex;
+            gap: 1rem;
+            justify-content: center;
+            flex-wrap: wrap;
+        }
+
+        .btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+            padding: 0.65rem 1.4rem;
+            border-radius: 8px;
+            font-size: 0.95rem;
+            font-weight: 500;
+            text-decoration: none;
+            transition: all 0.2s ease;
+        }
+
+        .btn:hover {
+            text-decoration: none;
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, #3b6cb5, #5b4ea0);
+            color: #fff;
+            border: 1px solid rgba(255,255,255,0.1);
+        }
+
+        .btn-primary:hover {
+            background: linear-gradient(135deg, #4a7dc6, #6b5eb0);
+            box-shadow: 0 4px 15px rgba(59, 108, 181, 0.4);
+        }
+
+        .btn-secondary {
+            background: rgba(255,255,255,0.06);
+            color: #c0d0e8;
+            border: 1px solid rgba(255,255,255,0.12);
+        }
+
+        .btn-secondary:hover {
+            background: rgba(255,255,255,0.1);
+            border-color: rgba(255,255,255,0.2);
+        }
+
+        .btn svg {
+            width: 18px;
+            height: 18px;
+            fill: currentColor;
+        }
+
+        /* Dashboard */
+        .dashboard {
+            flex: 1;
+            max-width: 900px;
+            width: 100%;
+            margin: 0 auto;
+            padding: 2rem 1.5rem;
+        }
+
+        .dashboard h2 {
+            font-size: 1.3rem;
+            font-weight: 600;
+            color: #c0d0e8;
+            margin-bottom: 1.2rem;
+            text-align: center;
+        }
+
+        .status-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+            gap: 1rem;
+        }
+
+        .status-card {
+            background: rgba(255,255,255,0.04);
+            border: 1px solid rgba(255,255,255,0.07);
+            border-radius: 10px;
+            padding: 1.2rem;
+            transition: all 0.2s ease;
+        }
+
+        .status-card:hover {
+            background: rgba(255,255,255,0.07);
+            border-color: rgba(255,255,255,0.12);
+        }
+
+        .status-card .label {
+            font-size: 0.75rem;
+            font-weight: 500;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            color: #6b7fa0;
+            margin-bottom: 0.4rem;
+        }
+
+        .status-card .value {
+            font-size: 1.25rem;
+            font-weight: 600;
+            color: #e8edf5;
+        }
+
+        .status-card .value.loading {
+            color: #4a5568;
+        }
+
+        /* Footer */
+        footer {
+            border-top: 1px solid rgba(255,255,255,0.06);
+            padding: 1.5rem;
+            text-align: center;
+        }
+
+        .footer-logos {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 2rem;
+            margin-bottom: 0.8rem;
+        }
+
+        .footer-logos img {
+            height: 50px;
+            opacity: 0.8;
+            transition: opacity 0.2s ease;
+        }
+
+        .footer-logos img:hover {
+            opacity: 1;
+        }
+
+        .footer-text {
+            font-size: 0.8rem;
+            color: #4a5a74;
+        }
+
+        @media (max-width: 600px) {
+            .hero h1 {
+                font-size: 1.8rem;
+            }
+
+            .hero .tagline {
+                font-size: 1rem;
+            }
+
+            .status-grid {
+                grid-template-columns: repeat(2, 1fr);
+            }
+        }
+    </style>
 </head>
 <body>
-<header>
-    <div class="container" style="display: flex; align-items: center; justify-content: center;">
-        <div class="logo">
-            <img src="static/logo_speasy.svg" alt="Speasy logo" height="80px">
+
+<section class="hero">
+    <div class="hero-logo">
+        <img src="static/logo_speasy.svg" alt="Speasy logo">
+    </div>
+    <h1>Speasy Cache Server</h1>
+    <p class="tagline">
+        A shared caching proxy for <a href="https://github.com/SciQLop/speasy">speasy</a>,
+        accelerating access to space physics data from AMDA, CDAWeb, and SSCWeb.
+    </p>
+    <div class="hero-buttons">
+        <a href="docs" class="btn btn-primary">
+            <svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8l-6-6zm-1 2l5 5h-5V4zM6 20V4h5v7h7v9H6z"/></svg>
+            API Documentation
+        </a>
+        <a href="https://github.com/SciQLop/speasy_proxy" class="btn btn-secondary">
+            <svg viewBox="0 0 16 16"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>
+            GitHub
+        </a>
+    </div>
+</section>
+
+<main class="dashboard">
+    <h2>Server Status</h2>
+    <div class="status-grid" id="status-grid">
+        <div class="status-card">
+            <div class="label">Cache Size</div>
+            <div class="value loading" id="cache-size">&mdash;</div>
         </div>
-        <div class="title">
-            <h1>Speasy Cache Server</h1>
+        <div class="status-card">
+            <div class="label">Cache Entries</div>
+            <div class="value loading" id="cache-entries">&mdash;</div>
+        </div>
+        <div class="status-card">
+            <div class="label">Inventory Size</div>
+            <div class="value loading" id="inventory-size">&mdash;</div>
+        </div>
+        <div class="status-card">
+            <div class="label">Uptime</div>
+            <div class="value loading" id="uptime">&mdash;</div>
+        </div>
+        <div class="status-card">
+            <div class="label">Up Since</div>
+            <div class="value loading" id="up-since">&mdash;</div>
+        </div>
+        <div class="status-card">
+            <div class="label">Last Inventory Update</div>
+            <div class="value loading" id="last-inventory-update">&mdash;</div>
+        </div>
+        <div class="status-card">
+            <div class="label">Update Interval</div>
+            <div class="value loading" id="update-interval">&mdash;</div>
+        </div>
+        <div class="status-card">
+            <div class="label">Proxy Version</div>
+            <div class="value loading" id="proxy-version">&mdash;</div>
+        </div>
+        <div class="status-card">
+            <div class="label">Speasy Version</div>
+            <div class="value loading" id="speasy-version">&mdash;</div>
         </div>
     </div>
-</header>
+</main>
 
-<div class="container" style="height: 90%; text-align: center; justify-content: center;">
-    <section class="container" style="height: 100%">
-        <p> This the shared cache server for the Speasy project. It allows to share Speasy requests results between
-            users across the world.
-        </p>
-        <p>You can access and experiment with the API <a href="docs">here</a>.</p>
-        <p>The source code is available on <a href="https://github.com/SciQLop/speasy_proxy">GitHub</a>.
-        </p>
-    </section>
-
-    <div class="container">
-        <h2>Cache Status</h2>
-        <div class="container" style="text-align: center;">
-            <ul class="container" id="status-container" style="height: 100%; text-align: left; display: inline-block;">
-                <li class="inventory-last-update"></li>
-                <li class="inventory-update-interval"></li>
-                <li class="version"></li>
-                <li class="speasy-version"></li>
-                <li class="up-since"></li>
-                <li class="cache-size"></li>
-                <li class="cache-entries"></li>
-                <li class="uptime"></li>
-            </ul>
-        </div>
+<footer>
+    <div class="footer-logos">
+        <img src="static/logo_LPP.png" alt="LPP logo">
+        <img src="static/logo_CDPP.jpg" alt="CDPP logo">
     </div>
-</div>
-
-<div class="container" style="position: fixed; bottom: 2.5rem; right:0;  width: 40%; height: 2.5rem;">
-    <img src="static/logo_LPP.png" alt="Speasy logo" height="80px">
-    <img src="static/logo_CDPP.jpg" alt="Speasy logo" height="80px">
-</div>
-<footer style="position: absolute; bottom: 0; width: 40%; height: 2.5rem">
-    Copyright &copy; 2024 Laboratory of Plasma Physics
+    <div class="footer-text">
+        &copy; <script>document.write(new Date().getFullYear())</script> Laboratory of Plasma Physics
+    </div>
 </footer>
+
+<script>
+    function formatBytes(bytes) {
+        if (bytes === 0) return '0 B';
+        const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+        const i = Math.floor(Math.log(bytes) / Math.log(1024));
+        return (bytes / Math.pow(1024, i)).toFixed(i > 0 ? 1 : 0) + ' ' + units[i];
+    }
+
+    function formatNumber(n) {
+        if (n >= 1e6) return (n / 1e6).toFixed(1) + 'M';
+        if (n >= 1e3) return (n / 1e3).toFixed(1) + 'K';
+        return n.toLocaleString();
+    }
+
+    function formatDuration(seconds) {
+        const d = Math.floor(seconds / 86400);
+        const h = Math.floor((seconds % 86400) / 3600);
+        const m = Math.floor((seconds % 3600) / 60);
+        if (d > 0) return d + 'd ' + h + 'h';
+        if (h > 0) return h + 'h ' + m + 'm';
+        return m + 'm';
+    }
+
+    function formatDateTime(isoString) {
+        try {
+            const d = new Date(isoString);
+            return d.toLocaleString(undefined, {
+                month: 'short', day: 'numeric',
+                hour: '2-digit', minute: '2-digit'
+            });
+        } catch {
+            return isoString;
+        }
+    }
+
+    function setValue(id, text) {
+        const el = document.getElementById(id);
+        el.textContent = text;
+        el.classList.remove('loading');
+    }
+
+    async function updateStatus() {
+        try {
+            const resp = await fetch(window.location.href.replace(/\/$/, '') + '/get_server_status');
+            if (!resp.ok) return;
+            const data = await resp.json();
+
+            setValue('cache-size', formatBytes(data.cache_disk_size));
+            setValue('cache-entries', formatNumber(data.entries));
+            setValue('inventory-size', data.inventory_size + ' products');
+            setValue('uptime', formatDuration(data.up_duration));
+            setValue('up-since', formatDateTime(data.up_since));
+            setValue('last-inventory-update', formatDateTime(data.last_inventory_update));
+            setValue('update-interval', data.inventory_update_interval);
+            setValue('proxy-version', data.version);
+            setValue('speasy-version', data.speasy_version);
+        } catch (e) {
+            console.error('Failed to fetch status:', e);
+        }
+    }
+
+    updateStatus();
+    setInterval(updateStatus, 10000);
+</script>
+
 </body>
 </html>
