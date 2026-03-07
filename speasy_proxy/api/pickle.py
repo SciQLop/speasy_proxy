@@ -1,5 +1,4 @@
 import pickle
-from fastapi import Request
 
 
 def _protocol(pickle_proto: int = 3):
