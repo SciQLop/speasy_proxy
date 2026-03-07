@@ -1,29 +1,86 @@
-speasy-proxy
-==========
+# speasy-proxy
 
-Getting Started
----------------
+[![PyPI version](https://badge.fury.io/py/speasy-proxy.svg)](https://pypi.org/project/speasy-proxy/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://www.python.org/downloads/)
 
-- Change directory into your newly created project.
+A fast caching proxy server for [speasy](https://github.com/SciQLop/speasy), reducing load on upstream data providers (AMDA, CDAWeb, SSCWeb) and improving response times for space physics data access.
 
-    cd speasy_proxy
+## Using the public instance
 
-- Create a Python virtual environment.
+A public instance is available at: https://sciqlop.lpp.polytechnique.fr/cache/
 
-    python3 -m venv env
+speasy uses this proxy by default — no configuration needed. You can browse the available data and interactive API docs at that URL.
 
-- Upgrade packaging tools.
+---
 
-    env/bin/pip install --upgrade pip setuptools
+## Deploying your own instance
 
-- Install the project in editable mode with its testing requirements.
+### Container (recommended)
 
-    env/bin/pip install -e ".[testing]"
+Podman is recommended, but Docker works too.
 
-- Run your project's tests.
+```bash
+# Build the image
+./docker/build.sh [PORT] [NAME] [SPEASY_PACKAGE]
 
-    env/bin/pytest
+# Run with Podman
+podman run -d -p 6543:6543 \
+  -v speasy-cache:/data \
+  -v speasy-index:/index \
+  speasy_proxy
+```
 
-- Run your project.
+### From source
 
-    env/bin/pserve development.ini
+```bash
+python3 -m venv venv
+source venv/bin/activate
+pip install -e .
+
+# Development
+uvicorn speasy_proxy:app --reload
+
+# Production
+pip install gunicorn
+gunicorn speasy_proxy:app -k speasy_proxy.UvicornWorker.SpeasyUvicornWorker
+```
+
+## Configuration
+
+All settings are controlled via environment variables:
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `SPEASY_PROXY_PREFIX` | URL path prefix (for reverse proxy setups) | |
+| `SPEASY_PROXY_CORE_INVENTORY_UPDATE_INTERVAL` | Seconds between inventory refreshes | `7200` |
+| `SPEASY_PROXY_COLLAB_ENDPOINT_ENABLE` | Enable CRDT collaboration WebSocket | `False` |
+| `SPEASY_PROXY_LOG_CONFIG_FILE` | Path to logging YAML config | |
+| `SPEASY_CACHE_PATH` | Cache storage path | |
+| `SPEASY_INDEX_PATH` | Index storage path | |
+
+## API Overview
+
+The full interactive API documentation is available at `/docs` on any running instance.
+
+Key endpoints:
+
+| Endpoint | Description |
+|----------|-------------|
+| `GET /get_data` | Fetch data by product path and time range. Supports multiple output formats (pickle, CDF, JSON, interactive Bokeh HTML) and optional zstd compression. |
+| `GET /get_inventory` | Retrieve the product inventory for a provider or all providers. Supports `If-Modified-Since` for conditional requests. |
+| `GET /get_cache_entries` | List cached data entries. |
+| `GET /get_version` | Proxy version. |
+| `GET /get_speasy_version` | Version of the underlying speasy library. |
+| `GET /is_up` | Health check. |
+
+## Development
+
+```bash
+pip install -e ".[dev]"
+pytest
+```
+
+## License
+
+MIT
