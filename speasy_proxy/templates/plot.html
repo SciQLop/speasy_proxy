@@ -815,6 +815,38 @@
         setupZoomHandler();
     }
 
+    function renderChartPreservingView(viewStart, viewEnd) {
+        // Same as renderChart but sets dataZoom to absolute values to preserve pan position
+        const times = cachedData.times;
+        const columnNames = cachedData.columnNames;
+        const threshold = Math.min(4000, times.length);
+
+        const series = [];
+        for (let c = 0; c < columnNames.length; c++) {
+            const colName = columnNames[c];
+            const vals = cachedData.columns[colName];
+            const sampledData = lttbDownsample(times, vals, threshold);
+            series.push({
+                name: colName,
+                type: 'line',
+                showSymbol: false,
+                lineStyle: { width: 1.2 },
+                color: CHART_COLORS[c % CHART_COLORS.length],
+                data: sampledData,
+                sampling: 'lttb'
+            });
+        }
+
+        // Update series and dataZoom with absolute values to keep view position stable
+        chart.setOption({
+            series: series,
+            dataZoom: [
+                { type: 'inside', startValue: viewStart, endValue: viewEnd },
+                { type: 'slider', startValue: viewStart, endValue: viewEnd }
+            ]
+        });
+    }
+
     // ===== Task 7: Smart Zoom/Pan Fetching =====
 
     function setupZoomHandler() {
@@ -826,8 +858,11 @@
         });
     }
 
+    let isFetching = false;
+
     async function onZoomPan() {
         if (!cachedData || cachedData.times.length === 0) return;
+        if (isFetching) return;
 
         const option = chart.getOption();
         if (!option.dataZoom || option.dataZoom.length === 0) return;
@@ -838,21 +873,42 @@
 
         const dataMin = cachedData.times[0];
         const dataMax = cachedData.times[cachedData.times.length - 1];
-        const range = dataMax - dataMin;
+        const dataRange = dataMax - dataMin;
 
-        const viewStart = dataMin + range * startPct;
-        const viewEnd = dataMin + range * endPct;
+        const viewStart = dataMin + dataRange * startPct;
+        const viewEnd = dataMin + dataRange * endPct;
+        const viewRange = viewEnd - viewStart;
 
-        const gaps = computeGaps(viewStart, viewEnd, cachedData.intervals);
+        // Detect edge panning: if the user is at the boundary, extend beyond
+        const EDGE_THRESHOLD = 0.5; // within 0.5% of edge
+        const extendAmount = viewRange * 0.5; // fetch half a view width ahead
+        let fetchStart = viewStart;
+        let fetchEnd = viewEnd;
+
+        if (startPct <= EDGE_THRESHOLD / 100) {
+            // At left edge — extend left
+            fetchStart = viewStart - extendAmount;
+        }
+        if (endPct >= 1 - EDGE_THRESHOLD / 100) {
+            // At right edge — extend right
+            fetchEnd = viewEnd + extendAmount;
+        }
+
+        const gaps = computeGaps(fetchStart, fetchEnd, cachedData.intervals);
         if (gaps.length === 0) return;
 
+        isFetching = true;
+        showLoading(true);
+
+        // Remember where the view was before re-render
+        const viewStartValue = viewStart;
+        const viewEndValue = viewEnd;
+
         for (const gap of gaps) {
-            const gapStartISO = new Date(gap[0]).toISOString();
-            const gapStopISO = new Date(gap[1]).toISOString();
-            showLoading(true);
-            setStatus('Fetching gap: ' + gapStartISO + ' to ' + gapStopISO);
+            setStatus('Fetching: ' + new Date(gap[0]).toISOString().slice(0,19) +
+                       ' to ' + new Date(gap[1]).toISOString().slice(0,19));
             try {
-                const data = await fetchData(selectedProduct, gapStartISO, gapStopISO);
+                const data = await fetchData(selectedProduct, new Date(gap[0]).toISOString(), new Date(gap[1]).toISOString());
                 if (data && data.values && data.axes && data.axes.length > 0) {
                     mergeData(data, gap[0], gap[1]);
                 }
@@ -862,10 +918,14 @@
         }
 
         evictCache();
-        renderChart();
+
+        // Re-render and restore the view position using absolute values
+        renderChartPreservingView(viewStartValue, viewEndValue);
+
         showLoading(false);
         setStatus('Loaded ' + cachedData.times.length + ' timestamps, ' +
                    cachedData.columnNames.length + ' columns');
+        isFetching = false;
     }
 
     function computeGaps(viewStart, viewEnd, intervals) {
