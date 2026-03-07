@@ -1,7 +1,8 @@
 from fastapi.responses import JSONResponse
 from fastapi import Request
 from .routes import router
-from .query_parameters import QueryProvider
+from .query_parameters import Provider
+from .models import ProviderStatus
 import logging
 from speasy.core.http import is_server_up
 from speasy.core.cache import CacheCall
@@ -42,16 +43,13 @@ def is_server_up(ws_class):
 
 
 @router.get('/is_up', response_class=JSONResponse, description='Check if the server is up')
-def is_up(request: Request, provider: str = QueryProvider):
+def is_up(request: Request, provider: Provider):
     log.debug(f'Client asking if {provider} is up')
     ws_class = PROVIDERS.get(provider.lower())
-    response = {
-        'provider': provider,
-        'is_up': False
-    }
     if ws_class:
-        response['is_up'] = is_server_up(ws_class)
-        return JSONResponse(content=response)
+        return ProviderStatus(provider=provider, is_up=is_server_up(ws_class))
     else:
-        response['error'] = f'Provider {provider} not found'
-        return JSONResponse(content=response, status_code=404)
+        return JSONResponse(
+            content=ProviderStatus(provider=provider, is_up=False, error=f'Provider {provider} not found').model_dump(),
+            status_code=404
+        )
