@@ -240,6 +240,7 @@
         <input type="datetime-local" id="stop-time">
 
         <button id="btn-plot" disabled>Plot</button>
+        <button id="btn-log-scale" style="display:none;" title="Toggle log/linear color scale">Log</button>
     </div>
 
     <div class="chart-wrapper">
@@ -280,6 +281,8 @@
     let cachedData = null;
     let leafIndex = [];
     let zoomDebounceTimer = null;
+    let plotType = 'line'; // 'line' or 'heatmap'
+    let logScale = true;   // log color scale for heatmaps
 
     // ===== Helpers =====
 
@@ -538,6 +541,13 @@
         document.getElementById('stop-time').addEventListener('keydown', (e) => {
             if (e.key === 'Enter') doPlot();
         });
+        document.getElementById('btn-log-scale').addEventListener('click', () => {
+            logScale = !logScale;
+            document.getElementById('btn-log-scale').textContent = logScale ? 'Log' : 'Linear';
+            if (cachedData && cachedData.times.length > 0 && plotType === 'heatmap') {
+                renderHeatmap();
+            }
+        });
     }
 
     async function doPlot() {
@@ -555,7 +565,13 @@
             times: [],
             columns: {},
             columnNames: [],
-            unit: ''
+            unit: '',
+            // Spectrogram fields
+            yAxis: null,       // array of Y-axis bin values (e.g. energy channels)
+            yAxisName: '',
+            yAxisUnit: '',
+            rows: [],          // raw 2D array: rows[timeIdx] = [val_per_ybin]
+            displayType: ''
         };
 
         updateURL();
@@ -599,6 +615,16 @@
         return JSON.parse(sanitized);
     }
 
+    function detectPlotType(json) {
+        const meta = json.values.meta || {};
+        const displayType = (meta.DISPLAY_TYPE || '').toLowerCase();
+        const numCols = json.values.values.length > 0 ? json.values.values[0].length : 0;
+        if (displayType === 'spectrogram' || (numCols > 10 && json.axes.length >= 2)) {
+            return 'heatmap';
+        }
+        return 'line';
+    }
+
     function mergeData(json, fetchStart, fetchStop) {
         const rawTimes = json.axes[0].values;
         const newTimes = rawTimes.map(t => t / 1e6); // nanoseconds to milliseconds
@@ -607,23 +633,72 @@
         const unit = (json.values.meta && json.values.meta.UNITS) || '';
 
         if (cachedData.times.length === 0) {
-            // First load
+            // First load — detect plot type
+            plotType = detectPlotType(json);
+            cachedData.displayType = (json.values.meta || {}).DISPLAY_TYPE || '';
             cachedData.times = newTimes;
-            cachedData.columnNames = columns.length > 0 ? columns :
-                (newValues[0] ? newValues[0].map((_, i) => 'col_' + i) : ['value']);
             cachedData.unit = unit;
-            for (let c = 0; c < cachedData.columnNames.length; c++) {
-                cachedData.columns[cachedData.columnNames[c]] = newValues.map(row => row[c]);
-            }
             cachedData.intervals = [[fetchStart, fetchStop]];
+
+            if (plotType === 'heatmap') {
+                // Store Y-axis bins and raw 2D rows
+                if (json.axes.length >= 2) {
+                    cachedData.yAxis = json.axes[1].values;
+                    cachedData.yAxisName = json.axes[1].name || '';
+                    cachedData.yAxisUnit = (json.axes[1].meta && json.axes[1].meta.UNITS) || '';
+                } else {
+                    cachedData.yAxis = newValues[0] ? newValues[0].map((_, i) => i) : [];
+                }
+                cachedData.rows = newValues;
+                cachedData.columnNames = columns;
+                // Show log/linear toggle
+                document.getElementById('btn-log-scale').style.display = '';
+            } else {
+                cachedData.columnNames = columns.length > 0 ? columns :
+                    (newValues[0] ? newValues[0].map((_, i) => 'col_' + i) : ['value']);
+                for (let c = 0; c < cachedData.columnNames.length; c++) {
+                    cachedData.columns[cachedData.columnNames[c]] = newValues.map(row => row[c]);
+                }
+                // Hide log/linear toggle
+                document.getElementById('btn-log-scale').style.display = 'none';
+            }
         } else {
-            // Merge
-            const oldTimes = cachedData.times;
-            const merged = mergeSorted(oldTimes, newTimes, cachedData.columns, newValues, cachedData.columnNames);
-            cachedData.times = merged.times;
-            cachedData.columns = merged.columns;
+            if (plotType === 'heatmap') {
+                // Merge spectrogram rows
+                const merged = mergeSortedRows(cachedData.times, newTimes, cachedData.rows, newValues);
+                cachedData.times = merged.times;
+                cachedData.rows = merged.rows;
+            } else {
+                const merged = mergeSorted(cachedData.times, newTimes, cachedData.columns, newValues, cachedData.columnNames);
+                cachedData.times = merged.times;
+                cachedData.columns = merged.columns;
+            }
             cachedData.intervals = mergeIntervals(cachedData.intervals.concat([[fetchStart, fetchStop]]));
         }
+    }
+
+    function mergeSortedRows(oldTimes, newTimes, oldRows, newRows) {
+        const resultTimes = [];
+        const resultRows = [];
+        let i = 0, j = 0;
+        while (i < oldTimes.length && j < newTimes.length) {
+            if (oldTimes[i] < newTimes[j]) {
+                resultTimes.push(oldTimes[i]);
+                resultRows.push(oldRows[i]);
+                i++;
+            } else if (oldTimes[i] > newTimes[j]) {
+                resultTimes.push(newTimes[j]);
+                resultRows.push(newRows[j]);
+                j++;
+            } else {
+                resultTimes.push(newTimes[j]);
+                resultRows.push(newRows[j]);
+                i++; j++;
+            }
+        }
+        while (i < oldTimes.length) { resultTimes.push(oldTimes[i]); resultRows.push(oldRows[i]); i++; }
+        while (j < newTimes.length) { resultTimes.push(newTimes[j]); resultRows.push(newRows[j]); j++; }
+        return { times: resultTimes, rows: resultRows };
     }
 
     function mergeSorted(oldTimes, newTimes, oldColumns, newValues, columnNames) {
@@ -692,6 +767,14 @@
     }
 
     function renderChart() {
+        if (plotType === 'heatmap') {
+            renderHeatmap();
+        } else {
+            renderLineChart();
+        }
+    }
+
+    function renderLineChart() {
         const times = cachedData.times;
         const columnNames = cachedData.columnNames;
 
@@ -714,6 +797,7 @@
 
         const option = {
             backgroundColor: 'transparent',
+            animation: false,
             legend: {
                 type: 'scroll',
                 top: 5,
@@ -753,40 +837,9 @@
                 axisLine: { lineStyle: { color: '#2a3358' } },
                 splitLine: { lineStyle: { color: '#1e2640' } }
             },
-            dataZoom: [
-                {
-                    type: 'inside',
-                    xAxisIndex: 0,
-                    filterMode: 'none',
-                    zoomOnMouseWheel: 'ctrl',
-                    moveOnMouseWheel: true,
-                    moveOnMouseMove: true,
-                    preventDefaultMouseMove: true,
-                    startValue: times[0],
-                    endValue: times[times.length - 1]
-                },
-                {
-                    type: 'slider',
-                    xAxisIndex: 0,
-                    bottom: 8,
-                    height: 20,
-                    borderColor: '#2a3358',
-                    backgroundColor: '#111627',
-                    fillerColor: 'rgba(107,138,253,0.15)',
-                    handleStyle: { color: '#6b8afd' },
-                    textStyle: { color: '#8892b0' },
-                    filterMode: 'none',
-                    startValue: times[0],
-                    endValue: times[times.length - 1]
-                }
-            ],
-            grid: {
-                left: 60,
-                right: 20,
-                top: 40,
-                bottom: 50,
-                containLabel: false
-            },
+            visualMap: null,
+            dataZoom: makeDataZoom(times[0], times[times.length - 1]),
+            grid: { left: 60, right: 20, top: 40, bottom: 50, containLabel: false },
             series: series
         };
 
@@ -794,6 +847,137 @@
         currentView.start = times[0];
         currentView.end = times[times.length - 1];
         setupZoomHandler();
+    }
+
+    function renderHeatmap() {
+        const times = cachedData.times;
+        const yBins = cachedData.yAxis;
+        const rows = cachedData.rows;
+
+        // Build heatmap data: [xIndex, yIndex, value]
+        // Compute time step for cell width
+        const heatData = [];
+        let vMin = Infinity, vMax = -Infinity;
+        for (let t = 0; t < times.length; t++) {
+            for (let y = 0; y < yBins.length; y++) {
+                let val = rows[t] ? rows[t][y] : null;
+                if (val === null || val === undefined || isNaN(val) || val <= 0) {
+                    heatData.push([times[t], yBins[y], null]);
+                } else {
+                    heatData.push([times[t], yBins[y], val]);
+                    if (val < vMin) vMin = val;
+                    if (val > vMax) vMax = val;
+                }
+            }
+        }
+
+        if (vMin === Infinity) vMin = 0;
+        if (vMax === -Infinity) vMax = 1;
+        // Avoid zero range
+        if (vMin === vMax) { vMax = vMin + 1; }
+
+        const yLabel = cachedData.yAxisName +
+            (cachedData.yAxisUnit ? ' (' + cachedData.yAxisUnit + ')' : '');
+
+        const option = {
+            backgroundColor: 'transparent',
+            animation: false,
+            tooltip: {
+                backgroundColor: '#1a1f36',
+                borderColor: '#2a3358',
+                textStyle: { color: '#e0e6f0', fontSize: 12 },
+                formatter: function(params) {
+                    if (!params || !params.value) return '';
+                    const time = new Date(params.value[0]).toISOString().replace('T', ' ').replace('Z', '');
+                    const yVal = params.value[1];
+                    const zVal = params.value[2];
+                    return '<b>' + escapeHtml(time) + '</b><br>' +
+                           yLabel + ': ' + (yVal != null ? yVal : 'N/A') + '<br>' +
+                           'Value: ' + (zVal != null ? zVal.toExponential(3) : 'NaN');
+                }
+            },
+            legend: null,
+            xAxis: {
+                type: 'time',
+                min: times[0] - (times[times.length-1] - times[0]) * 2,
+                max: times[times.length-1] + (times[times.length-1] - times[0]) * 2,
+                axisLabel: { color: '#8892b0' },
+                axisLine: { lineStyle: { color: '#2a3358' } },
+                splitLine: { show: false }
+            },
+            yAxis: {
+                type: 'value',
+                name: yLabel,
+                nameTextStyle: { color: '#8892b0' },
+                axisLabel: { color: '#8892b0' },
+                axisLine: { lineStyle: { color: '#2a3358' } },
+                splitLine: { show: false }
+            },
+            visualMap: {
+                min: logScale ? Math.log10(Math.max(vMin, 1e-30)) : vMin,
+                max: logScale ? Math.log10(vMax) : vMax,
+                calculable: true,
+                orient: 'vertical',
+                right: 10,
+                top: 40,
+                bottom: 60,
+                textStyle: { color: '#8892b0' },
+                inRange: {
+                    color: ['#440154','#482878','#3e4989','#31688e','#26828e',
+                            '#1f9e89','#35b779','#6ece58','#b5de2b','#fde725']
+                },
+                formatter: function(val) {
+                    if (logScale) return (Math.pow(10, val)).toExponential(1);
+                    return val.toExponential(1);
+                }
+            },
+            dataZoom: makeDataZoom(times[0], times[times.length - 1]),
+            grid: { left: 60, right: 100, top: 20, bottom: 50, containLabel: false },
+            series: [{
+                type: 'heatmap',
+                data: heatData.map(function(d) {
+                    if (d[2] === null) return [d[0], d[1], null];
+                    return [d[0], d[1], logScale ? Math.log10(Math.max(d[2], 1e-30)) : d[2]];
+                }),
+                progressive: 5000,
+                emphasis: { itemStyle: { borderColor: '#fff', borderWidth: 1 } }
+            }]
+        };
+
+        chart.setOption(option, true);
+        currentView.start = times[0];
+        currentView.end = times[times.length - 1];
+        setupZoomHandler();
+    }
+
+    function makeDataZoom(startVal, endVal) {
+        return [
+            {
+                type: 'inside',
+                xAxisIndex: 0,
+                filterMode: 'none',
+                zoomOnMouseWheel: 'ctrl',
+                moveOnMouseWheel: true,
+                moveOnMouseMove: true,
+                preventDefaultMouseMove: true,
+                startValue: startVal,
+                endValue: endVal
+            },
+            {
+                type: 'slider',
+                xAxisIndex: 0,
+                bottom: 8,
+                height: 20,
+                borderColor: '#2a3358',
+                backgroundColor: '#111627',
+                fillerColor: 'rgba(107,138,253,0.15)',
+                handleStyle: { color: '#6b8afd' },
+                textStyle: { color: '#8892b0' },
+                filterMode: 'none',
+                startValue: startVal,
+                endValue: endVal
+            }
+        ];
     }
 
     // ===== Continuous Pan/Zoom =====
@@ -897,36 +1081,50 @@
     }
 
     function updateChartData(viewStart, viewEnd) {
-        // Update series data and extend the axis range so user can keep panning
         const times = cachedData.times;
-        const columnNames = cachedData.columnNames;
-
-        const series = [];
-        for (let c = 0; c < columnNames.length; c++) {
-            const colName = columnNames[c];
-            const vals = cachedData.columns[colName];
-            series.push({
-                name: colName,
-                type: 'line',
-                showSymbol: false,
-                lineStyle: { width: 1.2 },
-                color: CHART_COLORS[c % CHART_COLORS.length],
-                data: buildSeriesData(times, vals),
-                sampling: 'lttb',
-                large: true,
-                largeThreshold: 5000
-            });
-        }
-
         const viewRange = viewEnd - viewStart;
-        const axisBuffer = viewRange * 3; // axis extends 3x view width beyond data edges
+        const axisBuffer = viewRange * 3;
 
         // Never shrink the axis range — only expand
         const option = chart.getOption();
         const curMin = option.xAxis[0].min;
         const curMax = option.xAxis[0].max;
-        const newMin = Math.min(curMin != null ? curMin : Infinity, cachedData.times[0] - axisBuffer, viewStart - axisBuffer);
-        const newMax = Math.max(curMax != null ? curMax : -Infinity, cachedData.times[cachedData.times.length - 1] + axisBuffer, viewEnd + axisBuffer);
+        const newMin = Math.min(curMin != null ? curMin : Infinity, times[0] - axisBuffer, viewStart - axisBuffer);
+        const newMax = Math.max(curMax != null ? curMax : -Infinity, times[times.length - 1] + axisBuffer, viewEnd + axisBuffer);
+
+        let series;
+        if (plotType === 'heatmap') {
+            const yBins = cachedData.yAxis;
+            const rows = cachedData.rows;
+            const heatData = [];
+            for (let t = 0; t < times.length; t++) {
+                for (let y = 0; y < yBins.length; y++) {
+                    let val = rows[t] ? rows[t][y] : null;
+                    if (val === null || val === undefined || isNaN(val) || val <= 0) {
+                        heatData.push([times[t], yBins[y], null]);
+                    } else {
+                        heatData.push([times[t], yBins[y], logScale ? Math.log10(Math.max(val, 1e-30)) : val]);
+                    }
+                }
+            }
+            series = [{ type: 'heatmap', data: heatData, progressive: 5000 }];
+        } else {
+            series = [];
+            for (let c = 0; c < cachedData.columnNames.length; c++) {
+                const colName = cachedData.columnNames[c];
+                series.push({
+                    name: colName,
+                    type: 'line',
+                    showSymbol: false,
+                    lineStyle: { width: 1.2 },
+                    color: CHART_COLORS[c % CHART_COLORS.length],
+                    data: buildSeriesData(times, cachedData.columns[colName]),
+                    sampling: 'lttb',
+                    large: true,
+                    largeThreshold: 5000
+                });
+            }
+        }
 
         chart.setOption({
             xAxis: { min: newMin, max: newMax },
@@ -959,10 +1157,13 @@
         if (cachedData.times.length <= MAX_CACHE_POINTS) return;
         const excess = cachedData.times.length - MAX_CACHE_POINTS;
         cachedData.times = cachedData.times.slice(excess);
-        for (const cn of cachedData.columnNames) {
-            cachedData.columns[cn] = cachedData.columns[cn].slice(excess);
+        if (plotType === 'heatmap') {
+            cachedData.rows = cachedData.rows.slice(excess);
+        } else {
+            for (const cn of cachedData.columnNames) {
+                cachedData.columns[cn] = cachedData.columns[cn].slice(excess);
+            }
         }
-        // Update intervals to reflect eviction
         if (cachedData.times.length > 0) {
             const newStart = cachedData.times[0];
             cachedData.intervals = cachedData.intervals
