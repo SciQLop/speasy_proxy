@@ -34,9 +34,9 @@ def encode_output(provider: str, fmt, pickle_proto, version, if_newer_than: str 
 
 @router.get('/get_inventory', response_class=Response, description='Get the inventory of a provider or all providers',
             responses={304: {"description": "Client inventory is up to date"}, 200: {"description": "Inventory data"}})
-async def get_inventory(request: Request, provider: Provider,
-                        format: InventoryFormat, pickle_proto: PickleProtocol,
-                        zstd_compression: ZstdCompression,
+async def get_inventory(request: Request, provider: Provider = "ssc",
+                        format: InventoryFormat = "json", pickle_proto: PickleProtocol = 3,
+                        zstd_compression: ZstdCompression = False,
                         version: int = 1):
     request_start_time = time.time_ns()
     request_id = uuid.uuid4()
