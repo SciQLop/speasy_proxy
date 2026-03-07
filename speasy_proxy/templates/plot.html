@@ -220,7 +220,7 @@
     <div class="sidebar-header">
         <a href="/" class="back-link">&larr; Back to dashboard</a>
         <h2>Products</h2>
-        <input type="text" id="tree-search" placeholder="Search products...">
+        <input type="text" id="search-box" placeholder="Search products...">
     </div>
     <div class="tree-container" id="tree-container">
         <div class="loading-text">Loading inventory...</div>
@@ -244,7 +244,7 @@
 
     <div class="chart-wrapper">
         <div id="chart"></div>
-        <div class="chart-loading-overlay" id="chart-loading">
+        <div class="chart-loading-overlay" id="loading-overlay">
             <div class="spinner"></div>
         </div>
     </div>
@@ -259,6 +259,7 @@
     let chart = null;
     let inventory = null;
     let selectedProduct = null;
+    let cachedData = null;
 
     function initChart() {
         // TODO: initialize ECharts instance
