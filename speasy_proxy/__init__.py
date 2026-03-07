@@ -2,6 +2,7 @@ __author__ = """Alexis Jeandet"""
 __email__ = 'alexis.jeandet@member.fsf.org'
 __version__ = '0.13.5'
 
+import asyncio
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
@@ -57,8 +58,10 @@ async def lifespan(app: FastAPI):
     log.info("Starting up speasy-proxy...")
     mgr = InventoryManager(update_interval_seconds=config.inventory_update_interval.get())
     app.state.inventory_manager = mgr
-    mgr.update_sync()
+    await mgr.update_async()
+    task = asyncio.create_task(mgr.periodic_update_loop())
     yield
+    task.cancel()
     log.info("Shutting down speasy-proxy...")
 
 app = get_application(lifespan=lifespan)
