@@ -54,12 +54,11 @@ def _get_data(product, start_time, stop_time, extra_http_headers, **extra_params
 
 @router.get('/get_data', description='Get data from cache or remote server')
 async def get_data(request: Request, background_tasks: BackgroundTasks,
-                   format: DataFormat,
-                   zstd_compression: ZstdCompression,
-                   pickle_proto: PickleProtocol,
-                   path: str = Query(example="amda/c1_b_gsm"),
-                   start_time: datetime = Query(example="2018-10-24T00:00:00"),
-                   stop_time: datetime = Query(example="2018-10-24T02:00:00"),
+                   path: str = Query(examples=["amda/c1_b_gsm"]),
+                   start_time: datetime = Query(examples=["2018-10-24T00:00:00"]),
+                   stop_time: datetime = Query(examples=["2018-10-24T02:00:00"]),
+                   format: DataFormat = "python_dict",
+                   zstd_compression: ZstdCompression = False,
                    output_format: Optional[str] = Query(None, enum=["CDF_ISTP"],
                                                         description="Data format used to retrieve data from remote server (such as AMDA), not the data format of the current request. Only available with AMDA."),
                    coordinate_system: Optional[str] = Query(None, enum=["geo", "gm", "gse", "gsm", "sm", "geitod",
@@ -67,7 +66,8 @@ async def get_data(request: Request, background_tasks: BackgroundTasks,
                                                             description="Coordinate system used to retrieve trajectories from SSCWeb."),
                    method: Optional[str] = Query(None, enum=["API", "BEST", "FILE"],
                                                  description="Method used to retrieve data from CDA."),
-                   product_inputs: Optional[Json] = Query(None, description="Product input parameters (in JSON format) used used for example in AMDA templates parameters")):
+                   product_inputs: Optional[Json] = Query(None, description="Product input parameters (in JSON format) used used for example in AMDA templates parameters"),
+                   pickle_proto: PickleProtocol = 3):
     request_start_time = time.time_ns()
     background_tasks.add_task(ensure_update_inventory)
     request_id = uuid.uuid4()

@@ -43,7 +43,7 @@ def is_server_up(ws_class):
 
 
 @router.get('/is_up', response_class=JSONResponse, description='Check if the server is up')
-def is_up(request: Request, provider: Provider):
+def is_up(request: Request, provider: Provider = "ssc"):
     log.debug(f'Client asking if {provider} is up')
     ws_class = PROVIDERS.get(provider.lower())
     if ws_class:
