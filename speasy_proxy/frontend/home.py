@@ -20,3 +20,12 @@ def home(request: Request, user_agent: Annotated[str | None, Header()] = None,
     if base_url.endswith('/'):
         base_url = base_url[:-1]
     return templates.TemplateResponse(request, name="index.html", context={"request": request, 'base_url': base_url})
+
+
+@router.get('/plot', response_class=HTMLResponse)
+def plot(request: Request, x_scheme: Annotated[str | None, Header()] = None):
+    scheme = x_scheme or request.url.scheme
+    base_url = str(scheme) + "://" + str(request.url.netloc)
+    if base_url.endswith('/'):
+        base_url = base_url[:-1]
+    return templates.TemplateResponse(request, name="plot.html", context={"request": request, 'base_url': base_url})
