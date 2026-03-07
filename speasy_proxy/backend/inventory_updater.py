@@ -1,3 +1,4 @@
+import asyncio
 from datetime import datetime, timedelta, UTC
 from typing import Dict, Optional
 import speasy as spz
@@ -6,7 +7,6 @@ from speasy.inventories import tree
 from speasy.core.requests_scheduling.request_dispatch import PROVIDERS
 
 import logging
-import threading
 from speasy_proxy.api import pickle_data
 import pickle
 from dateutil import parser
@@ -22,7 +22,6 @@ class InventoryManager:
     def __init__(self, update_interval_seconds: int = 7200):
         self._inventories: Dict[str, bytes | str] = {}
         self._last_update: datetime = datetime.now(UTC) - timedelta(days=1)
-        self._lock: threading.Lock = threading.Lock()
         self._update_interval: int = update_interval_seconds
 
     @property
@@ -72,18 +71,9 @@ class InventoryManager:
         return result
 
     def ensure_update(self):
-        """Check if update is needed, acquire lock, rebuild inventories, and swap."""
-        if datetime.now(UTC) >= (self._last_update + timedelta(seconds=self._update_interval)):
-            with self._lock:
-                log.debug("Updating runtime inventory")
-                if 'build_date' not in tree.__dict__:
-                    build_dates = [parser.parse(tree.__dict__[provider].build_date)
-                                   for provider in tree.__dict__.keys()]
-                    tree.__dict__["build_date"] = max(build_dates).isoformat()
-                spz.update_inventories()
-                new_inventories = self._build_all_inventories()
-                self._inventories = new_inventories
-                self._last_update = datetime.now(UTC)
+        result = self._do_update()
+        if result is not None:
+            self._inventories = result
 
     def get_inventory(self, provider: str, fmt: str, version: int = 1, pickle_proto: int = None,
                       if_newer_than: str = None) -> Optional[bytes | str]:
@@ -105,6 +95,35 @@ class InventoryManager:
                 f"Inventory for '{provider}' is not available in requested format (key={key}). Updating inventory.")
             self.ensure_update()
         return self._inventories.get(key)
+
+    async def update_async(self):
+        log.info("Updating inventory (async)...")
+        new_inventories = await asyncio.to_thread(self._do_update)
+        if new_inventories is not None:
+            self._inventories = new_inventories
+        log.info("Inventory updated.")
+
+    def _do_update(self) -> dict[str, bytes | str] | None:
+        """Sync method that checks if update is needed and builds inventories."""
+        if datetime.now(UTC) >= (self._last_update + timedelta(seconds=self._update_interval)):
+            log.debug("Updating runtime inventory")
+            if 'build_date' not in tree.__dict__:
+                build_dates = [parser.parse(tree.__dict__[p].build_date) for p in tree.__dict__.keys()]
+                tree.__dict__["build_date"] = max(build_dates).isoformat()
+            spz.update_inventories()
+            result = self._build_all_inventories()
+            self._last_update = datetime.now(UTC)
+            return result
+        return None
+
+    async def periodic_update_loop(self):
+        """Background task that periodically updates inventories."""
+        while True:
+            await asyncio.sleep(self._update_interval)
+            try:
+                await self.update_async()
+            except Exception:
+                log.exception("Failed to update inventory")
 
     def update_sync(self):
         """Synchronous update entry point for startup."""
