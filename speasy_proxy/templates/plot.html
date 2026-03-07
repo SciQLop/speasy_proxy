@@ -254,28 +254,689 @@
 
 <script>
     const BASE_URL = '{{ base_url }}';
+    const API_BASE = BASE_URL + '/';
+    const MAX_CACHE_POINTS = 500000;
+    const SKIP_KEYS = new Set([
+        '__spz_name__', '__spz_provider__', '__spz_type__', '__spz_uid__',
+        'build_date', 'Catalogs', 'TimeTables',
+        'start_date', 'stop_date', 'dt', 'sampling_time',
+        'is_public', 'description', 'units', 'display_type',
+        'n_components', 'dataset', 'process_id',
+        'FIELDNAM', 'CATDESC', 'LABLAXIS', 'UNITS', 'VALIDMIN', 'VALIDMAX',
+        'SCALEMIN', 'SCALEMAX', 'SCALETYP', 'FILLVAL', 'SI_CONVERSION',
+        'COORDINATE_SYSTEM', 'TENSOR_ORDER', 'SIZES', 'DEPEND_1',
+        'LABL_PTR_1', 'LABL_PTR_2', 'COMPONENT_0', 'COMPONENT_1',
+        'COMPONENT_2', 'QUALITY', 'spaseId', 'dataSource'
+    ]);
+    const CHART_COLORS = [
+        '#5470c6','#91cc75','#fac858','#ee6666','#73c0de',
+        '#3ba272','#fc8452','#9a60b4','#ea7ccc'
+    ];
 
     // State
     let chart = null;
     let inventory = null;
     let selectedProduct = null;
     let cachedData = null;
+    let leafIndex = [];
+    let zoomDebounceTimer = null;
 
-    function initChart() {
-        // TODO: initialize ECharts instance
+    // ===== Helpers =====
+
+    function escapeHtml(s) {
+        const div = document.createElement('div');
+        div.textContent = s;
+        return div.innerHTML;
     }
 
-    function loadInventory() {
-        // TODO: fetch inventory and build tree
+    function toLocalISOString(date) {
+        const pad = (n) => String(n).padStart(2, '0');
+        return date.getFullYear() + '-' + pad(date.getMonth() + 1) + '-' +
+               pad(date.getDate()) + 'T' + pad(date.getHours()) + ':' +
+               pad(date.getMinutes()) + ':' + pad(date.getSeconds());
+    }
+
+    function getDisplayName(node, key) {
+        return (node && (node.__spz_name__ || node.name)) || key;
+    }
+
+    function getProductPath(node) {
+        return node.__spz_provider__ + '/' + node.__spz_uid__;
+    }
+
+    function showLoading(visible) {
+        const overlay = document.getElementById('loading-overlay');
+        if (visible) {
+            overlay.classList.add('visible');
+        } else {
+            overlay.classList.remove('visible');
+        }
+    }
+
+    function setStatus(msg) {
+        document.getElementById('status-bar').textContent = msg;
+    }
+
+    function shouldSkipNode(node) {
+        if (!node || typeof node !== 'object') return true;
+        const t = node.__spz_type__ || '';
+        if (t.indexOf('Catalog') !== -1 || t.indexOf('TimeTable') !== -1) return true;
+        return false;
+    }
+
+    // ===== Task 4: Inventory Tree =====
+
+    async function loadInventory() {
+        try {
+            const resp = await fetch(API_BASE + 'get_inventory?format=json&provider=all');
+            inventory = JSON.parse(await resp.text());
+            renderTree(inventory);
+            setupSearch();
+        } catch (e) {
+            document.getElementById('tree-container').innerHTML =
+                '<div class="loading-text">Failed to load inventory.</div>';
+            console.error('Inventory load error:', e);
+        }
+    }
+
+    function renderTree(data) {
+        const container = document.getElementById('tree-container');
+        container.innerHTML = '';
+        if (!data || typeof data !== 'object') return;
+        const keys = Object.keys(data).filter(k => !SKIP_KEYS.has(k)).sort();
+        for (const key of keys) {
+            if (shouldSkipNode(data[key])) continue;
+            const node = buildTreeNode(data[key], key);
+            if (node) container.appendChild(node);
+        }
+    }
+
+    function buildTreeNode(data, key) {
+        if (!data || typeof data !== 'object') return null;
+        if (shouldSkipNode(data)) return null;
+
+        const displayName = getDisplayName(data, key);
+
+        // Leaf node
+        if (data.__spz_type__ === 'ParameterIndex') {
+            const div = document.createElement('div');
+            div.style.cssText = 'padding:3px 0 3px 8px;cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-radius:4px;';
+            div.textContent = displayName;
+            div.title = getProductPath(data);
+            div.addEventListener('mouseenter', () => { div.style.background = '#1e2640'; });
+            div.addEventListener('mouseleave', () => {
+                if (!div.classList.contains('selected')) div.style.background = '';
+            });
+            div.addEventListener('click', () => selectProduct(data, div));
+            return div;
+        }
+
+        // Branch node — collect children first
+        const childKeys = Object.keys(data).filter(k => !SKIP_KEYS.has(k)).sort();
+        const childNodes = [];
+        for (const ck of childKeys) {
+            if (typeof data[ck] !== 'object' || data[ck] === null) continue;
+            if (shouldSkipNode(data[ck])) continue;
+            const child = buildTreeNode(data[ck], ck);
+            if (child) childNodes.push(child);
+        }
+        if (childNodes.length === 0) return null;
+
+        const wrapper = document.createElement('div');
+        wrapper.style.cssText = 'margin-left:4px;';
+
+        const header = document.createElement('div');
+        header.style.cssText = 'padding:3px 0;cursor:pointer;user-select:none;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;';
+        const arrow = document.createElement('span');
+        arrow.textContent = '\u25B6 ';
+        arrow.style.cssText = 'font-size:0.7em;display:inline-block;transition:transform 0.15s;color:#555e7e;';
+        header.appendChild(arrow);
+        header.appendChild(document.createTextNode(displayName));
+
+        const childContainer = document.createElement('div');
+        childContainer.style.cssText = 'display:none;margin-left:12px;';
+        for (const cn of childNodes) childContainer.appendChild(cn);
+
+        header.addEventListener('click', () => {
+            const open = childContainer.style.display !== 'none';
+            childContainer.style.display = open ? 'none' : 'block';
+            arrow.style.transform = open ? '' : 'rotate(90deg)';
+        });
+
+        wrapper.appendChild(header);
+        wrapper.appendChild(childContainer);
+        return wrapper;
+    }
+
+    let previousSelectedLabel = null;
+
+    function selectProduct(node, labelEl) {
+        // Un-highlight previous
+        if (previousSelectedLabel) {
+            previousSelectedLabel.classList.remove('selected');
+            previousSelectedLabel.style.background = '';
+        }
+        // Highlight new
+        labelEl.classList.add('selected');
+        labelEl.style.background = '#1e2640';
+        previousSelectedLabel = labelEl;
+
+        selectedProduct = getProductPath(node);
+        document.getElementById('product-path').value = selectedProduct;
+        document.getElementById('btn-plot').disabled = false;
+
+        // Pre-fill date inputs
+        if (node.stop_date) {
+            const stopDate = new Date(node.stop_date);
+            const startDate = new Date(stopDate.getTime() - 2 * 3600 * 1000);
+            document.getElementById('stop-time').value = toLocalISOString(stopDate);
+            document.getElementById('start-time').value = toLocalISOString(startDate);
+        }
+
+        updateURL();
+    }
+
+    // ===== Task 5: Search/Filter =====
+
+    function setupSearch() {
+        leafIndex = [];
+        buildLeafIndex(inventory, []);
+
+        document.getElementById('search-box').addEventListener('input', function() {
+            const query = this.value.trim().toLowerCase();
+            if (query.length < 2) {
+                renderTree(inventory);
+                return;
+            }
+            renderSearchResults(query);
+        });
+    }
+
+    function buildLeafIndex(node, breadcrumb) {
+        if (!node || typeof node !== 'object') return;
+        if (shouldSkipNode(node)) return;
+
+        if (node.__spz_type__ === 'ParameterIndex') {
+            const displayName = node.__spz_name__ || node.name || '';
+            const bc = breadcrumb.concat(displayName);
+            leafIndex.push({
+                name: bc.join(' / ').toLowerCase(),
+                displayName: displayName,
+                breadcrumb: bc,
+                node: node,
+                path: getProductPath(node)
+            });
+            return;
+        }
+
+        const keys = Object.keys(node).filter(k => !SKIP_KEYS.has(k));
+        for (const k of keys) {
+            if (typeof node[k] === 'object' && node[k] !== null) {
+                buildLeafIndex(node[k], breadcrumb.concat(getDisplayName(node[k], k)));
+            }
+        }
+    }
+
+    function renderSearchResults(query) {
+        const container = document.getElementById('tree-container');
+        container.innerHTML = '';
+
+        const terms = query.split(/\s+/).filter(t => t.length > 0);
+        const results = leafIndex.filter(leaf => {
+            return terms.every(t => leaf.name.indexOf(t) !== -1);
+        });
+
+        if (results.length === 0) {
+            container.innerHTML = '<div class="loading-text">No results found.</div>';
+            return;
+        }
+
+        const max = Math.min(results.length, 100);
+        for (let i = 0; i < max; i++) {
+            const leaf = results[i];
+            const div = document.createElement('div');
+            div.style.cssText = 'padding:4px 4px;cursor:pointer;border-radius:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;';
+
+            const prefix = leaf.breadcrumb.slice(0, -1).join(' / ');
+            if (prefix) {
+                const span = document.createElement('span');
+                span.style.color = '#555e7e';
+                span.textContent = prefix + ' / ';
+                div.appendChild(span);
+            }
+            div.appendChild(document.createTextNode(leaf.displayName));
+            div.title = leaf.path;
+
+            div.addEventListener('mouseenter', () => { div.style.background = '#1e2640'; });
+            div.addEventListener('mouseleave', () => {
+                if (!div.classList.contains('selected')) div.style.background = '';
+            });
+            div.addEventListener('click', () => selectProduct(leaf.node, div));
+            container.appendChild(div);
+        }
+
+        if (results.length > 100) {
+            const more = document.createElement('div');
+            more.className = 'loading-text';
+            more.textContent = '... and ' + (results.length - 100) + ' more results';
+            container.appendChild(more);
+        }
+    }
+
+    // ===== Task 6: Data Fetch and ECharts Plot =====
+
+    function initChart() {
+        chart = echarts.init(document.getElementById('chart'), 'dark');
+        window.addEventListener('resize', () => { chart.resize(); });
     }
 
     function bindControls() {
-        // TODO: wire up button and input events
+        document.getElementById('btn-plot').addEventListener('click', doPlot);
+        document.getElementById('start-time').addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') doPlot();
+        });
+        document.getElementById('stop-time').addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') doPlot();
+        });
+    }
+
+    async function doPlot() {
+        const product = document.getElementById('product-path').value;
+        const startTime = document.getElementById('start-time').value;
+        const stopTime = document.getElementById('stop-time').value;
+
+        if (!product) { setStatus('No product selected.'); return; }
+        if (!startTime || !stopTime) { setStatus('Please set start and stop times.'); return; }
+
+        selectedProduct = product;
+        cachedData = {
+            product: product,
+            intervals: [],
+            times: [],
+            columns: {},
+            columnNames: [],
+            unit: ''
+        };
+
+        updateURL();
+        await fetchAndPlot(startTime, stopTime);
+    }
+
+    async function fetchAndPlot(startTime, stopTime) {
+        showLoading(true);
+        setStatus('Fetching data...');
+        try {
+            const data = await fetchData(selectedProduct, startTime, stopTime);
+            if (!data || !data.values || !data.axes || data.axes.length === 0) {
+                setStatus('No data returned.');
+                showLoading(false);
+                return;
+            }
+            mergeData(data, new Date(startTime).getTime(), new Date(stopTime).getTime());
+            renderChart();
+            const totalPoints = cachedData.times.length * cachedData.columnNames.length;
+            setStatus('Loaded ' + cachedData.times.length + ' timestamps, ' +
+                       cachedData.columnNames.length + ' columns (' + totalPoints + ' points)');
+        } catch (e) {
+            setStatus('Error: ' + e.message);
+            console.error(e);
+        } finally {
+            showLoading(false);
+        }
+    }
+
+    async function fetchData(product, startTime, stopTime) {
+        const startISO = new Date(startTime).toISOString();
+        const stopISO = new Date(stopTime).toISOString();
+        const url = API_BASE + 'get_data?format=json&path=' +
+                    encodeURIComponent(product) +
+                    '&start_time=' + encodeURIComponent(startISO) +
+                    '&stop_time=' + encodeURIComponent(stopISO);
+        const resp = await fetch(url);
+        const text = await resp.text();
+        // Replace NaN with null before parsing
+        const sanitized = text.replace(/\bNaN\b/g, 'null');
+        return JSON.parse(sanitized);
+    }
+
+    function mergeData(json, fetchStart, fetchStop) {
+        const rawTimes = json.axes[0].values;
+        const newTimes = rawTimes.map(t => t / 1e6); // nanoseconds to milliseconds
+        const newValues = json.values.values; // 2D array
+        const columns = json.columns || [];
+        const unit = (json.values.meta && json.values.meta.UNITS) || '';
+
+        if (cachedData.times.length === 0) {
+            // First load
+            cachedData.times = newTimes;
+            cachedData.columnNames = columns.length > 0 ? columns :
+                (newValues[0] ? newValues[0].map((_, i) => 'col_' + i) : ['value']);
+            cachedData.unit = unit;
+            for (let c = 0; c < cachedData.columnNames.length; c++) {
+                cachedData.columns[cachedData.columnNames[c]] = newValues.map(row => row[c]);
+            }
+            cachedData.intervals = [[fetchStart, fetchStop]];
+        } else {
+            // Merge
+            const oldTimes = cachedData.times;
+            const merged = mergeSorted(oldTimes, newTimes, cachedData.columns, newValues, cachedData.columnNames);
+            cachedData.times = merged.times;
+            cachedData.columns = merged.columns;
+            cachedData.intervals = mergeIntervals(cachedData.intervals.concat([[fetchStart, fetchStop]]));
+        }
+    }
+
+    function mergeSorted(oldTimes, newTimes, oldColumns, newValues, columnNames) {
+        const resultTimes = [];
+        const resultColumns = {};
+        for (const cn of columnNames) resultColumns[cn] = [];
+
+        let i = 0, j = 0;
+        while (i < oldTimes.length && j < newTimes.length) {
+            if (oldTimes[i] < newTimes[j]) {
+                resultTimes.push(oldTimes[i]);
+                for (const cn of columnNames) resultColumns[cn].push(oldColumns[cn][i]);
+                i++;
+            } else if (oldTimes[i] > newTimes[j]) {
+                resultTimes.push(newTimes[j]);
+                for (let c = 0; c < columnNames.length; c++) {
+                    resultColumns[columnNames[c]].push(newValues[j][c]);
+                }
+                j++;
+            } else {
+                // Duplicate — keep new
+                resultTimes.push(newTimes[j]);
+                for (let c = 0; c < columnNames.length; c++) {
+                    resultColumns[columnNames[c]].push(newValues[j][c]);
+                }
+                i++;
+                j++;
+            }
+        }
+        while (i < oldTimes.length) {
+            resultTimes.push(oldTimes[i]);
+            for (const cn of columnNames) resultColumns[cn].push(oldColumns[cn][i]);
+            i++;
+        }
+        while (j < newTimes.length) {
+            resultTimes.push(newTimes[j]);
+            for (let c = 0; c < columnNames.length; c++) {
+                resultColumns[columnNames[c]].push(newValues[j][c]);
+            }
+            j++;
+        }
+        return { times: resultTimes, columns: resultColumns };
+    }
+
+    function mergeIntervals(intervals) {
+        if (intervals.length === 0) return [];
+        intervals.sort((a, b) => a[0] - b[0]);
+        const merged = [intervals[0].slice()];
+        for (let i = 1; i < intervals.length; i++) {
+            const last = merged[merged.length - 1];
+            if (intervals[i][0] <= last[1]) {
+                last[1] = Math.max(last[1], intervals[i][1]);
+            } else {
+                merged.push(intervals[i].slice());
+            }
+        }
+        return merged;
+    }
+
+    function lttbDownsample(times, values, threshold) {
+        const len = times.length;
+        if (threshold >= len || threshold <= 2) {
+            return times.map((t, i) => [t, values[i]]);
+        }
+        const sampled = [];
+        sampled.push([times[0], values[0]]);
+        const bucketSize = (len - 2) / (threshold - 2);
+        let a = 0;
+        for (let i = 1; i < threshold - 1; i++) {
+            const bucketStart = Math.floor((i - 1) * bucketSize) + 1;
+            const bucketEnd = Math.min(Math.floor(i * bucketSize) + 1, len);
+            const nextBucketStart = Math.min(Math.floor(i * bucketSize) + 1, len);
+            const nextBucketEnd = Math.min(Math.floor((i + 1) * bucketSize) + 1, len);
+
+            // Average of next bucket
+            let avgX = 0, avgY = 0, cnt = 0;
+            for (let j = nextBucketStart; j < nextBucketEnd; j++) {
+                avgX += times[j];
+                avgY += (values[j] === null ? 0 : values[j]);
+                cnt++;
+            }
+            if (cnt > 0) { avgX /= cnt; avgY /= cnt; }
+
+            // Find point in current bucket with max triangle area
+            let maxArea = -1, maxIdx = bucketStart;
+            const ax = times[a], ay = values[a] === null ? 0 : values[a];
+            for (let j = bucketStart; j < bucketEnd; j++) {
+                const area = Math.abs((ax - avgX) * ((values[j] === null ? 0 : values[j]) - ay) -
+                                      (ax - times[j]) * (avgY - ay));
+                if (area > maxArea) { maxArea = area; maxIdx = j; }
+            }
+            sampled.push([times[maxIdx], values[maxIdx]]);
+            a = maxIdx;
+        }
+        sampled.push([times[len - 1], values[len - 1]]);
+        return sampled;
+    }
+
+    function renderChart() {
+        const times = cachedData.times;
+        const columnNames = cachedData.columnNames;
+        const threshold = Math.min(4000, times.length);
+
+        const series = [];
+        for (let c = 0; c < columnNames.length; c++) {
+            const colName = columnNames[c];
+            const vals = cachedData.columns[colName];
+            const sampledData = lttbDownsample(times, vals, threshold);
+            series.push({
+                name: colName,
+                type: 'line',
+                showSymbol: false,
+                lineStyle: { width: 1.2 },
+                color: CHART_COLORS[c % CHART_COLORS.length],
+                data: sampledData,
+                sampling: 'lttb'
+            });
+        }
+
+        const option = {
+            backgroundColor: 'transparent',
+            legend: {
+                type: 'scroll',
+                top: 5,
+                textStyle: { color: '#e0e6f0' }
+            },
+            tooltip: {
+                trigger: 'axis',
+                backgroundColor: '#1a1f36',
+                borderColor: '#2a3358',
+                textStyle: { color: '#e0e6f0', fontSize: 12 },
+                formatter: function(params) {
+                    if (!params || params.length === 0) return '';
+                    const time = new Date(params[0].value[0]).toISOString().replace('T', ' ').replace('Z', '');
+                    let html = '<b>' + escapeHtml(time) + '</b><br>';
+                    for (const p of params) {
+                        const val = p.value[1];
+                        const valStr = val === null ? 'NaN' : (typeof val === 'number' ? val.toPrecision(6) : val);
+                        html += '<span style="color:' + p.color + '">\u25CF</span> ' +
+                                escapeHtml(p.seriesName) + ': ' + valStr + '<br>';
+                    }
+                    return html;
+                }
+            },
+            xAxis: {
+                type: 'time',
+                axisLabel: { color: '#8892b0' },
+                axisLine: { lineStyle: { color: '#2a3358' } },
+                splitLine: { show: false }
+            },
+            yAxis: {
+                type: 'value',
+                name: cachedData.unit,
+                nameTextStyle: { color: '#8892b0' },
+                axisLabel: { color: '#8892b0' },
+                axisLine: { lineStyle: { color: '#2a3358' } },
+                splitLine: { lineStyle: { color: '#1e2640' } }
+            },
+            dataZoom: [
+                {
+                    type: 'inside',
+                    xAxisIndex: 0,
+                    filterMode: 'none'
+                },
+                {
+                    type: 'slider',
+                    xAxisIndex: 0,
+                    bottom: 8,
+                    height: 20,
+                    borderColor: '#2a3358',
+                    backgroundColor: '#111627',
+                    fillerColor: 'rgba(107,138,253,0.15)',
+                    handleStyle: { color: '#6b8afd' },
+                    textStyle: { color: '#8892b0' },
+                    filterMode: 'none'
+                }
+            ],
+            grid: {
+                left: 60,
+                right: 20,
+                top: 40,
+                bottom: 50,
+                containLabel: false
+            },
+            series: series
+        };
+
+        chart.setOption(option, true);
+        setupZoomHandler();
+    }
+
+    // ===== Task 7: Smart Zoom/Pan Fetching =====
+
+    function setupZoomHandler() {
+        // Remove previous listener to avoid stacking
+        chart.off('datazoom');
+        chart.on('datazoom', () => {
+            if (zoomDebounceTimer) clearTimeout(zoomDebounceTimer);
+            zoomDebounceTimer = setTimeout(onZoomPan, 300);
+        });
+    }
+
+    async function onZoomPan() {
+        if (!cachedData || cachedData.times.length === 0) return;
+
+        const option = chart.getOption();
+        if (!option.dataZoom || option.dataZoom.length === 0) return;
+
+        const dz = option.dataZoom[0];
+        const startPct = dz.start / 100;
+        const endPct = dz.end / 100;
+
+        const dataMin = cachedData.times[0];
+        const dataMax = cachedData.times[cachedData.times.length - 1];
+        const range = dataMax - dataMin;
+
+        const viewStart = dataMin + range * startPct;
+        const viewEnd = dataMin + range * endPct;
+
+        const gaps = computeGaps(viewStart, viewEnd, cachedData.intervals);
+        if (gaps.length === 0) return;
+
+        for (const gap of gaps) {
+            const gapStartISO = new Date(gap[0]).toISOString();
+            const gapStopISO = new Date(gap[1]).toISOString();
+            showLoading(true);
+            setStatus('Fetching gap: ' + gapStartISO + ' to ' + gapStopISO);
+            try {
+                const data = await fetchData(selectedProduct, gapStartISO, gapStopISO);
+                if (data && data.values && data.axes && data.axes.length > 0) {
+                    mergeData(data, gap[0], gap[1]);
+                }
+            } catch (e) {
+                console.error('Gap fetch error:', e);
+            }
+        }
+
+        evictCache();
+        renderChart();
+        showLoading(false);
+        setStatus('Loaded ' + cachedData.times.length + ' timestamps, ' +
+                   cachedData.columnNames.length + ' columns');
+    }
+
+    function computeGaps(viewStart, viewEnd, intervals) {
+        const gaps = [];
+        let cursor = viewStart;
+        for (const iv of intervals) {
+            if (iv[1] <= cursor) continue;
+            if (iv[0] > viewEnd) break;
+            if (iv[0] > cursor) {
+                gaps.push([cursor, Math.min(iv[0], viewEnd)]);
+            }
+            cursor = Math.max(cursor, iv[1]);
+        }
+        if (cursor < viewEnd) {
+            gaps.push([cursor, viewEnd]);
+        }
+        return gaps;
+    }
+
+    function evictCache() {
+        if (cachedData.times.length <= MAX_CACHE_POINTS) return;
+        const excess = cachedData.times.length - MAX_CACHE_POINTS;
+        cachedData.times = cachedData.times.slice(excess);
+        for (const cn of cachedData.columnNames) {
+            cachedData.columns[cn] = cachedData.columns[cn].slice(excess);
+        }
+        // Update intervals to reflect eviction
+        if (cachedData.times.length > 0) {
+            const newStart = cachedData.times[0];
+            cachedData.intervals = cachedData.intervals
+                .map(iv => [Math.max(iv[0], newStart), iv[1]])
+                .filter(iv => iv[1] > iv[0]);
+        }
+    }
+
+    // ===== Task 8: URL State =====
+
+    function updateURL() {
+        const params = new URLSearchParams(window.location.search);
+        const product = document.getElementById('product-path').value;
+        const startTime = document.getElementById('start-time').value;
+        const stopTime = document.getElementById('stop-time').value;
+
+        if (product) params.set('path', product); else params.delete('path');
+        if (startTime) params.set('start', startTime); else params.delete('start');
+        if (stopTime) params.set('stop', stopTime); else params.delete('stop');
+
+        const newUrl = window.location.pathname + '?' + params.toString();
+        history.replaceState(null, '', newUrl);
     }
 
     function loadFromURLParams() {
-        // TODO: read URL params and restore state
+        const params = new URLSearchParams(window.location.search);
+        const path = params.get('path');
+        const start = params.get('start');
+        const stop = params.get('stop');
+
+        if (path) {
+            document.getElementById('product-path').value = path;
+            selectedProduct = path;
+            document.getElementById('btn-plot').disabled = false;
+        }
+        if (start) document.getElementById('start-time').value = start;
+        if (stop) document.getElementById('stop-time').value = stop;
+
+        if (path && start && stop) {
+            setTimeout(() => doPlot(), 100);
+        }
     }
+
+    // ===== Init =====
 
     document.addEventListener('DOMContentLoaded', () => {
         initChart();
