@@ -770,6 +770,8 @@
             },
             xAxis: {
                 type: 'time',
+                min: times[0] - (times[times.length-1] - times[0]) * 2,
+                max: times[times.length-1] + (times[times.length-1] - times[0]) * 2,
                 axisLabel: { color: '#8892b0' },
                 axisLine: { lineStyle: { color: '#2a3358' } },
                 splitLine: { show: false }
@@ -786,7 +788,9 @@
                 {
                     type: 'inside',
                     xAxisIndex: 0,
-                    filterMode: 'none'
+                    filterMode: 'none',
+                    startValue: times[0],
+                    endValue: times[times.length - 1]
                 },
                 {
                     type: 'slider',
@@ -798,7 +802,9 @@
                     fillerColor: 'rgba(107,138,253,0.15)',
                     handleStyle: { color: '#6b8afd' },
                     textStyle: { color: '#8892b0' },
-                    filterMode: 'none'
+                    filterMode: 'none',
+                    startValue: times[0],
+                    endValue: times[times.length - 1]
                 }
             ],
             grid: {
@@ -812,11 +818,95 @@
         };
 
         chart.setOption(option, true);
+        currentView.start = times[0];
+        currentView.end = times[times.length - 1];
         setupZoomHandler();
     }
 
-    function renderChartPreservingView(viewStart, viewEnd) {
-        // Same as renderChart but sets dataZoom to absolute values to preserve pan position
+    // ===== Continuous Pan/Zoom =====
+    //
+    // Strategy: track the visible time window explicitly (not via dataZoom %).
+    // On every zoom/pan, ensure we have data covering visible range + 1x buffer
+    // on each side. The xAxis min/max is set wider than the data so the user
+    // can always pan further without hitting a wall.
+
+    let currentView = { start: null, end: null }; // millisecond timestamps
+    let isFetching = false;
+    const BUFFER_RATIO = 1.0; // pre-fetch 1x view width on each side
+
+    function setupZoomHandler() {
+        chart.off('datazoom');
+        chart.on('datazoom', (params) => {
+            // Extract the actual visible range from the event
+            if (params.batch && params.batch.length > 0) {
+                const b = params.batch[0];
+                if (b.startValue != null && b.endValue != null) {
+                    currentView.start = b.startValue;
+                    currentView.end = b.endValue;
+                }
+            } else if (params.startValue != null && params.endValue != null) {
+                currentView.start = params.startValue;
+                currentView.end = params.endValue;
+            }
+            if (zoomDebounceTimer) clearTimeout(zoomDebounceTimer);
+            zoomDebounceTimer = setTimeout(onZoomPan, 200);
+        });
+    }
+
+    async function onZoomPan() {
+        if (!cachedData || cachedData.times.length === 0) return;
+        if (isFetching) return;
+        if (currentView.start == null || currentView.end == null) return;
+
+        const viewStart = currentView.start;
+        const viewEnd = currentView.end;
+        const viewRange = viewEnd - viewStart;
+        const buffer = viewRange * BUFFER_RATIO;
+
+        // We want data covering [viewStart - buffer, viewEnd + buffer]
+        const fetchStart = viewStart - buffer;
+        const fetchEnd = viewEnd + buffer;
+
+        const gaps = computeGaps(fetchStart, fetchEnd, cachedData.intervals);
+        if (gaps.length === 0) return;
+
+        isFetching = true;
+        showLoading(true);
+
+        let fetched = false;
+        for (const gap of gaps) {
+            setStatus('Fetching: ' + new Date(gap[0]).toISOString().slice(0,19) +
+                       ' to ' + new Date(gap[1]).toISOString().slice(0,19));
+            try {
+                const data = await fetchData(selectedProduct,
+                    new Date(gap[0]).toISOString(), new Date(gap[1]).toISOString());
+                if (data && data.values && data.axes && data.axes.length > 0 &&
+                    data.axes[0].values.length > 0) {
+                    mergeData(data, gap[0], gap[1]);
+                    fetched = true;
+                } else {
+                    // No data in this range — mark it as covered anyway to avoid re-fetching
+                    cachedData.intervals = mergeIntervals(
+                        cachedData.intervals.concat([[gap[0], gap[1]]]));
+                }
+            } catch (e) {
+                console.error('Gap fetch error:', e);
+            }
+        }
+
+        if (fetched) {
+            evictCache();
+            updateChartData(viewStart, viewEnd);
+        }
+
+        showLoading(false);
+        setStatus('Loaded ' + cachedData.times.length + ' timestamps, ' +
+                   cachedData.columnNames.length + ' columns');
+        isFetching = false;
+    }
+
+    function updateChartData(viewStart, viewEnd) {
+        // Update series data and extend the axis range so user can keep panning
         const times = cachedData.times;
         const columnNames = cachedData.columnNames;
         const threshold = Math.min(4000, times.length);
@@ -825,107 +915,31 @@
         for (let c = 0; c < columnNames.length; c++) {
             const colName = columnNames[c];
             const vals = cachedData.columns[colName];
-            const sampledData = lttbDownsample(times, vals, threshold);
             series.push({
                 name: colName,
                 type: 'line',
                 showSymbol: false,
                 lineStyle: { width: 1.2 },
                 color: CHART_COLORS[c % CHART_COLORS.length],
-                data: sampledData,
+                data: lttbDownsample(times, vals, threshold),
                 sampling: 'lttb'
             });
         }
 
-        // Update series and dataZoom with absolute values to keep view position stable
+        const viewRange = viewEnd - viewStart;
+        const axisBuffer = viewRange * 2; // axis extends 2x view width beyond data
+
         chart.setOption({
-            series: series,
+            xAxis: {
+                min: cachedData.times[0] - axisBuffer,
+                max: cachedData.times[cachedData.times.length - 1] + axisBuffer
+            },
             dataZoom: [
                 { type: 'inside', startValue: viewStart, endValue: viewEnd },
                 { type: 'slider', startValue: viewStart, endValue: viewEnd }
-            ]
+            ],
+            series: series
         });
-    }
-
-    // ===== Task 7: Smart Zoom/Pan Fetching =====
-
-    function setupZoomHandler() {
-        // Remove previous listener to avoid stacking
-        chart.off('datazoom');
-        chart.on('datazoom', () => {
-            if (zoomDebounceTimer) clearTimeout(zoomDebounceTimer);
-            zoomDebounceTimer = setTimeout(onZoomPan, 300);
-        });
-    }
-
-    let isFetching = false;
-
-    async function onZoomPan() {
-        if (!cachedData || cachedData.times.length === 0) return;
-        if (isFetching) return;
-
-        const option = chart.getOption();
-        if (!option.dataZoom || option.dataZoom.length === 0) return;
-
-        const dz = option.dataZoom[0];
-        const startPct = dz.start / 100;
-        const endPct = dz.end / 100;
-
-        const dataMin = cachedData.times[0];
-        const dataMax = cachedData.times[cachedData.times.length - 1];
-        const dataRange = dataMax - dataMin;
-
-        const viewStart = dataMin + dataRange * startPct;
-        const viewEnd = dataMin + dataRange * endPct;
-        const viewRange = viewEnd - viewStart;
-
-        // Detect edge panning: if the user is at the boundary, extend beyond
-        const EDGE_THRESHOLD = 0.5; // within 0.5% of edge
-        const extendAmount = viewRange * 0.5; // fetch half a view width ahead
-        let fetchStart = viewStart;
-        let fetchEnd = viewEnd;
-
-        if (startPct <= EDGE_THRESHOLD / 100) {
-            // At left edge — extend left
-            fetchStart = viewStart - extendAmount;
-        }
-        if (endPct >= 1 - EDGE_THRESHOLD / 100) {
-            // At right edge — extend right
-            fetchEnd = viewEnd + extendAmount;
-        }
-
-        const gaps = computeGaps(fetchStart, fetchEnd, cachedData.intervals);
-        if (gaps.length === 0) return;
-
-        isFetching = true;
-        showLoading(true);
-
-        // Remember where the view was before re-render
-        const viewStartValue = viewStart;
-        const viewEndValue = viewEnd;
-
-        for (const gap of gaps) {
-            setStatus('Fetching: ' + new Date(gap[0]).toISOString().slice(0,19) +
-                       ' to ' + new Date(gap[1]).toISOString().slice(0,19));
-            try {
-                const data = await fetchData(selectedProduct, new Date(gap[0]).toISOString(), new Date(gap[1]).toISOString());
-                if (data && data.values && data.axes && data.axes.length > 0) {
-                    mergeData(data, gap[0], gap[1]);
-                }
-            } catch (e) {
-                console.error('Gap fetch error:', e);
-            }
-        }
-
-        evictCache();
-
-        // Re-render and restore the view position using absolute values
-        renderChartPreservingView(viewStartValue, viewEndValue);
-
-        showLoading(false);
-        setStatus('Loaded ' + cachedData.times.length + ' timestamps, ' +
-                   cachedData.columnNames.length + ' columns');
-        isFetching = false;
     }
 
     function computeGaps(viewStart, viewEnd, intervals) {
