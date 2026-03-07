@@ -39,7 +39,6 @@ dependencies = [
     "bokeh>=3.0.0",
     "matplotlib",
     "fastapi[all]",
-    "fastapi-utilities",
     "uvicorn",
     "uvicorn-worker",
     "pycrdt-websocket>=0.15.4,<0.16.0",
