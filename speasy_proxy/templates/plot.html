@@ -1065,6 +1065,12 @@
                 axisLabel: { show: i === n - 1, color: '#8892b0' },
                 axisLine: { lineStyle: { color: '#2a3358' } },
                 splitLine: { show: false },
+                axisPointer: {
+                    show: true,
+                    type: 'line',
+                    lineStyle: { color: '#6b8afd', width: 1, type: 'dashed' },
+                    label: { show: i === n - 1, backgroundColor: '#1a1f36', color: '#e0e6f0', borderColor: '#2a3358' }
+                },
                 min: times.length > 0 ? times[0] - (times[times.length-1] - times[0]) * 2 : undefined,
                 max: times.length > 0 ? times[times.length-1] + (times[times.length-1] - times[0]) * 2 : undefined
             });
@@ -1187,11 +1193,15 @@
                 top: 5,
                 textStyle: { color: '#e0e6f0' }
             },
+            axisPointer: {
+                link: [{ xAxisIndex: 'all' }]
+            },
             tooltip: {
                 trigger: 'axis',
                 backgroundColor: '#1a1f36',
                 borderColor: '#2a3358',
-                textStyle: { color: '#e0e6f0', fontSize: 12 }
+                textStyle: { color: '#e0e6f0', fontSize: 12 },
+                axisPointer: { type: 'line' }
             },
             grid: grids,
             xAxis: xAxes,
