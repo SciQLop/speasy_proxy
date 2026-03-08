@@ -352,7 +352,7 @@
                 yAxis3D: { min: range.min, max: range.max },
                 zAxis3D: { min: range.min, max: range.max },
                 series: [earthSeries(), ...trajSeries]
-            });
+            }, { replaceMerge: ['series'] });
         }
 
         // ---- Inventory tree ----
