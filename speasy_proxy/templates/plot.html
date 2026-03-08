@@ -874,11 +874,21 @@
     async function fetchData(product, startTime, stopTime) {
         const startISO = new Date(startTime).toISOString();
         const stopISO = new Date(stopTime).toISOString();
+        const maxPoints = document.getElementById('chart-container')?.clientWidth || 2000;
         const url = API_BASE + 'get_data?format=json&path=' +
                     encodeURIComponent(product) +
                     '&start_time=' + encodeURIComponent(startISO) +
-                    '&stop_time=' + encodeURIComponent(stopISO);
+                    '&stop_time=' + encodeURIComponent(stopISO) +
+                    '&max_points=' + maxPoints;
         const resp = await fetch(url);
+        if (!resp.ok) {
+            let msg = `Server error ${resp.status}`;
+            try {
+                const err = await resp.json();
+                msg = err.error || err.detail || msg;
+            } catch (_) {}
+            throw new Error(msg);
+        }
         const text = await resp.text();
         // Replace NaN with null before parsing
         const sanitized = text.replace(/\bNaN\b/g, 'null');
