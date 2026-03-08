@@ -1450,37 +1450,104 @@
 
     // ===== Task 8: URL State =====
 
+    function stateToConfig() {
+        const config = {
+            version: 1,
+            time_range: {
+                start: plotState.time_range.start,
+                stop: plotState.time_range.stop
+            },
+            plots: plotState.plots.map(sp => ({
+                products: sp.products.map(p => ({ path: p.path, label: p.label })),
+                y_axis: { log: sp.y_axis.log }
+            }))
+        };
+        return config;
+    }
+
+    function configToBase64(config) {
+        return btoa(JSON.stringify(config))
+            .replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+    }
+
+    function base64ToConfig(b64) {
+        const padded = b64.replace(/-/g, '+').replace(/_/g, '/');
+        return JSON.parse(atob(padded));
+    }
+
     function updateURL() {
-        const params = new URLSearchParams(window.location.search);
-        const product = document.getElementById('product-path').value;
-        const startTime = document.getElementById('start-time').value;
-        const stopTime = document.getElementById('stop-time').value;
-
-        if (product) params.set('path', product); else params.delete('path');
-        if (startTime) params.set('start', startTime); else params.delete('start');
-        if (stopTime) params.set('stop', stopTime); else params.delete('stop');
-
-        const newUrl = window.location.pathname + '?' + params.toString();
+        if (plotState.plots.length === 0) return;
+        const config = stateToConfig();
+        const encoded = configToBase64(config);
+        const newUrl = window.location.pathname + '?config=' + encoded;
         history.replaceState(null, '', newUrl);
     }
 
     function loadFromURLParams() {
         const params = new URLSearchParams(window.location.search);
+
+        // Backward compat: redirect old ?path=&start=&stop= to ?config=
         const path = params.get('path');
         const start = params.get('start');
         const stop = params.get('stop');
-
         if (path) {
-            document.getElementById('product-path').value = path;
-            selectedProduct = path;
+            const config = {
+                version: 1,
+                time_range: { start: start, stop: stop },
+                plots: [{ products: [{ path: path }], y_axis: { log: false } }]
+            };
+            const encoded = configToBase64(config);
+            history.replaceState(null, '', window.location.pathname + '?config=' + encoded);
+            applyConfig(config);
+            return;
+        }
+
+        // New format: ?config=base64
+        const configParam = params.get('config');
+        if (configParam) {
+            try {
+                const config = base64ToConfig(configParam);
+                applyConfig(config);
+            } catch (e) {
+                console.error('Invalid config URL:', e);
+                setStatus('Invalid config in URL.');
+            }
+        }
+    }
+
+    function applyConfig(config) {
+        plotState.time_range.start = config.time_range.start;
+        plotState.time_range.stop = config.time_range.stop;
+
+        if (config.time_range.start) {
+            document.getElementById('start-time').value = toLocalISOString(new Date(config.time_range.start));
+        }
+        if (config.time_range.stop) {
+            document.getElementById('stop-time').value = toLocalISOString(new Date(config.time_range.stop));
+        }
+
+        plotState.plots = [];
+        for (const plotDef of config.plots) {
+            const subplot = createSubplotData();
+            subplot.y_axis.log = plotDef.y_axis?.log || false;
+            for (const prod of plotDef.products) {
+                subplot.products.push({ path: prod.path, label: prod.label || prod.path });
+                subplot.productData[prod.path] = createProductCache(prod.path);
+            }
+            plotState.plots.push(subplot);
+        }
+
+        if (plotState.plots.length > 0 && plotState.plots[0].products.length > 0) {
+            document.getElementById('product-path').value = plotState.plots[0].products[0].path;
             document.getElementById('btn-plot').disabled = false;
         }
-        if (start) document.getElementById('start-time').value = start;
-        if (stop) document.getElementById('stop-time').value = stop;
 
-        if (path && start && stop) {
-            setTimeout(() => doPlot(), 100);
-        }
+        setTimeout(() => fetchAllAndRender(), 100);
+    }
+
+    async function fetchAllAndRender() {
+        if (plotState.plots.length === 0) return;
+        setStatus('Multi-plot fetch not yet implemented');
     }
 
     // ===== Sidebar Resize =====
