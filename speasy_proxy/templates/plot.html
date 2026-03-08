@@ -979,7 +979,7 @@
 
         ctx.putImageData(imgData, 0, 0);
         return {
-            dataURL: canvas.toDataURL(),
+            canvas: canvas,
             tStart: times[iStart],
             tEnd: times[Math.min(iEnd, times.length) - 1],
             yMin: yBinsFlat[0],
@@ -1087,7 +1087,7 @@
                 type: 'image',
                 z: -1,
                 style: {
-                    image: img.dataURL,
+                    image: img.canvas,
                     x: Math.min(tStartPx, tEndPx),
                     y: Math.min(yMinPx, yMaxPx),
                     width: Math.abs(tEndPx - tStartPx),
