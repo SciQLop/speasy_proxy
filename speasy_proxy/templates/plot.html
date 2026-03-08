@@ -357,7 +357,8 @@
     const plotState = {
         version: 1,
         time_range: { start: null, stop: null },
-        plots: []  // array of subplot objects
+        plots: [],  // array of subplot objects
+        intervals: []  // [{start, stop, color?, label?}] — vertical spans across all subplots
     };
 
     let currentView = { start: null, end: null };
@@ -1080,6 +1081,7 @@
         for (let i = 0; i < n; i++) {
             const subplot = plotState.plots[i];
             const topPx = TOP_PAD + i * (subplotHeight + GAP);
+            const firstSeriesIdx = series.length;
 
             grids.push({
                 left: 80, right: 20, top: topPx, height: subplotHeight, containLabel: false
@@ -1188,6 +1190,22 @@
                     }
                 }
             }
+
+            if (plotState.intervals.length > 0 && series.length > firstSeriesIdx) {
+                series[firstSeriesIdx].markArea = {
+                    silent: false,
+                    data: plotState.intervals.map(iv => [
+                        {
+                            xAxis: iv.start,
+                            itemStyle: { color: iv.color },
+                            name: iv.label
+                        },
+                        { xAxis: iv.stop }
+                    ]),
+                    tooltip: { show: true, formatter: params => params.name || '' },
+                    label: { show: false }
+                };
+            }
         }
 
         const xAxisIndices = xAxes.map((_, i) => i);
@@ -1240,7 +1258,27 @@
                 backgroundColor: '#1a1f36',
                 borderColor: '#2a3358',
                 textStyle: { color: '#e0e6f0', fontSize: 12 },
-                axisPointer: { type: 'line' }
+                axisPointer: { type: 'line' },
+                formatter: function(params) {
+                    if (!params || params.length === 0) return '';
+                    const t = params[0].axisValue;
+                    let html = params[0].axisValueLabel + '<br/>';
+                    for (const iv of plotState.intervals) {
+                        const s = new Date(iv.start).getTime();
+                        const e = new Date(iv.stop).getTime();
+                        if (iv.label && t >= s && t <= e) {
+                            html += '<span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:'
+                                + iv.color + ';margin-right:4px;"></span>'
+                                + '<b>' + iv.label + '</b><br/>';
+                        }
+                    }
+                    for (const p of params) {
+                        if (p.value != null) {
+                            html += p.marker + ' ' + p.seriesName + ': ' + p.value[1] + '<br/>';
+                        }
+                    }
+                    return html;
+                }
             },
             grid: grids,
             xAxis: xAxes,
@@ -1786,6 +1824,13 @@
         if (config.time_range.stop) {
             document.getElementById('stop-time').value = toLocalISOString(new Date(config.time_range.stop));
         }
+
+        plotState.intervals = (config.intervals || []).map(iv => ({
+            start: iv.start,
+            stop: iv.stop,
+            color: iv.color || 'rgba(100, 140, 255, 0.12)',
+            label: iv.label || ''
+        }));
 
         plotState.plots = [];
         for (const plotDef of config.plots) {

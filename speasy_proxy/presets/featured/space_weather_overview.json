@@ -6,6 +6,20 @@
     "start": "2025-01-15T00:00:00Z",
     "stop": "2025-01-16T00:00:00Z"
   },
+  "intervals": [
+    {
+      "start": "2025-01-15T06:00:00Z",
+      "stop": "2025-01-15T10:00:00Z",
+      "color": "rgba(255, 120, 80, 0.12)",
+      "label": "Storm main phase"
+    },
+    {
+      "start": "2025-01-15T14:00:00Z",
+      "stop": "2025-01-15T18:00:00Z",
+      "color": "rgba(100, 220, 140, 0.12)",
+      "label": "Recovery phase"
+    }
+  ],
   "plots": [
     {
       "products": [{ "path": "amda/omni_hro2_1min_b_gse", "label": "OMNI B GSE" }],
