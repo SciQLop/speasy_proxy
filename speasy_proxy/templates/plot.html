@@ -300,6 +300,7 @@
     let plotType = 'line'; // 'line' or 'heatmap'
     let logScale = true;   // log color scale for heatmaps
     let logYAxis = false;  // log Y axis for heatmaps
+    let lastHeatmapImg = null; // cached rendered spectrogram image
 
     // ===== Helpers =====
 
@@ -1052,6 +1053,7 @@
         chart.setOption(option, true);
 
         // Position the image to match chart coordinates
+        lastHeatmapImg = img;
         updateHeatmapGraphic(img);
 
         if (!preserveView) {
@@ -1060,14 +1062,10 @@
         }
         setupZoomHandler();
 
-        // Re-render image on zoom/resize so it stays aligned
+        // Reposition image on zoom/resize (no re-render, just update coordinates)
         chart.off('finished');
         chart.on('finished', function() {
-            const latestImg = renderSpectrogramImage(
-                cachedData.times, cachedData.rows,
-                Array.isArray(cachedData.yAxis[0]) ? cachedData.yAxis[0] : cachedData.yAxis,
-                vMin, vMax);
-            if (latestImg) updateHeatmapGraphic(latestImg);
+            if (lastHeatmapImg) updateHeatmapGraphic(lastHeatmapImg);
         });
     }
 
