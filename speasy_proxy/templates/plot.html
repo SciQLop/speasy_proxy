@@ -449,7 +449,8 @@
         // Pre-fill date inputs
         if (node.stop_date) {
             const stopDate = new Date(node.stop_date);
-            const startDate = new Date(stopDate.getTime() - 2 * 3600 * 1000);
+            const startDate = new Date(stopDate);
+            startDate.setMonth(startDate.getMonth() - 2);
             document.getElementById('stop-time').value = toLocalISOString(stopDate);
             document.getElementById('start-time').value = toLocalISOString(startDate);
         }
