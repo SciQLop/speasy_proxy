@@ -1271,7 +1271,109 @@
     }
 
     function setupMultiZoomHandler() {
-        // Will be implemented in Task 6
+        chart.off('datazoom');
+        chart.on('datazoom', () => {
+            if (zoomDebounceTimer) clearTimeout(zoomDebounceTimer);
+            zoomDebounceTimer = setTimeout(onMultiZoomPan, 200);
+        });
+
+        const chartDom = chart.getDom();
+        chartDom.removeEventListener('wheel', handleWheel, true);
+        chartDom.addEventListener('wheel', handleWheel, { passive: false, capture: true });
+
+        // Reposition heatmap images on zoom/resize
+        chart.off('finished');
+        chart.on('finished', () => {
+            for (const subplot of plotState.plots) {
+                if (subplot.plotType === 'heatmap' && subplot.lastHeatmapImg) {
+                    updateSubplotHeatmapGraphic(subplot, subplot.lastHeatmapImg);
+                }
+            }
+        });
+    }
+
+    async function onMultiZoomPan() {
+        if (plotState.plots.length === 0) return;
+        if (isFetching) return;
+
+        const view = getVisibleRange();
+        if (!view) return;
+        currentView.start = view.start;
+        currentView.end = view.end;
+
+        plotState.time_range.start = new Date(view.start).toISOString();
+        plotState.time_range.stop = new Date(view.end).toISOString();
+        updateURL();
+
+        const viewRange = view.end - view.start;
+        const buffer = viewRange * BUFFER_RATIO;
+
+        isFetching = true;
+        let anyFetched = false;
+
+        for (const subplot of plotState.plots) {
+            for (const prod of subplot.products) {
+                const cache = subplot.productData[prod.path];
+                if (!cache || cache.times.length === 0) continue;
+
+                const cachedStart = cache.times[0];
+                const cachedEnd = cache.times[cache.times.length - 1];
+                const cachedRange = cachedEnd - cachedStart;
+
+                if (cachedRange > 0 && viewRange / cachedRange < REFETCH_THRESHOLD) {
+                    showLoading(true);
+                    setStatus('Re-fetching ' + prod.path + ' at higher resolution...');
+                    try {
+                        const data = await fetchData(prod.path,
+                            new Date(view.start - buffer).toISOString(),
+                            new Date(view.end + buffer).toISOString());
+                        if (data?.values?.axes?.[0]?.values?.length > 0) {
+                            resetProductCache(cache);
+                            mergeProductData(cache, data, view.start - buffer, view.end + buffer);
+                            anyFetched = true;
+                        }
+                    } catch (e) {
+                        console.error('Re-fetch error for', prod.path, e);
+                    }
+                    continue;
+                }
+
+                const gaps = computeGaps(view.start - buffer, view.end + buffer, cache.intervals);
+                for (const gap of gaps) {
+                    showLoading(true);
+                    setStatus('Fetching ' + prod.path + '...');
+                    try {
+                        const data = await fetchData(prod.path,
+                            new Date(gap[0]).toISOString(), new Date(gap[1]).toISOString());
+                        if (data?.values?.axes?.[0]?.values?.length > 0) {
+                            mergeProductData(cache, data, gap[0], gap[1]);
+                            anyFetched = true;
+                        } else {
+                            cache.intervals = mergeIntervals(cache.intervals.concat([[gap[0], gap[1]]]));
+                        }
+                    } catch (e) {
+                        console.error('Gap fetch error for', prod.path, e);
+                    }
+                }
+            }
+        }
+
+        if (anyFetched) {
+            renderAllSubplots(true);
+        }
+
+        showLoading(false);
+        setStatus('Ready');
+        isFetching = false;
+    }
+
+    function resetProductCache(cache) {
+        cache.times = [];
+        cache.intervals = [];
+        cache.rows = [];
+        for (const cn of cache.columnNames) {
+            cache.columns[cn] = [];
+        }
     }
 
     function buildSeriesData(times, values) {
