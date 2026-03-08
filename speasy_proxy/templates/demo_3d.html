@@ -1,0 +1,524 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>3D Orbit Viewer - Speasy Proxy</title>
+    <script src="https://cdn.jsdelivr.net/npm/echarts@5/dist/echarts.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/echarts-gl@2/dist/echarts-gl.min.js"></script>
+    <style>
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, sans-serif;
+            background: #0b0e17;
+            color: #e0e6f0;
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+            overflow: hidden;
+        }
+
+        .app-container {
+            display: flex;
+            flex: 1;
+            overflow: hidden;
+        }
+
+        /* ---- Sidebar ---- */
+        .sidebar {
+            width: 320px;
+            min-width: 320px;
+            background: #111627;
+            border-right: 1px solid #1e2640;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        .sidebar-header {
+            padding: 16px;
+            border-bottom: 1px solid #1e2640;
+        }
+
+        .sidebar-header .back-link {
+            display: inline-block;
+            color: #6b8afd;
+            text-decoration: none;
+            font-size: 0.85rem;
+            margin-bottom: 8px;
+        }
+
+        .sidebar-header .back-link:hover { text-decoration: underline; }
+
+        .sidebar-header h2 {
+            font-size: 1.1rem;
+            font-weight: 600;
+        }
+
+        .search-box {
+            padding: 10px 16px;
+            border-bottom: 1px solid #1e2640;
+        }
+
+        .search-box input {
+            width: 100%;
+            padding: 8px 10px;
+            background: #0b0e17;
+            border: 1px solid #2a3358;
+            border-radius: 4px;
+            color: #e0e6f0;
+            font-size: 0.85rem;
+            outline: none;
+        }
+
+        .search-box input:focus { border-color: #6b8afd; }
+
+        .tree-container {
+            flex: 1;
+            overflow-y: auto;
+            padding: 8px 0;
+        }
+
+        .tree-container ul {
+            list-style: none;
+            padding-left: 16px;
+        }
+
+        .tree-container > ul { padding-left: 8px; }
+
+        .tree-container li { margin: 1px 0; }
+
+        .tree-node {
+            display: flex;
+            align-items: center;
+            padding: 3px 8px;
+            cursor: pointer;
+            border-radius: 3px;
+            font-size: 0.82rem;
+            user-select: none;
+            white-space: nowrap;
+        }
+
+        .tree-node:hover { background: #1a1f36; }
+
+        .tree-node.selected { background: #2a3358; color: #6b8afd; }
+
+        .tree-node .toggle {
+            width: 16px;
+            text-align: center;
+            margin-right: 4px;
+            color: #8892b0;
+            font-size: 0.7rem;
+        }
+
+        .tree-children { display: none; }
+        .tree-children.open { display: block; }
+
+        .tree-node.hidden, li.hidden { display: none; }
+
+        /* ---- Controls ---- */
+        .controls {
+            padding: 12px 16px;
+            border-top: 1px solid #1e2640;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .controls label {
+            font-size: 0.78rem;
+            color: #8892b0;
+        }
+
+        .controls select,
+        .controls input[type="datetime-local"] {
+            width: 100%;
+            padding: 6px 8px;
+            background: #0b0e17;
+            border: 1px solid #2a3358;
+            border-radius: 4px;
+            color: #e0e6f0;
+            font-size: 0.82rem;
+            outline: none;
+        }
+
+        .controls select:focus,
+        .controls input[type="datetime-local"]:focus { border-color: #6b8afd; }
+
+        .plot-btn {
+            padding: 8px;
+            background: #6b8afd;
+            border: none;
+            border-radius: 4px;
+            color: #fff;
+            font-size: 0.85rem;
+            font-weight: 600;
+            cursor: pointer;
+        }
+
+        .plot-btn:hover { background: #5a7bf0; }
+        .plot-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+        /* ---- Plotted satellites list ---- */
+        .plotted-list {
+            padding: 8px 16px;
+            border-top: 1px solid #1e2640;
+            max-height: 140px;
+            overflow-y: auto;
+        }
+
+        .plotted-list h4 {
+            font-size: 0.78rem;
+            color: #8892b0;
+            margin-bottom: 6px;
+        }
+
+        .plotted-item {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            padding: 3px 0;
+            font-size: 0.82rem;
+        }
+
+        .color-swatch {
+            width: 12px;
+            height: 12px;
+            border-radius: 2px;
+            flex-shrink: 0;
+        }
+
+        .plotted-item .name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+        .remove-btn {
+            background: none;
+            border: none;
+            color: #8892b0;
+            cursor: pointer;
+            font-size: 0.9rem;
+            padding: 0 4px;
+        }
+
+        .remove-btn:hover { color: #ee6666; }
+
+        /* ---- Main area ---- */
+        .main-area {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        #chart3d { flex: 1; }
+
+        /* ---- Status bar ---- */
+        .status-bar {
+            padding: 6px 16px;
+            background: #111627;
+            border-top: 1px solid #1e2640;
+            font-size: 0.78rem;
+            color: #8892b0;
+        }
+
+        /* Scrollbar styling */
+        ::-webkit-scrollbar { width: 6px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: #2a3358; border-radius: 3px; }
+    </style>
+</head>
+<body>
+    <div class="app-container">
+        <div class="sidebar">
+            <div class="sidebar-header">
+                <a href="{{ base_url }}/" class="back-link">&larr; Home</a>
+                <h2>3D Orbit Viewer</h2>
+            </div>
+            <div class="search-box">
+                <input type="text" id="searchInput" placeholder="Search satellites...">
+            </div>
+            <div class="tree-container" id="treeContainer"></div>
+            <div class="controls">
+                <label>Coordinate System</label>
+                <select id="coordSys">
+                    <option value="GSE">GSE</option>
+                    <option value="GSM">GSM</option>
+                    <option value="GEO">GEO</option>
+                    <option value="GM">GM</option>
+                    <option value="SM">SM</option>
+                    <option value="GEITOD">GEITOD</option>
+                    <option value="GEIJ2000">GEIJ2000</option>
+                </select>
+                <label>Start Time</label>
+                <input type="datetime-local" id="startTime">
+                <label>Stop Time</label>
+                <input type="datetime-local" id="stopTime">
+                <button class="plot-btn" id="plotBtn">Plot</button>
+            </div>
+            <div class="plotted-list" id="plottedList">
+                <h4>Plotted Satellites</h4>
+            </div>
+        </div>
+        <div class="main-area">
+            <div id="chart3d"></div>
+        </div>
+    </div>
+    <div class="status-bar" id="statusBar">Ready</div>
+
+    <script>
+        const API_BASE = '{{ base_url }}/';
+        const EARTH_RADIUS_KM = 6371.0;
+        const COLORS = ['#5470c6','#91cc75','#fac858','#ee6666','#73c0de','#3ba272','#fc8452','#9a60b4','#ea7ccc'];
+        const METADATA_KEYS = new Set([
+            '__spz_name__','__spz_provider__','__spz_type__','__spz_uid__',
+            '__spz_dataset__','__spz_description__','__spz_is_virtual__',
+            '__spz_virtual_products_list__',
+            'UNITS','FILLVAL','SCALETYP','COORDINATE_SYSTEM','FIELDNAM',
+            'CATDESC','DEPEND_0','DEPEND_1','LABL_PTR_1',
+            'start_date','stop_date','maxDate','minDate'
+        ]);
+
+        let selectedSatellite = null;
+        let selectedNode = null;
+        let trajectories = [];
+        let colorIndex = 0;
+        let chart = null;
+
+        // ---- Status ----
+        function setStatus(msg) {
+            document.getElementById('statusBar').textContent = msg;
+        }
+
+        // ---- Chart initialization ----
+        function initChart() {
+            chart = echarts.init(document.getElementById('chart3d'), 'dark');
+            updateChartOption();
+            new ResizeObserver(() => chart.resize()).observe(document.getElementById('chart3d'));
+        }
+
+        function earthSeries() {
+            return {
+                type: 'surface',
+                parametric: true,
+                wireframe: { show: false },
+                shading: 'color',
+                itemStyle: { color: '#2255aa', opacity: 0.6 },
+                parametricEquation: {
+                    u: { min: 0, max: Math.PI, step: Math.PI / 30 },
+                    v: { min: 0, max: 2 * Math.PI, step: Math.PI / 30 },
+                    x: (u, v) => Math.sin(u) * Math.cos(v),
+                    y: (u, v) => Math.sin(u) * Math.sin(v),
+                    z: (u, v) => Math.cos(u)
+                },
+                silent: true
+            };
+        }
+
+        function updateChartOption() {
+            const trajSeries = trajectories.map(t => ({
+                type: 'line3D',
+                data: t.data,
+                lineStyle: { width: 2, color: t.color },
+                silent: true
+            }));
+            chart.setOption({
+                xAxis3D: { name: 'X (Re)' },
+                yAxis3D: { name: 'Y (Re)' },
+                zAxis3D: { name: 'Z (Re)' },
+                grid3D: { autoRotate: false },
+                series: [earthSeries(), ...trajSeries]
+            }, true);
+        }
+
+        // ---- Inventory tree ----
+        function isMetadataKey(key) {
+            return key.startsWith('__spz_') || METADATA_KEYS.has(key);
+        }
+
+        function isLeaf(node) {
+            return node && typeof node === 'object' && '__spz_uid__' in node;
+        }
+
+        function hasVisibleChildren(node) {
+            if (typeof node !== 'object' || node === null) return false;
+            return Object.keys(node).some(k => !isMetadataKey(k));
+        }
+
+        function findTimeBounds(node) {
+            if (!node || typeof node !== 'object') return null;
+            if (node.start_date && node.stop_date) return { start: node.start_date, stop: node.stop_date };
+            return null;
+        }
+
+        function buildTree(obj, parentEl, parentNode) {
+            const ul = document.createElement('ul');
+            for (const key of Object.keys(obj)) {
+                if (isMetadataKey(key)) continue;
+                const val = obj[key];
+                if (typeof val !== 'object' || val === null) continue;
+
+                const li = document.createElement('li');
+                li.dataset.name = key.toLowerCase();
+                const span = document.createElement('div');
+                span.className = 'tree-node';
+                span.textContent = key;
+
+                if (isLeaf(val)) {
+                    span.dataset.uid = val.__spz_uid__;
+                    span.dataset.timeBoundsJson = JSON.stringify(findTimeBounds(val) || findTimeBounds(parentNode) || {});
+                    const toggle = document.createElement('span');
+                    toggle.className = 'toggle';
+                    toggle.textContent = ' ';
+                    span.prepend(toggle);
+                    span.addEventListener('click', () => selectSatellite(span));
+                } else if (hasVisibleChildren(val)) {
+                    const toggle = document.createElement('span');
+                    toggle.className = 'toggle';
+                    toggle.textContent = '\u25b6';
+                    span.prepend(toggle);
+                    const childContainer = document.createElement('div');
+                    childContainer.className = 'tree-children';
+                    buildTree(val, childContainer, val);
+                    span.addEventListener('click', () => {
+                        const open = childContainer.classList.toggle('open');
+                        toggle.textContent = open ? '\u25bc' : '\u25b6';
+                    });
+                    li.appendChild(span);
+                    li.appendChild(childContainer);
+                    ul.appendChild(li);
+                    continue;
+                } else {
+                    continue;
+                }
+
+                li.appendChild(span);
+                ul.appendChild(li);
+            }
+            parentEl.appendChild(ul);
+        }
+
+        function selectSatellite(node) {
+            if (selectedNode) selectedNode.classList.remove('selected');
+            node.classList.add('selected');
+            selectedNode = node;
+            selectedSatellite = node.dataset.uid;
+
+            try {
+                const bounds = JSON.parse(node.dataset.timeBoundsJson || '{}');
+                if (bounds.start) {
+                    const s = new Date(bounds.start);
+                    const e = new Date(bounds.stop || bounds.start);
+                    const dayBefore = new Date(e.getTime() - 86400000);
+                    document.getElementById('startTime').value = toLocalISOString(dayBefore > s ? dayBefore : s);
+                    document.getElementById('stopTime').value = toLocalISOString(e);
+                }
+            } catch (_) {}
+        }
+
+        function toLocalISOString(d) {
+            const pad = n => String(n).padStart(2, '0');
+            return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+        }
+
+        // ---- Search / filter ----
+        document.getElementById('searchInput').addEventListener('input', function() {
+            const q = this.value.toLowerCase().trim();
+            filterTree(document.getElementById('treeContainer'), q);
+        });
+
+        function filterTree(container, query) {
+            const items = container.querySelectorAll('li');
+            if (!query) {
+                items.forEach(li => li.classList.remove('hidden'));
+                return;
+            }
+            items.forEach(li => {
+                const name = li.dataset.name || '';
+                const childUl = li.querySelector(':scope > .tree-children');
+                let childMatch = false;
+                if (childUl) {
+                    filterTree(childUl, query);
+                    childMatch = Array.from(childUl.querySelectorAll('li')).some(c => !c.classList.contains('hidden'));
+                }
+                const selfMatch = name.includes(query);
+                li.classList.toggle('hidden', !selfMatch && !childMatch);
+                if (childMatch && childUl) childUl.classList.add('open');
+            });
+        }
+
+        // ---- Plot action ----
+        document.getElementById('plotBtn').addEventListener('click', async () => {
+            if (!selectedSatellite) { setStatus('Select a satellite first.'); return; }
+            const startVal = document.getElementById('startTime').value;
+            const stopVal = document.getElementById('stopTime').value;
+            if (!startVal || !stopVal) { setStatus('Set start and stop times.'); return; }
+
+            const coordSys = document.getElementById('coordSys').value;
+            const startISO = new Date(startVal).toISOString();
+            const stopISO = new Date(stopVal).toISOString();
+            const url = `${API_BASE}get_data?path=${encodeURIComponent(selectedSatellite)}&format=json&coordinate_system=${coordSys}&start_time=${encodeURIComponent(startISO)}&stop_time=${encodeURIComponent(stopISO)}`;
+
+            setStatus('Fetching data...');
+            document.getElementById('plotBtn').disabled = true;
+            try {
+                const resp = await fetch(url);
+                if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+                const json = await resp.json();
+                const values = json.data.values.values;
+                const reData = values.map(p => [p[0] / EARTH_RADIUS_KM, p[1] / EARTH_RADIUS_KM, p[2] / EARTH_RADIUS_KM]);
+
+                const color = COLORS[colorIndex % COLORS.length];
+                colorIndex++;
+                const name = selectedSatellite.split('/').pop();
+                trajectories.push({ name, color, data: reData, uid: selectedSatellite });
+                updateChartOption();
+                updatePlottedList();
+                setStatus(`Plotted ${name} (${reData.length} points).`);
+            } catch (err) {
+                setStatus('Error: ' + err.message);
+            } finally {
+                document.getElementById('plotBtn').disabled = false;
+            }
+        });
+
+        // ---- Plotted satellites list ----
+        function updatePlottedList() {
+            const container = document.getElementById('plottedList');
+            container.innerHTML = '<h4>Plotted Satellites</h4>';
+            trajectories.forEach((t, i) => {
+                const div = document.createElement('div');
+                div.className = 'plotted-item';
+                div.innerHTML = `<span class="color-swatch" style="background:${t.color}"></span><span class="name">${t.name}</span>`;
+                const btn = document.createElement('button');
+                btn.className = 'remove-btn';
+                btn.textContent = '\u00d7';
+                btn.addEventListener('click', () => {
+                    trajectories.splice(i, 1);
+                    updateChartOption();
+                    updatePlottedList();
+                    setStatus(`Removed ${t.name}.`);
+                });
+                div.appendChild(btn);
+                container.appendChild(div);
+            });
+        }
+
+        // ---- Init ----
+        async function loadInventory() {
+            setStatus('Loading inventory...');
+            try {
+                const resp = await fetch(API_BASE + 'get_inventory?format=json&provider=ssc');
+                if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+                const inv = await resp.json();
+                buildTree(inv, document.getElementById('treeContainer'), inv);
+                setStatus('Ready');
+            } catch (err) {
+                setStatus('Failed to load inventory: ' + err.message);
+            }
+        }
+
+        initChart();
+        loadInventory();
+    </script>
+</body>
+</html>
