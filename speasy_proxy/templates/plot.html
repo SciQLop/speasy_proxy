@@ -184,6 +184,29 @@
 
         @keyframes spin { to { transform: rotate(360deg); } }
 
+        .fetch-bar {
+            position: absolute;
+            top: 0;
+            left: 0;
+            height: 2px;
+            background: #6b8afd;
+            z-index: 20;
+            opacity: 0;
+            transition: opacity 0.2s;
+            animation: fetch-bar-slide 1.2s ease-in-out infinite;
+        }
+
+        .fetch-bar.active {
+            opacity: 1;
+        }
+
+        @keyframes fetch-bar-slide {
+            0% { left: 0; width: 0; }
+            30% { left: 0; width: 40%; }
+            70% { left: 60%; width: 40%; }
+            100% { left: 100%; width: 0; }
+        }
+
         .status-bar {
             padding: 4px 16px;
             font-size: 0.75rem;
@@ -292,6 +315,7 @@
     </div>
 
     <div class="chart-wrapper">
+        <div class="fetch-bar" id="fetch-bar"></div>
         <div id="chart"></div>
         <div class="chart-loading-overlay" id="loading-overlay">
             <div class="spinner"></div>
@@ -396,6 +420,10 @@
         } else {
             overlay.classList.remove('visible');
         }
+    }
+
+    function showFetchBar(active) {
+        document.getElementById('fetch-bar').classList.toggle('active', active);
     }
 
     function setStatus(msg) {
@@ -1071,8 +1099,8 @@
                     lineStyle: { color: '#6b8afd', width: 1, type: 'dashed' },
                     label: { show: i === n - 1, backgroundColor: '#1a1f36', color: '#e0e6f0', borderColor: '#2a3358' }
                 },
-                min: times.length > 0 ? times[0] - (times[times.length-1] - times[0]) * 2 : undefined,
-                max: times.length > 0 ? times[times.length-1] + (times[times.length-1] - times[0]) * 2 : undefined
+                min: times.length > 0 ? times[0] - (times[times.length-1] - times[0]) * 0.2 : undefined,
+                max: times.length > 0 ? times[times.length-1] + (times[times.length-1] - times[0]) * 0.2 : undefined
             });
 
             if (subplot.plotType === 'heatmap' && firstCache) {
@@ -1381,8 +1409,7 @@
         const buffer = viewRange * BUFFER_RATIO;
 
         isFetching = true;
-        showLoading(true);
-        setStatus('Fetching data...');
+        showFetchBar(true);
 
         const fetchStart = new Date(view.start - buffer).toISOString();
         const fetchStop = new Date(view.end + buffer).toISOString();
@@ -1419,8 +1446,7 @@
             renderAllSubplots(true);
         }
 
-        showLoading(false);
-        setStatus('Ready');
+        showFetchBar(false);
         isFetching = false;
     }
 
