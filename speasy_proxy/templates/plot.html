@@ -308,6 +308,12 @@
         </div>
         <div id="presets-list" style="display:none;max-height:200px;overflow-y:auto;padding:0 8px 8px;"></div>
     </div>
+    <div id="events-container" style="display:none;border-bottom:1px solid #1e2640;">
+        <div style="padding:8px 16px;cursor:pointer;user-select:none;color:#8892b0;font-size:0.85rem;" id="events-toggle">
+            <span id="events-arrow" style="font-size:0.7em;display:inline-block;transition:transform 0.15s;color:#555e7e;">&#9654; </span>Events
+        </div>
+        <div id="events-list" style="display:none;max-height:200px;overflow-y:auto;padding:0 8px 8px;"></div>
+    </div>
     <div class="tree-container" id="tree-container">
         <div class="loading-text">Loading inventory...</div>
     </div>
@@ -1889,6 +1895,7 @@
         }));
 
         plotState.plots = config.plots.map(subplotFromConfig);
+        updateEventsPanel();
 
         if (plotState.plots.length > 0 && plotState.plots[0].products.length > 0) {
             document.getElementById('product-path').value = plotState.plots[0].products[0].path;
@@ -2047,6 +2054,68 @@
         } catch (e) {
             console.error('Failed to load presets:', e);
         }
+    }
+
+    // ===== Events Panel =====
+
+    function updateEventsPanel() {
+        const container = document.getElementById('events-container');
+        const list = document.getElementById('events-list');
+        const toggle = document.getElementById('events-toggle');
+        const arrow = document.getElementById('events-arrow');
+
+        list.innerHTML = '';
+
+        if (plotState.intervals.length === 0) {
+            container.style.display = 'none';
+            return;
+        }
+
+        if (!toggle._bound) {
+            toggle.addEventListener('click', () => {
+                const open = list.style.display !== 'none';
+                list.style.display = open ? 'none' : 'block';
+                arrow.style.transform = open ? '' : 'rotate(90deg)';
+            });
+            toggle._bound = true;
+        }
+
+        const sorted = [...plotState.intervals].sort((a, b) => new Date(a.start) - new Date(b.start));
+        for (const iv of sorted) {
+            const fmtDate = d => new Date(d).toISOString().replace('T', ' ').replace(/:\d{2}\.\d+Z$/, '');
+            const dateRange = fmtDate(iv.start) + ' — ' + fmtDate(iv.stop);
+            const tooltip = dateRange + (iv.label ? '\n' + iv.label : '');
+
+            const item = document.createElement('div');
+            item.style.cssText = 'padding:4px 8px;cursor:pointer;border-radius:4px;font-size:0.85rem;display:flex;align-items:center;gap:6px;';
+            const swatch = document.createElement('span');
+            swatch.style.cssText = 'width:10px;height:10px;border-radius:2px;flex-shrink:0;background:' + iv.color + ';';
+            const text = document.createElement('span');
+            text.style.cssText = 'overflow:hidden;text-overflow:ellipsis;white-space:nowrap;';
+            text.textContent = dateRange;
+            item.appendChild(swatch);
+            item.appendChild(text);
+            item.title = tooltip;
+            item.addEventListener('mouseenter', () => { item.style.background = '#1e2640'; });
+            item.addEventListener('mouseleave', () => { item.style.background = ''; });
+            item.addEventListener('click', () => centerOnInterval(iv));
+            list.appendChild(item);
+        }
+
+        container.style.display = '';
+    }
+
+    function centerOnInterval(iv) {
+        const start = new Date(iv.start).getTime();
+        const end = new Date(iv.stop).getTime();
+        const duration = end - start;
+        const padding = duration * 1.0;
+        chart.dispatchAction({
+            type: 'dataZoom',
+            dataZoomIndex: 0,
+            startValue: start - padding,
+            endValue: end + padding
+        });
     }
 
     // ===== Init =====
