@@ -874,7 +874,7 @@
     async function fetchData(product, startTime, stopTime) {
         const startISO = new Date(startTime).toISOString();
         const stopISO = new Date(stopTime).toISOString();
-        const maxPoints = document.getElementById('chart-container')?.clientWidth || 2000;
+        const maxPoints = Math.max(10000, (document.getElementById('chart-container')?.clientWidth || 2000) * (1 + 2 * BUFFER_RATIO));
         const url = API_BASE + 'get_data?format=json&path=' +
                     encodeURIComponent(product) +
                     '&start_time=' + encodeURIComponent(startISO) +
@@ -1075,16 +1075,19 @@
                 const yEdges = computeYEdges(yBinsFlat);
                 const yLabel = firstCache.yAxisName + (firstCache.yAxisUnit ? ' (' + firstCache.yAxisUnit + ')' : '');
 
+                const hasYOverride = !!subplot._yOverride;
+                const heatYMin = hasYOverride ? subplot._yOverride.min : (subplot.y_axis.log ? Math.max(yEdges[0], 1e-10) : yEdges[0]);
+                const heatYMax = hasYOverride ? subplot._yOverride.max : yEdges[yBinsFlat.length];
                 yAxes.push({
                     type: subplot.y_axis.log ? 'log' : 'value',
                     gridIndex: i,
                     name: yLabel,
                     nameTextStyle: { color: '#8892b0' },
-                    axisLabel: { color: '#8892b0' },
+                    axisLabel: { color: '#8892b0', showMinLabel: !hasYOverride, showMaxLabel: !hasYOverride },
                     axisLine: { lineStyle: { color: '#2a3358' } },
                     splitLine: { show: false },
-                    min: subplot.y_axis.log ? Math.max(yEdges[0], 1e-10) : yEdges[0],
-                    max: yEdges[yBinsFlat.length]
+                    min: heatYMin,
+                    max: heatYMax
                 });
 
                 series.push({
@@ -1097,7 +1100,7 @@
 
                 subplot._gridIndex = i;
             } else {
-                yAxes.push({
+                const lineYAxis = {
                     type: subplot.y_axis.log ? 'log' : 'value',
                     gridIndex: i,
                     name: firstCache?.unit || '',
@@ -1105,7 +1108,14 @@
                     axisLabel: { color: '#8892b0' },
                     axisLine: { lineStyle: { color: '#2a3358' } },
                     splitLine: { lineStyle: { color: '#1e2640' } }
-                });
+                };
+                if (subplot._yOverride) {
+                    lineYAxis.min = subplot._yOverride.min;
+                    lineYAxis.max = subplot._yOverride.max;
+                    lineYAxis.axisLabel.showMinLabel = false;
+                    lineYAxis.axisLabel.showMaxLabel = false;
+                }
+                yAxes.push(lineYAxis);
 
                 let colorIdx = 0;
                 for (const prod of subplot.products) {
@@ -1264,17 +1274,26 @@
         const yMinPx = chart.convertToPixel({ yAxisIndex: gridIdx }, img.yMin);
         const yMaxPx = chart.convertToPixel({ yAxisIndex: gridIdx }, img.yMax);
 
+        const gridRect = chart.getModel().getComponent('grid', gridIdx).coordinateSystem.getRect();
+
         return {
-            type: 'image',
-            z: -1,
-            style: {
-                image: img.canvas,
-                x: Math.min(tStartPx, tEndPx),
-                y: Math.min(yMinPx, yMaxPx),
-                width: Math.abs(tEndPx - tStartPx),
-                height: Math.abs(yMaxPx - yMinPx)
+            type: 'group',
+            clipPath: {
+                type: 'rect',
+                shape: { x: gridRect.x, y: gridRect.y, width: gridRect.width, height: gridRect.height }
             },
-            silent: true
+            children: [{
+                type: 'image',
+                z: -1,
+                style: {
+                    image: img.canvas,
+                    x: Math.min(tStartPx, tEndPx),
+                    y: Math.min(yMinPx, yMaxPx),
+                    width: Math.abs(tEndPx - tStartPx),
+                    height: Math.abs(yMaxPx - yMinPx)
+                },
+                silent: true
+            }]
         };
     }
 
@@ -1300,6 +1319,35 @@
         const chartDom = chart.getDom();
         chartDom.removeEventListener('wheel', handleWheel, true);
         chartDom.addEventListener('wheel', handleWheel, { passive: false, capture: true });
+
+        // Y axis drag-to-pan
+        let yDrag = null;
+        chartDom.addEventListener('mousedown', (e) => {
+            const domRect = chartDom.getBoundingClientRect();
+            const hit = getSubplotAtY(e.clientX - domRect.left, e.clientY - domRect.top);
+            if (hit && hit.onYAxis) {
+                yDrag = { index: hit.index, startY: e.clientY, range: getYAxisRange(hit.index), rect: hit.rect };
+                e.preventDefault();
+            }
+        });
+        window.addEventListener('mousemove', (e) => {
+            if (!yDrag) return;
+            const dy = e.clientY - yDrag.startY;
+            const span = yDrag.range.max - yDrag.range.min;
+            const shift = (dy / yDrag.rect.height) * span;
+            setYAxisRange(yDrag.index, yDrag.range.min + shift, yDrag.range.max + shift);
+        });
+        window.addEventListener('mouseup', () => { yDrag = null; });
+
+        // Y axis double-click to reset
+        chartDom.addEventListener('dblclick', (e) => {
+            const domRect = chartDom.getBoundingClientRect();
+            const hit = getSubplotAtY(e.clientX - domRect.left, e.clientY - domRect.top);
+            if (hit && hit.onYAxis) {
+                resetYAxisRange(hit.index);
+                e.preventDefault();
+            }
+        });
 
         // Reposition heatmap images on zoom/resize
         chart.off('finished');
@@ -1542,25 +1590,85 @@
     const PAN_FACTOR = 0.002;   // pan sensitivity per pixel of wheel delta
     const ZOOM_FACTOR = 0.001;  // zoom sensitivity per pixel of wheel delta
 
+    function getSubplotAtY(mouseX, mouseY) {
+        for (let i = 0; i < plotState.plots.length; i++) {
+            try {
+                const rect = chart.getModel().getComponent('grid', i).coordinateSystem.getRect();
+                if (mouseY >= rect.y && mouseY <= rect.y + rect.height) {
+                    const onYAxis = mouseX < rect.x;
+                    return { index: i, rect, onYAxis };
+                }
+            } catch (_) {}
+        }
+        return null;
+    }
+
+    function getYAxisRange(subplotIdx) {
+        const subplot = plotState.plots[subplotIdx];
+        if (subplot._yOverride) return subplot._yOverride;
+        const axis = chart.getModel().getComponent('yAxis', subplotIdx);
+        const extent = axis.axis.scale.getExtent();
+        return { min: extent[0], max: extent[1] };
+    }
+
+    function setYAxisRange(subplotIdx, min, max) {
+        plotState.plots[subplotIdx]._yOverride = { min, max };
+        const yAxisOpt = [];
+        for (let i = 0; i < plotState.plots.length; i++) {
+            const ov = plotState.plots[i]._yOverride;
+            yAxisOpt.push(ov ? { min: ov.min, max: ov.max, axisLabel: { showMinLabel: false, showMaxLabel: false } } : {});
+        }
+        chart.setOption({ yAxis: yAxisOpt });
+    }
+
+    function resetYAxisRange(subplotIdx) {
+        delete plotState.plots[subplotIdx]._yOverride;
+        renderAllSubplots(true);
+    }
+
     function handleWheel(e) {
         e.preventDefault();
         e.stopPropagation();
+
+        const chartDom = chart.getDom();
+        const domRect = chartDom.getBoundingClientRect();
+        const mouseX = e.clientX - domRect.left;
+        const mouseY = e.clientY - domRect.top;
+        const hit = getSubplotAtY(mouseX, mouseY);
+
+        if (hit && hit.onYAxis) {
+            const delta = Math.max(-150, Math.min(150, e.deltaY));
+            const range = getYAxisRange(hit.index);
+            const span = range.max - range.min;
+            if (e.ctrlKey || e.metaKey) {
+                const factor = ZOOM_FACTOR * delta;
+                const cursorFrac = 1 - (mouseY - hit.rect.y) / hit.rect.height;
+                const center = range.min + cursorFrac * span;
+                const newMin = center - (center - range.min) * (1 + factor);
+                const newMax = center + (range.max - center) * (1 + factor);
+                if (newMax - newMin > span * 0.001) {
+                    setYAxisRange(hit.index, newMin, newMax);
+                }
+            } else {
+                const panAmount = span * PAN_FACTOR * delta;
+                setYAxisRange(hit.index, range.min + panAmount, range.max + panAmount);
+            }
+            return;
+        }
+
         const view = getVisibleRange();
         if (!view) return;
 
         const range = view.end - view.start;
-        // Clamp delta to [-150, 150] to avoid huge jumps but preserve magnitude
         const delta = Math.max(-150, Math.min(150, e.deltaY));
 
         let newStart, newEnd;
         if (e.ctrlKey || e.metaKey) {
-            // Zoom
             const zoomAmount = range * ZOOM_FACTOR * delta;
             newStart = view.start + zoomAmount;
             newEnd = view.end - zoomAmount;
-            if (newEnd - newStart < 1000) return; // minimum 1 second
+            if (newEnd - newStart < 1000) return;
         } else {
-            // Pan
             const panAmount = range * PAN_FACTOR * delta;
             newStart = view.start + panAmount;
             newEnd = view.end + panAmount;
