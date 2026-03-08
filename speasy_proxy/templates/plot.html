@@ -1286,10 +1286,15 @@
                         }
                     }
                     mergeData(data, viewStart - buffer, viewEnd + buffer);
+                    evictCache();
                     updateChartData(viewStart, viewEnd);
                 }
             } catch (e) {
                 console.error('Sliding window re-fetch error:', e);
+                setStatus('Re-fetch failed, using cached data');
+                showLoading(false);
+                isFetching = false;
+                return;
             }
 
             showLoading(false);
