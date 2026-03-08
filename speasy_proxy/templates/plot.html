@@ -746,7 +746,40 @@
     }
 
     async function fetchProductAndRender(subplotIndex, productPath) {
+        showLoading(true);
         setStatus('Fetching ' + productPath + '...');
+
+        const startTime = plotState.time_range.start;
+        const stopTime = plotState.time_range.stop;
+        const startISO = new Date(startTime).toISOString();
+        const stopISO = new Date(stopTime).toISOString();
+        const fetchStartMs = new Date(startTime).getTime();
+        const fetchStopMs = new Date(stopTime).getTime();
+
+        try {
+            const data = await fetchData(productPath, startISO, stopISO);
+            if (!data || !data.values || !data.axes || data.axes.length === 0) {
+                setStatus('No data returned for ' + productPath);
+                showLoading(false);
+                return;
+            }
+
+            const subplot = plotState.plots[subplotIndex];
+            const cache = subplot.productData[productPath];
+            mergeProductData(cache, data, fetchStartMs, fetchStopMs);
+
+            if (subplot.products[0].path === productPath) {
+                subplot.plotType = detectPlotType(data);
+            }
+
+            renderAllSubplots();
+            setStatus('Added ' + productPath);
+        } catch (e) {
+            setStatus('Error fetching ' + productPath + ': ' + e.message);
+            console.error(e);
+        } finally {
+            showLoading(false);
+        }
     }
 
     async function doPlot() {
@@ -757,24 +790,18 @@
         if (!product) { setStatus('No product selected.'); return; }
         if (!startTime || !stopTime) { setStatus('Please set start and stop times.'); return; }
 
-        selectedProduct = product;
-        cachedData = {
-            product: product,
-            intervals: [],
-            times: [],
-            columns: {},
-            columnNames: [],
-            unit: '',
-            // Spectrogram fields
-            yAxis: null,       // array of Y-axis bin values (e.g. energy channels)
-            yAxisName: '',
-            yAxisUnit: '',
-            rows: [],          // raw 2D array: rows[timeIdx] = [val_per_ybin]
-            displayType: ''
-        };
+        // Reset: clear all subplots, create one with this product
+        plotState.time_range.start = new Date(startTime).toISOString();
+        plotState.time_range.stop = new Date(stopTime).toISOString();
+        plotState.plots = [];
+
+        const subplot = createSubplotData();
+        subplot.products.push({ path: product, label: product });
+        subplot.productData[product] = createProductCache(product);
+        plotState.plots.push(subplot);
 
         updateURL();
-        await fetchAndPlot(startTime, stopTime);
+        await fetchAllAndRender();
     }
 
     async function fetchAndPlot(startTime, stopTime) {
@@ -957,6 +984,57 @@
             }
         }
         return merged;
+    }
+
+    function mergeProductData(cache, json, fetchStart, fetchStop) {
+        const rawTimes = json.axes[0].values;
+        const newTimes = rawTimes.map(t => t / 1e6);
+        const newValues = json.values.values;
+        const columns = json.columns || [];
+        const unit = (json.values.meta && json.values.meta.UNITS) || '';
+
+        const isHeatmap = detectPlotType(json) === 'heatmap';
+
+        if (cache.times.length === 0) {
+            cache.times = newTimes;
+            cache.unit = unit;
+            cache.intervals = [[fetchStart, fetchStop]];
+            cache.displayType = (json.values.meta || {}).DISPLAY_TYPE || '';
+
+            if (isHeatmap) {
+                if (json.axes.length >= 2) {
+                    cache.yAxis = json.axes[1].values;
+                    cache.yAxisName = json.axes[1].name || '';
+                    cache.yAxisUnit = (json.axes[1].meta && json.axes[1].meta.UNITS) || '';
+                } else {
+                    cache.yAxis = newValues[0] ? newValues[0].map((_, i) => i) : [];
+                }
+                cache.rows = newValues;
+                cache.columnNames = columns;
+            } else {
+                cache.columnNames = columns.length > 0 ? columns :
+                    (newValues[0] ? newValues[0].map((_, i) => 'col_' + i) : ['value']);
+                for (let c = 0; c < cache.columnNames.length; c++) {
+                    cache.columns[cache.columnNames[c]] = newValues.map(row => row[c]);
+                }
+            }
+        } else {
+            if (isHeatmap) {
+                const merged = mergeSortedRows(cache.times, newTimes, cache.rows, newValues);
+                cache.times = merged.times;
+                cache.rows = merged.rows;
+            } else {
+                const merged = mergeSorted(cache.times, newTimes, cache.columns, newValues, cache.columnNames);
+                cache.times = merged.times;
+                cache.columns = merged.columns;
+            }
+            cache.intervals = mergeIntervals(cache.intervals.concat([[fetchStart, fetchStop]]));
+        }
+    }
+
+    function renderAllSubplots(preserveView) {
+        // Will be fully implemented in Task 5
+        setStatus('Rendering not yet implemented');
     }
 
     function buildSeriesData(times, values) {
@@ -1687,8 +1765,55 @@
     }
 
     async function fetchAllAndRender() {
-        if (plotState.plots.length === 0) return;
-        setStatus('Multi-plot fetch not yet implemented');
+        showLoading(true);
+        setStatus('Fetching data...');
+
+        const startTime = plotState.time_range.start;
+        const stopTime = plotState.time_range.stop;
+        if (!startTime || !stopTime) { showLoading(false); return; }
+
+        const startISO = new Date(startTime).toISOString();
+        const stopISO = new Date(stopTime).toISOString();
+        const fetchStartMs = new Date(startTime).getTime();
+        const fetchStopMs = new Date(stopTime).getTime();
+
+        // Fetch all products in parallel
+        const fetchPromises = [];
+        for (const subplot of plotState.plots) {
+            for (const prod of subplot.products) {
+                fetchPromises.push(
+                    fetchData(prod.path, startISO, stopISO)
+                        .then(data => ({ subplot, path: prod.path, data }))
+                        .catch(e => ({ subplot, path: prod.path, error: e }))
+                );
+            }
+        }
+
+        const results = await Promise.all(fetchPromises);
+
+        for (const result of results) {
+            if (result.error) {
+                console.error('Fetch error for', result.path, result.error);
+                continue;
+            }
+            const { subplot, path, data } = result;
+            if (!data || !data.values || !data.axes || data.axes.length === 0) continue;
+
+            const cache = subplot.productData[path];
+            mergeProductData(cache, data, fetchStartMs, fetchStopMs);
+
+            // Detect plot type from first product
+            if (subplot.products[0].path === path) {
+                subplot.plotType = detectPlotType(data);
+            }
+        }
+
+        currentView = { start: fetchStartMs, end: fetchStopMs };
+        renderAllSubplots();
+
+        const totalProducts = plotState.plots.reduce((n, sp) => n + sp.products.length, 0);
+        setStatus('Loaded ' + totalProducts + ' product(s) across ' + plotState.plots.length + ' subplot(s)');
+        showLoading(false);
     }
 
     // ===== Sidebar Resize =====
