@@ -275,7 +275,8 @@
             '__spz_virtual_products_list__',
             'UNITS','FILLVAL','SCALETYP','COORDINATE_SYSTEM','FIELDNAM',
             'CATDESC','DEPEND_0','DEPEND_1','LABL_PTR_1',
-            'start_date','stop_date','maxDate','minDate'
+            'start_date','stop_date','maxDate','minDate',
+            'build_date','Id','Resolution','Geometry','TrajectoryGeometry','ResourceId'
         ]);
 
         let selectedSatellite = null;
@@ -358,13 +359,14 @@
                 if (typeof val !== 'object' || val === null) continue;
 
                 const li = document.createElement('li');
-                li.dataset.name = key.toLowerCase();
+                const displayName = val.__spz_name__ || key;
+                li.dataset.name = displayName.toLowerCase();
                 const span = document.createElement('div');
                 span.className = 'tree-node';
-                span.textContent = key;
+                span.textContent = displayName;
 
                 if (isLeaf(val)) {
-                    span.dataset.uid = val.__spz_uid__;
+                    span.dataset.uid = (val.__spz_provider__ || 'ssc') + '/' + val.__spz_uid__;
                     span.dataset.timeBoundsJson = JSON.stringify(findTimeBounds(val) || findTimeBounds(parentNode) || {});
                     const toggle = document.createElement('span');
                     toggle.className = 'toggle';
