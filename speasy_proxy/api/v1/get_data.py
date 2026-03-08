@@ -8,6 +8,7 @@ import numpy as np
 import speasy as spz
 from astropy.units.quantity import Quantity
 from fastapi import Response, Request, Query, Depends
+from fastapi.responses import JSONResponse
 from pydantic.types import Json
 from starlette.concurrency import run_in_threadpool
 
@@ -18,14 +19,13 @@ from speasy.products.variable import to_dictionary
 from speasy.core.codecs import get_codec
 
 from speasy_proxy.api import pickle_data
-from .query_parameters import ZstdCompression, PickleProtocol, DataFormat
+from .query_parameters import ZstdCompression, PickleProtocol, DataFormat, MaxPoints, ResampleStrategy
 from speasy_proxy.api.compression import compress_if_asked
 from speasy_proxy.backend.bokeh_backend import plot_data
+from speasy_proxy.backend.resample import resample
 from speasy_proxy.dependencies import trigger_inventory_check
 
 log = logging.getLogger(__name__)
-
-MAX_BOKEH_DATA_LENGTH = 1000000
 
 
 def dt_to_str(dt: datetime):
@@ -43,7 +43,7 @@ def _values_as_array(values):
 
 
 def to_json(var: SpeasyVariable) -> str:
-    var.replace_fillval_by_nan(inplace=True)
+    var = var.replace_fillval_by_nan(convert_to_float=True)
     return json.dumps(var.to_dictionary(array_to_list=True))
 
 
@@ -68,6 +68,8 @@ async def get_data(request: Request,
                                                  description="Method used to retrieve data from CDA."),
                    product_inputs: Optional[Json] = Query(None, description="Product input parameters (in JSON format) used used for example in AMDA templates parameters"),
                    pickle_proto: PickleProtocol = 3,
+                   max_points: MaxPoints = None,
+                   resample_strategy: ResampleStrategy = "lttb",
                    _=Depends(trigger_inventory_check)):
     request_start_time = time.time_ns()
     request_id = uuid.uuid4()
@@ -91,12 +93,23 @@ async def get_data(request: Request,
 
     log.debug(f'New request {request_id}: {product} {start_time} {stop_time} from {client_chain}')
 
-    var = await run_in_threadpool(_get_data, product=product, start_time=start_time, stop_time=stop_time,
-                                  extra_http_headers=extra_http_headers, **extra_params)
+    try:
+        var = await run_in_threadpool(_get_data, product=product, start_time=start_time, stop_time=stop_time,
+                                      extra_http_headers=extra_http_headers, **extra_params)
+    except Exception as e:
+        log.error(f'{request_id}: Failed to get data for {product}: {e}')
+        return JSONResponse(status_code=502, content={"error": f"Failed to get data for {product}", "detail": str(e)})
 
-    result, mime = await run_in_threadpool(_compress_and_encode_output, var, path, start_time, stop_time, format,
-                                           request, pickle_proto,
-                                           zstd_compression)
+    if var is not None and max_points is not None and len(var) > max_points:
+        var = await run_in_threadpool(resample, var, max_points, resample_strategy)
+
+    try:
+        result, mime = await run_in_threadpool(_compress_and_encode_output, var, path, start_time, stop_time, format,
+                                               request, pickle_proto,
+                                               zstd_compression)
+    except Exception as e:
+        log.error(f'{request_id}: Failed to encode data for {product}: {e}')
+        return JSONResponse(status_code=500, content={"error": f"Failed to encode data for {product}", "detail": str(e)})
 
     request_duration = (time.time_ns() - request_start_time) / 1000000.
 
@@ -133,19 +146,11 @@ def encode_output(var, path: str, start_time: str, stop_time: str, format: str, 
         elif output_format == 'speasy_variable':
             data = var
         elif output_format == 'html_bokeh':
-            if len(var) < MAX_BOKEH_DATA_LENGTH:
-                return plot_data(product=path, data=var,
-                                 start_time=start_time, stop_time=stop_time,
-                                 request=request), 'text/html; charset=UTF-8'
-            else:
-                return plot_data(product=path, data=var[:MAX_BOKEH_DATA_LENGTH],
-                                 start_time=start_time, stop_time=stop_time,
-                                 request=request), 'text/html; charset=UTF-8'
+            return plot_data(product=path, data=var,
+                             start_time=start_time, stop_time=stop_time,
+                             request=request), 'text/html; charset=UTF-8'
         elif output_format == 'json':
-            if len(var) < MAX_BOKEH_DATA_LENGTH:
-                return to_json(var), 'application/json; charset=UTF-8'
-            else:
-                return to_json(var[:MAX_BOKEH_DATA_LENGTH]), 'application/json; charset=UTF-8'
+            return to_json(var), 'application/json; charset=UTF-8'
 
     return pickle_data(data, pickle_proto), "application/python-pickle"
 

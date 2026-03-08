@@ -1,4 +1,4 @@
-from typing import Annotated
+from typing import Annotated, Optional
 
 from fastapi import Query
 import speasy as spz
@@ -11,3 +11,5 @@ DataFormat = Annotated[str, Query(
     examples=["python_dict"],
     enum=["python_dict", "speasy_variable", "html_bokeh", "json", "cdf"]
 )]
+MaxPoints = Annotated[Optional[int], Query(ge=10, description="Target max points per component. None = full resolution.")]
+ResampleStrategy = Annotated[str, Query(enum=["lttb", "min_max"], description="Resampling strategy.")]
