@@ -129,6 +129,37 @@
             background: #111627;
             border-bottom: 1px solid #1e2640;
             flex-wrap: wrap;
+            overflow: hidden;
+            transition: height 0.15s, padding 0.15s;
+        }
+
+        .controls-bar.collapsed {
+            height: 0;
+            padding: 0 16px;
+            border-bottom: none;
+            overflow: hidden;
+        }
+
+        .controls-collapse-btn {
+            background: #1a1f36;
+            border: 1px solid #2a3358;
+            border-top: none;
+            border-radius: 0 0 6px 6px;
+            color: #8892b0;
+            cursor: pointer;
+            font-size: 0.65rem;
+            padding: 2px 16px;
+            align-self: center;
+            margin: 0 auto;
+            display: block;
+            transition: background 0.15s;
+            position: relative;
+            z-index: 5;
+        }
+
+        .controls-collapse-btn:hover {
+            background: #2a3358;
+            color: #e0e6f0;
         }
 
         .controls-bar label {
@@ -356,6 +387,7 @@
             </div>
         </div>
     </div>
+    <button class="controls-collapse-btn" id="controls-collapse-btn" title="Toggle controls">&#9650;</button>
 
     <div class="chart-wrapper">
         <div class="fetch-bar" id="fetch-bar"></div>
@@ -707,8 +739,12 @@
     // ===== Task 6: Data Fetch and ECharts Plot =====
 
     function initChart() {
-        chart = echarts.init(document.getElementById('chart'), 'dark');
-        window.addEventListener('resize', () => { chart.resize(); });
+        const el = document.getElementById('chart');
+        chart = echarts.init(el, 'dark');
+        new ResizeObserver(() => {
+            chart.resize();
+            if (plotState.plots.length > 0) renderAllSubplots(true);
+        }).observe(el);
     }
 
     function bindControls() {
@@ -2012,13 +2048,22 @@
             updateBtn();
         });
 
-        sidebar.addEventListener('transitionend', () => {
-            updateBtn();
-            if (chart) chart.resize();
-        });
+        sidebar.addEventListener('transitionend', () => updateBtn());
 
         new ResizeObserver(() => updateBtn()).observe(sidebar);
         updateBtn();
+    }
+
+    // ===== Controls Bar Collapse =====
+
+    function initControlsCollapse() {
+        const bar = document.querySelector('.controls-bar');
+        const btn = document.getElementById('controls-collapse-btn');
+
+        btn.addEventListener('click', () => {
+            bar.classList.toggle('collapsed');
+            btn.innerHTML = bar.classList.contains('collapsed') ? '&#9660;' : '&#9650;';
+        });
     }
 
     // ===== Presets =====
@@ -2126,6 +2171,7 @@
         initChart();
         initResize();
         initSidebarCollapse();
+        initControlsCollapse();
         loadInventory();
         loadPresets();
         bindControls();
