@@ -102,8 +102,6 @@
 
         .tree-node:hover { background: #1a1f36; }
 
-        .tree-node.selected { background: #2a3358; color: #6b8afd; }
-
         .tree-node .toggle {
             width: 16px;
             text-align: center;
@@ -116,6 +114,24 @@
         .tree-children.open { display: block; }
 
         .tree-node.hidden, li.hidden { display: none; }
+
+        .tree-node input[type="checkbox"] {
+            margin-right: 6px;
+            accent-color: #6b8afd;
+        }
+
+        .tree-node .color-swatch {
+            width: 10px;
+            height: 10px;
+            border-radius: 2px;
+            margin-right: 6px;
+            flex-shrink: 0;
+            display: none;
+        }
+
+        .tree-node.plotted .color-swatch { display: inline-block; }
+
+        .tree-node.loading { opacity: 0.5; }
 
         /* ---- Controls ---- */
         .controls {
@@ -145,62 +161,6 @@
 
         .controls select:focus,
         .controls input[type="datetime-local"]:focus { border-color: #6b8afd; }
-
-        .plot-btn {
-            padding: 8px;
-            background: #6b8afd;
-            border: none;
-            border-radius: 4px;
-            color: #fff;
-            font-size: 0.85rem;
-            font-weight: 600;
-            cursor: pointer;
-        }
-
-        .plot-btn:hover { background: #5a7bf0; }
-        .plot-btn:disabled { opacity: 0.5; cursor: not-allowed; }
-
-        /* ---- Plotted satellites list ---- */
-        .plotted-list {
-            padding: 8px 16px;
-            border-top: 1px solid #1e2640;
-            max-height: 140px;
-            overflow-y: auto;
-        }
-
-        .plotted-list h4 {
-            font-size: 0.78rem;
-            color: #8892b0;
-            margin-bottom: 6px;
-        }
-
-        .plotted-item {
-            display: flex;
-            align-items: center;
-            gap: 6px;
-            padding: 3px 0;
-            font-size: 0.82rem;
-        }
-
-        .color-swatch {
-            width: 12px;
-            height: 12px;
-            border-radius: 2px;
-            flex-shrink: 0;
-        }
-
-        .plotted-item .name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-
-        .remove-btn {
-            background: none;
-            border: none;
-            color: #8892b0;
-            cursor: pointer;
-            font-size: 0.9rem;
-            padding: 0 4px;
-        }
-
-        .remove-btn:hover { color: #ee6666; }
 
         /* ---- Main area ---- */
         .main-area {
@@ -253,10 +213,6 @@
                 <input type="datetime-local" id="startTime">
                 <label>Stop Time</label>
                 <input type="datetime-local" id="stopTime">
-                <button class="plot-btn" id="plotBtn">Plot</button>
-            </div>
-            <div class="plotted-list" id="plottedList">
-                <h4>Plotted Satellites</h4>
             </div>
         </div>
         <div class="main-area">
@@ -279,18 +235,16 @@
             'build_date','Id','Resolution','Geometry','TrajectoryGeometry','ResourceId'
         ]);
 
-        let selectedSatellite = null;
-        let selectedNode = null;
-        let trajectories = [];
+        // uid -> { name, color, data, uid }
+        const trajectories = new Map();
         let colorIndex = 0;
         let chart = null;
 
-        // ---- Status ----
         function setStatus(msg) {
             document.getElementById('statusBar').textContent = msg;
         }
 
-        // ---- Chart initialization ----
+        // ---- Chart ----
         function initChart() {
             chart = echarts.init(document.getElementById('chart3d'), 'dark');
             updateChartOption();
@@ -316,8 +270,8 @@
         }
 
         function computeAxisRange() {
-            let maxAbs = 2; // minimum range to always show Earth
-            for (const t of trajectories) {
+            let maxAbs = 2;
+            for (const t of trajectories.values()) {
                 for (const p of t.data) {
                     for (let i = 0; i < 3; i++) {
                         const v = Math.abs(p[i]);
@@ -325,13 +279,14 @@
                     }
                 }
             }
-            maxAbs = Math.ceil(maxAbs * 1.1); // 10% padding
+            maxAbs = Math.ceil(maxAbs * 1.1);
             return { min: -maxAbs, max: maxAbs };
         }
 
         function updateChartOption() {
-            const trajSeries = trajectories.map(t => ({
+            const trajSeries = Array.from(trajectories.values()).map(t => ({
                 type: 'line3D',
+                name: t.name,
                 data: t.data,
                 lineStyle: { width: 2, color: t.color },
                 silent: true
@@ -379,23 +334,48 @@
                 const li = document.createElement('li');
                 const displayName = val.__spz_name__ || key;
                 li.dataset.name = displayName.toLowerCase();
-                const span = document.createElement('div');
-                span.className = 'tree-node';
-                span.textContent = displayName;
 
                 if (isLeaf(val)) {
-                    span.dataset.uid = (val.__spz_provider__ || 'ssc') + '/' + val.__spz_uid__;
-                    span.dataset.timeBoundsJson = JSON.stringify(findTimeBounds(val) || findTimeBounds(parentNode) || {});
+                    const span = document.createElement('div');
+                    span.className = 'tree-node';
+                    const uid = (val.__spz_provider__ || 'ssc') + '/' + val.__spz_uid__;
+                    const bounds = findTimeBounds(val) || findTimeBounds(parentNode) || {};
+
                     const toggle = document.createElement('span');
                     toggle.className = 'toggle';
                     toggle.textContent = ' ';
-                    span.prepend(toggle);
-                    span.addEventListener('click', () => selectSatellite(span));
+                    span.appendChild(toggle);
+
+                    const cb = document.createElement('input');
+                    cb.type = 'checkbox';
+                    cb.dataset.uid = uid;
+                    cb.dataset.timeBoundsJson = JSON.stringify(bounds);
+                    span.appendChild(cb);
+
+                    const swatch = document.createElement('span');
+                    swatch.className = 'color-swatch';
+                    span.appendChild(swatch);
+
+                    const label = document.createTextNode(displayName);
+                    span.appendChild(label);
+
+                    cb.addEventListener('change', () => onToggleSatellite(cb, span, swatch));
+                    span.addEventListener('click', (e) => {
+                        if (e.target === cb) return;
+                        cb.checked = !cb.checked;
+                        cb.dispatchEvent(new Event('change'));
+                    });
+
+                    li.appendChild(span);
                 } else if (hasVisibleChildren(val)) {
+                    const span = document.createElement('div');
+                    span.className = 'tree-node';
                     const toggle = document.createElement('span');
                     toggle.className = 'toggle';
                     toggle.textContent = '\u25b6';
-                    span.prepend(toggle);
+                    span.appendChild(toggle);
+                    span.appendChild(document.createTextNode(displayName));
+
                     const childContainer = document.createElement('div');
                     childContainer.className = 'tree-children';
                     buildTree(val, childContainer, val);
@@ -405,34 +385,79 @@
                     });
                     li.appendChild(span);
                     li.appendChild(childContainer);
-                    ul.appendChild(li);
-                    continue;
                 } else {
                     continue;
                 }
 
-                li.appendChild(span);
                 ul.appendChild(li);
             }
             parentEl.appendChild(ul);
         }
 
-        function selectSatellite(node) {
-            if (selectedNode) selectedNode.classList.remove('selected');
-            node.classList.add('selected');
-            selectedNode = node;
-            selectedSatellite = node.dataset.uid;
+        async function onToggleSatellite(cb, span, swatch) {
+            const uid = cb.dataset.uid;
 
-            try {
-                const bounds = JSON.parse(node.dataset.timeBoundsJson || '{}');
-                if (bounds.start) {
-                    const s = new Date(bounds.start);
-                    const e = new Date(bounds.stop || bounds.start);
-                    const dayBefore = new Date(e.getTime() - 86400000);
-                    document.getElementById('startTime').value = toLocalISOString(dayBefore > s ? dayBefore : s);
-                    document.getElementById('stopTime').value = toLocalISOString(e);
+            if (!cb.checked) {
+                trajectories.delete(uid);
+                span.classList.remove('plotted');
+                swatch.style.display = 'none';
+                updateChartOption();
+                setStatus(`Removed ${uid.split('/').pop()}.`);
+                return;
+            }
+
+            const startVal = document.getElementById('startTime').value;
+            const stopVal = document.getElementById('stopTime').value;
+            if (!startVal || !stopVal) {
+                // try to use satellite time bounds for a sensible default
+                try {
+                    const bounds = JSON.parse(cb.dataset.timeBoundsJson || '{}');
+                    if (bounds.start) {
+                        const e = new Date(bounds.stop || bounds.start);
+                        const s = new Date(e.getTime() - 86400000);
+                        document.getElementById('startTime').value = toLocalISOString(s);
+                        document.getElementById('stopTime').value = toLocalISOString(e);
+                    } else {
+                        cb.checked = false;
+                        setStatus('Set start and stop times first.');
+                        return;
+                    }
+                } catch (_) {
+                    cb.checked = false;
+                    setStatus('Set start and stop times first.');
+                    return;
                 }
-            } catch (_) {}
+            }
+
+            const coordSys = document.getElementById('coordSys').value;
+            const startISO = new Date(document.getElementById('startTime').value).toISOString();
+            const stopISO = new Date(document.getElementById('stopTime').value).toISOString();
+            const url = `${API_BASE}get_data?path=${encodeURIComponent(uid)}&format=json&coordinate_system=${coordSys}&start_time=${encodeURIComponent(startISO)}&stop_time=${encodeURIComponent(stopISO)}`;
+
+            span.classList.add('loading');
+            setStatus(`Fetching ${uid.split('/').pop()}...`);
+            try {
+                const resp = await fetch(url);
+                if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+                const json = await resp.json();
+                const values = json.values.values;
+                const reData = values.map(p => [p[0] / EARTH_RADIUS_KM, p[1] / EARTH_RADIUS_KM, p[2] / EARTH_RADIUS_KM]);
+
+                const color = COLORS[colorIndex % COLORS.length];
+                colorIndex++;
+                const name = uid.split('/').pop();
+                trajectories.set(uid, { name, color, data: reData, uid });
+                swatch.style.background = color;
+                swatch.style.display = 'inline-block';
+                span.classList.add('plotted');
+                updateChartOption();
+                setStatus(`Plotted ${name} (${reData.length} points).`);
+            } catch (err) {
+                cb.checked = false;
+                setStatus('Error: ' + err.message);
+            } finally {
+                span.classList.remove('loading');
+            }
         }
 
         function toLocalISOString(d) {
@@ -466,63 +491,6 @@
             });
         }
 
-        // ---- Plot action ----
-        document.getElementById('plotBtn').addEventListener('click', async () => {
-            if (!selectedSatellite) { setStatus('Select a satellite first.'); return; }
-            const startVal = document.getElementById('startTime').value;
-            const stopVal = document.getElementById('stopTime').value;
-            if (!startVal || !stopVal) { setStatus('Set start and stop times.'); return; }
-
-            const coordSys = document.getElementById('coordSys').value;
-            const startISO = new Date(startVal).toISOString();
-            const stopISO = new Date(stopVal).toISOString();
-            const url = `${API_BASE}get_data?path=${encodeURIComponent(selectedSatellite)}&format=json&coordinate_system=${coordSys}&start_time=${encodeURIComponent(startISO)}&stop_time=${encodeURIComponent(stopISO)}`;
-
-            setStatus('Fetching data...');
-            document.getElementById('plotBtn').disabled = true;
-            try {
-                const resp = await fetch(url);
-                if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-                const json = await resp.json();
-                const values = json.values.values;
-                const reData = values.map(p => [p[0] / EARTH_RADIUS_KM, p[1] / EARTH_RADIUS_KM, p[2] / EARTH_RADIUS_KM]);
-
-                const color = COLORS[colorIndex % COLORS.length];
-                colorIndex++;
-                const name = selectedSatellite.split('/').pop();
-                trajectories.push({ name, color, data: reData, uid: selectedSatellite });
-                updateChartOption();
-                updatePlottedList();
-                setStatus(`Plotted ${name} (${reData.length} points).`);
-            } catch (err) {
-                setStatus('Error: ' + err.message);
-            } finally {
-                document.getElementById('plotBtn').disabled = false;
-            }
-        });
-
-        // ---- Plotted satellites list ----
-        function updatePlottedList() {
-            const container = document.getElementById('plottedList');
-            container.innerHTML = '<h4>Plotted Satellites</h4>';
-            trajectories.forEach((t, i) => {
-                const div = document.createElement('div');
-                div.className = 'plotted-item';
-                div.innerHTML = `<span class="color-swatch" style="background:${t.color}"></span><span class="name">${t.name}</span>`;
-                const btn = document.createElement('button');
-                btn.className = 'remove-btn';
-                btn.textContent = '\u00d7';
-                btn.addEventListener('click', () => {
-                    trajectories.splice(i, 1);
-                    updateChartOption();
-                    updatePlottedList();
-                    setStatus(`Removed ${t.name}.`);
-                });
-                div.appendChild(btn);
-                container.appendChild(div);
-            });
-        }
-
         // ---- Init ----
         async function loadInventory() {
             setStatus('Loading inventory...');
@@ -531,7 +499,7 @@
                 if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
                 const inv = await resp.json();
                 buildTree(inv, document.getElementById('treeContainer'), inv);
-                setStatus('Ready');
+                setStatus('Ready — check satellites to plot their orbits.');
             } catch (err) {
                 setStatus('Failed to load inventory: ' + err.message);
             }
