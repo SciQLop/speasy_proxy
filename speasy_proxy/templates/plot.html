@@ -1381,53 +1381,33 @@
         const buffer = viewRange * BUFFER_RATIO;
 
         isFetching = true;
-        let anyFetched = false;
+        showLoading(true);
+        setStatus('Fetching data...');
 
+        const fetchStart = new Date(view.start - buffer).toISOString();
+        const fetchStop = new Date(view.end + buffer).toISOString();
+
+        const fetchJobs = [];
         for (const subplot of plotState.plots) {
             for (const prod of subplot.products) {
                 const cache = subplot.productData[prod.path];
                 if (!cache || cache.times.length === 0) continue;
 
-                const cachedStart = cache.times[0];
-                const cachedEnd = cache.times[cache.times.length - 1];
-                const cachedRange = cachedEnd - cachedStart;
-
-                if (cachedRange > 0 && viewRange / cachedRange < REFETCH_THRESHOLD) {
-                    showLoading(true);
-                    setStatus('Re-fetching ' + prod.path + ' at higher resolution...');
-                    try {
-                        const data = await fetchData(prod.path,
-                            new Date(view.start - buffer).toISOString(),
-                            new Date(view.end + buffer).toISOString());
-                        if (data?.axes?.[0]?.values?.length > 0) {
-                            resetProductCache(cache);
-                            mergeProductData(cache, data, view.start - buffer, view.end + buffer);
-                            anyFetched = true;
-                        }
-                    } catch (e) {
-                        console.error('Re-fetch error for', prod.path, e);
-                    }
-                    continue;
-                }
-
-                const gaps = computeGaps(view.start - buffer, view.end + buffer, cache.intervals);
-                for (const gap of gaps) {
-                    showLoading(true);
-                    setStatus('Fetching ' + prod.path + '...');
-                    try {
-                        const data = await fetchData(prod.path,
-                            new Date(gap[0]).toISOString(), new Date(gap[1]).toISOString());
-                        if (data?.axes?.[0]?.values?.length > 0) {
-                            mergeProductData(cache, data, gap[0], gap[1]);
-                            anyFetched = true;
-                        } else {
-                            cache.intervals = mergeIntervals(cache.intervals.concat([[gap[0], gap[1]]]));
-                        }
-                    } catch (e) {
-                        console.error('Gap fetch error for', prod.path, e);
-                    }
-                }
+                fetchJobs.push(
+                    fetchData(prod.path, fetchStart, fetchStop)
+                        .then(data => ({ cache, data }))
+                        .catch(e => { console.error('Fetch error for', prod.path, e); return null; })
+                );
             }
+        }
+
+        const results = await Promise.all(fetchJobs);
+        let anyFetched = false;
+        for (const r of results) {
+            if (!r || !r.data?.axes?.[0]?.values?.length) continue;
+            resetProductCache(r.cache);
+            mergeProductData(r.cache, r.data, view.start - buffer, view.end + buffer);
+            anyFetched = true;
         }
 
         if (anyFetched) {
@@ -1563,14 +1543,10 @@
 
     // ===== Continuous Pan/Zoom =====
     //
-    // Strategy: track the visible time window explicitly (not via dataZoom %).
-    // On every zoom/pan, ensure we have data covering visible range + 1x buffer
-    // on each side. When the view shrinks below REFETCH_THRESHOLD of the cached
-    // range (e.g. after zooming out then back in), discard the cache and re-fetch
-    // at the current zoom level for full-resolution data.
+    // On every zoom/pan, re-fetch the full visible range + buffer for all products.
+    // Server-side resampling (max_points) keeps payloads bounded regardless of time range.
 
     const BUFFER_RATIO = 1.0; // pre-fetch 1x view width on each side
-    const REFETCH_THRESHOLD = 0.3; // if view < 30% of cached range, re-fetch
 
     function getVisibleRange() {
         // Read the actual axis extent from the chart — most reliable source
@@ -1690,23 +1666,6 @@
             startValue: newStart,
             endValue: newEnd
         });
-    }
-
-    function computeGaps(viewStart, viewEnd, intervals) {
-        const gaps = [];
-        let cursor = viewStart;
-        for (const iv of intervals) {
-            if (iv[1] <= cursor) continue;
-            if (iv[0] > viewEnd) break;
-            if (iv[0] > cursor) {
-                gaps.push([cursor, Math.min(iv[0], viewEnd)]);
-            }
-            cursor = Math.max(cursor, iv[1]);
-        }
-        if (cursor < viewEnd) {
-            gaps.push([cursor, viewEnd]);
-        }
-        return gaps;
     }
 
     // ===== Task 8: URL State =====
