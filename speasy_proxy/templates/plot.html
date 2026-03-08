@@ -26,6 +26,40 @@
             display: flex;
             flex-direction: column;
             overflow: hidden;
+            transition: width 0.15s, min-width 0.15s;
+        }
+
+        .sidebar.collapsed {
+            width: 0;
+            min-width: 0;
+            border-right: none;
+            overflow: hidden;
+        }
+
+        .sidebar-collapse-btn {
+            position: absolute;
+            left: 0;
+            top: 50%;
+            transform: translateY(-50%);
+            z-index: 10;
+            width: 20px;
+            height: 48px;
+            background: #1a1f36;
+            border: 1px solid #2a3358;
+            border-left: none;
+            border-radius: 0 6px 6px 0;
+            color: #8892b0;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.7rem;
+            transition: left 0.15s;
+        }
+
+        .sidebar-collapse-btn:hover {
+            background: #2a3358;
+            color: #e0e6f0;
         }
 
         .sidebar-header {
@@ -280,6 +314,7 @@
 </aside>
 
 <div class="resize-handle" id="resize-handle"></div>
+<button class="sidebar-collapse-btn" id="sidebar-collapse-btn" title="Toggle sidebar">&#9664;</button>
 
 <!-- Main area -->
 <div class="main">
@@ -366,13 +401,34 @@
 
     function createSubplotData() {
         return {
+            // Config fields (serialized to/from URL)
             products: [],      // [{path, label}]
             y_axis: { log: false },
-            plotType: 'line',   // 'line' or 'heatmap'
             logScale: true,     // for heatmap Z-axis
+            // Runtime fields (not serialized)
+            plotType: 'line',   // 'line' or 'heatmap'
             lastHeatmapImg: null,
             productData: {}     // keyed by product path
         };
+    }
+
+    function subplotToConfig(sp) {
+        return {
+            products: sp.products.map(p => ({ path: p.path, label: p.label })),
+            y_axis: { log: sp.y_axis.log },
+            log_z: sp.logScale
+        };
+    }
+
+    function subplotFromConfig(plotDef) {
+        const subplot = createSubplotData();
+        subplot.y_axis.log = plotDef.y_axis?.log || false;
+        if (plotDef.log_z !== undefined) subplot.logScale = plotDef.log_z;
+        for (const prod of plotDef.products) {
+            subplot.products.push({ path: prod.path, label: prod.label || prod.path });
+            subplot.productData[prod.path] = createProductCache(prod.path);
+        }
+        return subplot;
     }
 
     function createProductCache(path) {
@@ -1072,7 +1128,7 @@
         const titles = [];
         const TOP_PAD = 30;
         const BOT_PAD = 60;
-        const GAP = 40;
+        const GAP = 20;
 
         const chartHeight = chart.getHeight();
         const usableHeight = chartHeight - TOP_PAD - BOT_PAD - GAP * (n - 1);
@@ -1127,6 +1183,8 @@
                     type: subplot.y_axis.log ? 'log' : 'value',
                     gridIndex: i,
                     name: yLabel,
+                    nameLocation: 'middle',
+                    nameGap: 50,
                     nameTextStyle: { color: '#8892b0' },
                     axisLabel: { color: '#8892b0', showMinLabel: !hasYOverride, showMaxLabel: !hasYOverride },
                     axisLine: { lineStyle: { color: '#2a3358' } },
@@ -1149,6 +1207,8 @@
                     type: subplot.y_axis.log ? 'log' : 'value',
                     gridIndex: i,
                     name: firstCache?.unit || '',
+                    nameLocation: 'middle',
+                    nameGap: 50,
                     nameTextStyle: { color: '#8892b0' },
                     axisLabel: { color: '#8892b0' },
                     axisLine: { lineStyle: { color: '#2a3358' } },
@@ -1748,16 +1808,12 @@
     function stateToConfig() {
         const config = {
             version: 1,
-            time_range: {
-                start: plotState.time_range.start,
-                stop: plotState.time_range.stop
-            },
-            plots: plotState.plots.map(sp => ({
-                products: sp.products.map(p => ({ path: p.path, label: p.label })),
-                y_axis: { log: sp.y_axis.log },
-                log_z: sp.logScale
-            }))
+            time_range: { ...plotState.time_range },
+            plots: plotState.plots.map(subplotToConfig)
         };
+        if (plotState.intervals.length > 0) {
+            config.intervals = plotState.intervals;
+        }
         return config;
     }
 
@@ -1832,17 +1888,7 @@
             label: iv.label || ''
         }));
 
-        plotState.plots = [];
-        for (const plotDef of config.plots) {
-            const subplot = createSubplotData();
-            subplot.y_axis.log = plotDef.y_axis?.log || false;
-            if (plotDef.log_z !== undefined) subplot.logScale = plotDef.log_z;
-            for (const prod of plotDef.products) {
-                subplot.products.push({ path: prod.path, label: prod.label || prod.path });
-                subplot.productData[prod.path] = createProductCache(prod.path);
-            }
-            plotState.plots.push(subplot);
-        }
+        plotState.plots = config.plots.map(subplotFromConfig);
 
         if (plotState.plots.length > 0 && plotState.plots[0].products.length > 0) {
             document.getElementById('product-path').value = plotState.plots[0].products[0].path;
@@ -1938,6 +1984,34 @@
         });
     }
 
+    // ===== Sidebar Collapse =====
+
+    function initSidebarCollapse() {
+        const sidebar = document.querySelector('.sidebar');
+        const btn = document.getElementById('sidebar-collapse-btn');
+        const handle = document.getElementById('resize-handle');
+
+        function updateBtn() {
+            const collapsed = sidebar.classList.contains('collapsed');
+            btn.innerHTML = collapsed ? '&#9654;' : '&#9664;';
+            btn.style.left = collapsed ? '0' : sidebar.getBoundingClientRect().width + 'px';
+            handle.style.display = collapsed ? 'none' : '';
+        }
+
+        btn.addEventListener('click', () => {
+            sidebar.classList.toggle('collapsed');
+            updateBtn();
+        });
+
+        sidebar.addEventListener('transitionend', () => {
+            updateBtn();
+            if (chart) chart.resize();
+        });
+
+        new ResizeObserver(() => updateBtn()).observe(sidebar);
+        updateBtn();
+    }
+
     // ===== Presets =====
 
     async function loadPresets() {
@@ -1980,6 +2054,7 @@
     document.addEventListener('DOMContentLoaded', () => {
         initChart();
         initResize();
+        initSidebarCollapse();
         loadInventory();
         loadPresets();
         bindControls();
