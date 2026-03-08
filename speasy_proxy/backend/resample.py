@@ -34,5 +34,49 @@ def _min_max(var: SpeasyVariable, max_points: int) -> SpeasyVariable:
     return var[sorted_indices]
 
 
+def _lttb_single(values_1d: np.ndarray, n_out: int) -> np.ndarray:
+    n = len(values_1d)
+    indices = np.zeros(n_out, dtype=int)
+    indices[0] = 0
+    indices[n_out - 1] = n - 1
+
+    bucket_size = (n - 2) / (n_out - 2)
+    prev_idx = 0
+
+    for i in range(1, n_out - 1):
+        bucket_start = int((i - 1) * bucket_size) + 1
+        bucket_end = int(i * bucket_size) + 1
+
+        next_bucket_start = int(i * bucket_size) + 1
+        next_bucket_end = min(int((i + 1) * bucket_size) + 1, n)
+        next_avg = np.mean(values_1d[next_bucket_start:next_bucket_end])
+
+        best_idx = bucket_start
+        max_area = -1.0
+        prev_val = values_1d[prev_idx]
+
+        for j in range(bucket_start, min(bucket_end, n)):
+            area = abs((j - prev_idx) * (next_avg - prev_val) -
+                       (values_1d[j] - prev_val) * (next_bucket_start - prev_idx))
+            if area > max_area:
+                max_area = area
+                best_idx = j
+
+        indices[i] = best_idx
+        prev_idx = best_idx
+
+    return indices
+
+
 def _lttb(var: SpeasyVariable, max_points: int) -> SpeasyVariable:
-    raise NotImplementedError("LTTB resampling is not yet implemented")
+    n_cols = var.values.shape[1]
+    values = np.asarray(var.values)
+    n_out = max(max_points, 3)
+
+    indices = set()
+    for col in range(n_cols):
+        col_indices = _lttb_single(values[:, col], n_out)
+        indices.update(col_indices.tolist())
+
+    sorted_indices = np.array(sorted(indices))
+    return var[sorted_indices]

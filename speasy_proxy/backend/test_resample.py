@@ -54,3 +54,33 @@ def test_preserves_time_ordering():
     result = resample(var, max_points=200, strategy='min_max')
     times = result.time
     assert np.all(times[1:] >= times[:-1])
+
+
+def test_lttb_reduces_points():
+    var = _make_var(10000, n_cols=1)
+    result = resample(var, max_points=200, strategy='lttb')
+    assert len(result) <= 200
+    assert len(result) > 0
+
+
+def test_lttb_preserves_endpoints():
+    var = _make_var(1000, n_cols=1)
+    result = resample(var, max_points=100, strategy='lttb')
+    np.testing.assert_equal(result.time[0], var.time[0])
+    np.testing.assert_equal(result.time[-1], var.time[-1])
+
+
+def test_lttb_multi_column():
+    values = np.zeros((1000, 2))
+    values[500, 0] = 100.0
+    values[700, 1] = 100.0
+    var = _make_var(1000, values=values)
+    result = resample(var, max_points=100, strategy='lttb')
+    assert len(result) > 0
+    assert len(result) <= 200  # up to max_points * n_cols worst case
+
+
+def test_invalid_strategy_raises():
+    var = _make_var(100, n_cols=1)
+    with pytest.raises(KeyError):
+        resample(var, max_points=10, strategy='invalid')
