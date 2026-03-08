@@ -240,7 +240,8 @@
         <input type="datetime-local" id="stop-time">
 
         <button id="btn-plot" disabled>Plot</button>
-        <button id="btn-log-scale" style="display:none;" title="Toggle log/linear color scale">Log</button>
+        <button id="btn-log-scale" style="display:none;" title="Toggle log/linear color scale">Log Z</button>
+        <button id="btn-log-y" style="display:none;" title="Toggle log/linear Y axis">Log Y</button>
     </div>
 
     <div class="chart-wrapper">
@@ -283,6 +284,7 @@
     let zoomDebounceTimer = null;
     let plotType = 'line'; // 'line' or 'heatmap'
     let logScale = true;   // log color scale for heatmaps
+    let logYAxis = false;  // log Y axis for heatmaps
 
     // ===== Helpers =====
 
@@ -543,7 +545,14 @@
         });
         document.getElementById('btn-log-scale').addEventListener('click', () => {
             logScale = !logScale;
-            document.getElementById('btn-log-scale').textContent = logScale ? 'Log' : 'Linear';
+            document.getElementById('btn-log-scale').textContent = logScale ? 'Log Z' : 'Linear Z';
+            if (cachedData && cachedData.times.length > 0 && plotType === 'heatmap') {
+                renderHeatmap();
+            }
+        });
+        document.getElementById('btn-log-y').addEventListener('click', () => {
+            logYAxis = !logYAxis;
+            document.getElementById('btn-log-y').textContent = logYAxis ? 'Log Y' : 'Linear Y';
             if (cachedData && cachedData.times.length > 0 && plotType === 'heatmap') {
                 renderHeatmap();
             }
@@ -651,16 +660,18 @@
                 }
                 cachedData.rows = newValues;
                 cachedData.columnNames = columns;
-                // Show log/linear toggle
+                // Show spectrogram toggles
                 document.getElementById('btn-log-scale').style.display = '';
+                document.getElementById('btn-log-y').style.display = '';
             } else {
                 cachedData.columnNames = columns.length > 0 ? columns :
                     (newValues[0] ? newValues[0].map((_, i) => 'col_' + i) : ['value']);
                 for (let c = 0; c < cachedData.columnNames.length; c++) {
                     cachedData.columns[cachedData.columnNames[c]] = newValues.map(row => row[c]);
                 }
-                // Hide log/linear toggle
+                // Hide spectrogram toggles
                 document.getElementById('btn-log-scale').style.display = 'none';
+                document.getElementById('btn-log-y').style.display = 'none';
             }
         } else {
             if (plotType === 'heatmap') {
@@ -849,32 +860,82 @@
         setupZoomHandler();
     }
 
+    // Viridis-like colormap as RGB stops for interpolation
+    const VIRIDIS = [
+        [0.0, [68,1,84]], [0.1, [72,40,120]], [0.2, [62,73,137]],
+        [0.3, [49,104,142]], [0.4, [38,130,142]], [0.5, [31,158,137]],
+        [0.6, [53,183,121]], [0.7, [110,206,88]], [0.8, [181,222,43]],
+        [0.9, [229,228,32]], [1.0, [253,231,37]]
+    ];
+
+    function viridisColor(t) {
+        // t in [0,1] -> 'rgb(r,g,b)'
+        t = Math.max(0, Math.min(1, t));
+        for (let i = 0; i < VIRIDIS.length - 1; i++) {
+            if (t >= VIRIDIS[i][0] && t <= VIRIDIS[i+1][0]) {
+                const f = (t - VIRIDIS[i][0]) / (VIRIDIS[i+1][0] - VIRIDIS[i][0]);
+                const a = VIRIDIS[i][1], b = VIRIDIS[i+1][1];
+                const r = Math.round(a[0] + f * (b[0] - a[0]));
+                const g = Math.round(a[1] + f * (b[1] - a[1]));
+                const bl = Math.round(a[2] + f * (b[2] - a[2]));
+                return 'rgb(' + r + ',' + g + ',' + bl + ')';
+            }
+        }
+        return 'rgb(253,231,37)';
+    }
+
     function renderHeatmap() {
         const times = cachedData.times;
         const yBins = cachedData.yAxis;
         const rows = cachedData.rows;
 
-        // Build heatmap data: [xIndex, yIndex, value]
-        // Compute time step for cell width
-        const heatData = [];
+        // Compute value range for colormap
         let vMin = Infinity, vMax = -Infinity;
-        for (let t = 0; t < times.length; t++) {
+        for (let t = 0; t < rows.length; t++) {
+            if (!rows[t]) continue;
             for (let y = 0; y < yBins.length; y++) {
-                let val = rows[t] ? rows[t][y] : null;
-                if (val === null || val === undefined || isNaN(val) || val <= 0) {
-                    heatData.push([times[t], yBins[y], null]);
-                } else {
-                    heatData.push([times[t], yBins[y], val]);
+                const val = rows[t][y];
+                if (val != null && !isNaN(val) && val > 0) {
                     if (val < vMin) vMin = val;
                     if (val > vMax) vMax = val;
                 }
             }
         }
-
-        if (vMin === Infinity) vMin = 0;
+        if (vMin === Infinity) vMin = 1e-30;
         if (vMax === -Infinity) vMax = 1;
-        // Avoid zero range
-        if (vMin === vMax) { vMax = vMin + 1; }
+        if (vMin === vMax) vMax = vMin * 10;
+
+        const logVMin = Math.log10(Math.max(vMin, 1e-30));
+        const logVMax = Math.log10(vMax);
+        const linVMin = vMin;
+        const linVMax = vMax;
+
+        // Compute Y-bin edges for rectangles
+        const yEdges = new Array(yBins.length + 1);
+        for (let i = 1; i < yBins.length; i++) {
+            yEdges[i] = (yBins[i - 1] + yBins[i]) / 2;
+        }
+        yEdges[0] = yBins[0] - (yBins.length > 1 ? (yBins[1] - yBins[0]) / 2 : 0.5);
+        yEdges[yBins.length] = yBins[yBins.length - 1] + (yBins.length > 1 ? (yBins[yBins.length-1] - yBins[yBins.length-2]) / 2 : 0.5);
+
+        // Build data: each item = [timeStart, timeEnd, yBottom, yTop, colorNormalized]
+        const customData = [];
+        for (let t = 0; t < times.length; t++) {
+            const tStart = times[t];
+            const tEnd = (t + 1 < times.length) ? times[t + 1] : tStart + (t > 0 ? times[t] - times[t-1] : 1000);
+            if (!rows[t]) continue;
+            for (let y = 0; y < yBins.length; y++) {
+                const val = rows[t][y];
+                if (val == null || isNaN(val) || val <= 0) continue;
+                let norm;
+                if (logScale) {
+                    norm = (Math.log10(val) - logVMin) / (logVMax - logVMin);
+                } else {
+                    norm = (val - linVMin) / (linVMax - linVMin);
+                }
+                customData.push([tStart, tEnd, yEdges[y], yEdges[y + 1], norm, val]);
+            }
+        }
 
         const yLabel = cachedData.yAxisName +
             (cachedData.yAxisUnit ? ' (' + cachedData.yAxisUnit + ')' : '');
@@ -888,12 +949,12 @@
                 textStyle: { color: '#e0e6f0', fontSize: 12 },
                 formatter: function(params) {
                     if (!params || !params.value) return '';
-                    const time = new Date(params.value[0]).toISOString().replace('T', ' ').replace('Z', '');
-                    const yVal = params.value[1];
-                    const zVal = params.value[2];
+                    const d = params.value;
+                    const time = new Date(d[0]).toISOString().replace('T', ' ').replace('Z', '');
+                    const yMid = ((d[2] + d[3]) / 2);
                     return '<b>' + escapeHtml(time) + '</b><br>' +
-                           yLabel + ': ' + (yVal != null ? yVal : 'N/A') + '<br>' +
-                           'Value: ' + (zVal != null ? zVal.toExponential(3) : 'NaN');
+                           yLabel + ': ' + yMid.toPrecision(4) + '<br>' +
+                           'Value: ' + d[5].toExponential(3);
                 }
             },
             legend: null,
@@ -906,16 +967,19 @@
                 splitLine: { show: false }
             },
             yAxis: {
-                type: 'value',
+                type: logYAxis ? 'log' : 'value',
                 name: yLabel,
                 nameTextStyle: { color: '#8892b0' },
                 axisLabel: { color: '#8892b0' },
                 axisLine: { lineStyle: { color: '#2a3358' } },
-                splitLine: { show: false }
+                splitLine: { show: false },
+                min: logYAxis ? Math.max(yEdges[0], 1e-10) : null,
+                max: null
             },
             visualMap: {
-                min: logScale ? Math.log10(Math.max(vMin, 1e-30)) : vMin,
-                max: logScale ? Math.log10(vMax) : vMax,
+                show: true,
+                min: 0,
+                max: 1,
                 calculable: true,
                 orient: 'vertical',
                 right: 10,
@@ -923,24 +987,53 @@
                 bottom: 60,
                 textStyle: { color: '#8892b0' },
                 inRange: {
-                    color: ['#440154','#482878','#3e4989','#31688e','#26828e',
-                            '#1f9e89','#35b779','#6ece58','#b5de2b','#fde725']
+                    color: VIRIDIS.map(function(v) {
+                        return 'rgb(' + v[1][0] + ',' + v[1][1] + ',' + v[1][2] + ')';
+                    })
                 },
                 formatter: function(val) {
-                    if (logScale) return (Math.pow(10, val)).toExponential(1);
-                    return val.toExponential(1);
+                    if (logScale) {
+                        const actual = Math.pow(10, logVMin + val * (logVMax - logVMin));
+                        return actual.toExponential(1);
+                    }
+                    const actual = linVMin + val * (linVMax - linVMin);
+                    return actual.toExponential(1);
                 }
             },
             dataZoom: makeDataZoom(times[0], times[times.length - 1]),
-            grid: { left: 60, right: 100, top: 20, bottom: 50, containLabel: false },
+            grid: { left: 80, right: 100, top: 20, bottom: 50, containLabel: false },
             series: [{
-                type: 'heatmap',
-                data: heatData.map(function(d) {
-                    if (d[2] === null) return [d[0], d[1], null];
-                    return [d[0], d[1], logScale ? Math.log10(Math.max(d[2], 1e-30)) : d[2]];
-                }),
-                progressive: 5000,
-                emphasis: { itemStyle: { borderColor: '#fff', borderWidth: 1 } }
+                type: 'custom',
+                data: customData,
+                renderItem: function(params, api) {
+                    const tStart = api.value(0);
+                    const tEnd = api.value(1);
+                    const yBottom = api.value(2);
+                    const yTop = api.value(3);
+                    const norm = api.value(4);
+
+                    const topLeft = api.coord([tStart, yTop]);
+                    const bottomRight = api.coord([tEnd, yBottom]);
+
+                    if (!topLeft || !bottomRight) return null;
+
+                    const rectShape = {
+                        x: topLeft[0],
+                        y: topLeft[1],
+                        width: Math.max(bottomRight[0] - topLeft[0], 1),
+                        height: Math.max(bottomRight[1] - topLeft[1], 1)
+                    };
+
+                    return {
+                        type: 'rect',
+                        shape: rectShape,
+                        style: {
+                            fill: viridisColor(norm)
+                        }
+                    };
+                },
+                encode: { x: [0, 1], y: [2, 3] },
+                progressive: 5000
             }]
         };
 
@@ -1094,20 +1187,9 @@
 
         let series;
         if (plotType === 'heatmap') {
-            const yBins = cachedData.yAxis;
-            const rows = cachedData.rows;
-            const heatData = [];
-            for (let t = 0; t < times.length; t++) {
-                for (let y = 0; y < yBins.length; y++) {
-                    let val = rows[t] ? rows[t][y] : null;
-                    if (val === null || val === undefined || isNaN(val) || val <= 0) {
-                        heatData.push([times[t], yBins[y], null]);
-                    } else {
-                        heatData.push([times[t], yBins[y], logScale ? Math.log10(Math.max(val, 1e-30)) : val]);
-                    }
-                }
-            }
-            series = [{ type: 'heatmap', data: heatData, progressive: 5000 }];
+            // Re-render the full heatmap (custom series needs full rebuild)
+            renderHeatmap();
+            return;
         } else {
             series = [];
             for (let c = 0; c < cachedData.columnNames.length; c++) {
