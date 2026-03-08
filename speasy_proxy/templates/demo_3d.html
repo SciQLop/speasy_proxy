@@ -240,6 +240,42 @@
         let colorIndex = 0;
         let chart = null;
 
+        // ---- Earth texture ----
+        let earthPixels = null;
+        let earthTexW = 0;
+        let earthTexH = 0;
+
+        function loadEarthTexture() {
+            return new Promise(resolve => {
+                const img = new Image();
+                img.crossOrigin = 'anonymous';
+                img.onload = () => {
+                    const w = 512, h = 256;
+                    const c = document.createElement('canvas');
+                    c.width = w; c.height = h;
+                    const ctx = c.getContext('2d');
+                    ctx.drawImage(img, 0, 0, w, h);
+                    earthPixels = ctx.getImageData(0, 0, w, h).data;
+                    earthTexW = w;
+                    earthTexH = h;
+                    resolve(true);
+                };
+                img.onerror = () => resolve(false);
+                img.src = 'https://echarts.apache.org/examples/data-gl/asset/world.topo.bathy.200401.jpg';
+            });
+        }
+
+        function sampleEarthColor(x, y, z) {
+            if (!earthPixels) return '#2255aa';
+            const r = Math.sqrt(x * x + y * y + z * z) || 1;
+            const lat = Math.asin(Math.max(-1, Math.min(1, z / r)));
+            const lon = Math.atan2(y, x);
+            const px = Math.floor(((lon + Math.PI) / (2 * Math.PI)) * (earthTexW - 1));
+            const py = Math.floor(((Math.PI / 2 - lat) / Math.PI) * (earthTexH - 1));
+            const i = (py * earthTexW + px) * 4;
+            return `rgb(${earthPixels[i]},${earthPixels[i + 1]},${earthPixels[i + 2]})`;
+        }
+
         function setStatus(msg) {
             document.getElementById('statusBar').textContent = msg;
         }
@@ -256,11 +292,13 @@
                 type: 'surface',
                 parametric: true,
                 wireframe: { show: false },
-                shading: 'color',
-                itemStyle: { color: '#2255aa', opacity: 0.6 },
+                shading: earthPixels ? 'lambert' : 'color',
+                itemStyle: earthPixels
+                    ? { color: params => sampleEarthColor(params.value[0], params.value[1], params.value[2]) }
+                    : { color: '#2255aa', opacity: 0.6 },
                 parametricEquation: {
-                    u: { min: 0, max: Math.PI, step: Math.PI / 30 },
-                    v: { min: 0, max: 2 * Math.PI, step: Math.PI / 30 },
+                    u: { min: 0, max: Math.PI, step: Math.PI / 60 },
+                    v: { min: 0, max: 2 * Math.PI, step: Math.PI / 60 },
                     x: (u, v) => Math.sin(u) * Math.cos(v),
                     y: (u, v) => Math.sin(u) * Math.sin(v),
                     z: (u, v) => Math.cos(u)
@@ -298,7 +336,11 @@
                 zAxis3D: { name: 'Z (Re)', min: range.min, max: range.max },
                 grid3D: {
                     boxWidth: 100, boxHeight: 100, boxDepth: 100,
-                    viewControl: { autoRotate: false }
+                    viewControl: { autoRotate: false },
+                    light: {
+                        main: { intensity: 1.2, shadow: false },
+                        ambient: { intensity: 0.4 }
+                    }
                 },
                 series: [earthSeries(), ...trajSeries]
             }, true);
@@ -552,8 +594,11 @@
             }
         }
 
-        initChart();
-        loadInventory();
+        (async () => {
+            await loadEarthTexture();
+            initChart();
+            loadInventory();
+        })();
     </script>
 </body>
 </html>
