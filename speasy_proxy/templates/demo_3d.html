@@ -283,7 +283,7 @@
         // ---- Chart ----
         function initChart() {
             chart = echarts.init(document.getElementById('chart3d'), 'dark');
-            updateChartOption();
+            initChartOption();
             new ResizeObserver(() => chart.resize()).observe(document.getElementById('chart3d'));
         }
 
@@ -321,6 +321,23 @@
             return { min: -maxAbs, max: maxAbs };
         }
 
+        function initChartOption() {
+            chart.setOption({
+                xAxis3D: { name: 'X (Re)' },
+                yAxis3D: { name: 'Y (Re)' },
+                zAxis3D: { name: 'Z (Re)' },
+                grid3D: {
+                    boxWidth: 100, boxHeight: 100, boxDepth: 100,
+                    viewControl: { autoRotate: false, minDistance: 0.5, maxDistance: 500 },
+                    light: {
+                        main: { intensity: 1.2, shadow: false },
+                        ambient: { intensity: 0.4 }
+                    }
+                },
+                series: [earthSeries()]
+            });
+        }
+
         function updateChartOption() {
             const trajSeries = Array.from(trajectories.values()).map(t => ({
                 type: 'line3D',
@@ -331,19 +348,11 @@
             }));
             const range = computeAxisRange();
             chart.setOption({
-                xAxis3D: { name: 'X (Re)', min: range.min, max: range.max },
-                yAxis3D: { name: 'Y (Re)', min: range.min, max: range.max },
-                zAxis3D: { name: 'Z (Re)', min: range.min, max: range.max },
-                grid3D: {
-                    boxWidth: 100, boxHeight: 100, boxDepth: 100,
-                    viewControl: { autoRotate: false, minDistance: 0.5, maxDistance: 500 },
-                    light: {
-                        main: { intensity: 1.2, shadow: false },
-                        ambient: { intensity: 0.4 }
-                    }
-                },
+                xAxis3D: { min: range.min, max: range.max },
+                yAxis3D: { min: range.min, max: range.max },
+                zAxis3D: { min: range.min, max: range.max },
                 series: [earthSeries(), ...trajSeries]
-            }, true);
+            });
         }
 
         // ---- Inventory tree ----
