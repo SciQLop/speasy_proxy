@@ -1344,12 +1344,9 @@
         const viewRange = viewEnd - viewStart;
         const axisBuffer = viewRange * 3;
 
-        // Never shrink the axis range — only expand
-        const option = chart.getOption();
-        const curMin = option.xAxis[0].min;
-        const curMax = option.xAxis[0].max;
-        const newMin = Math.min(curMin != null ? curMin : Infinity, times[0] - axisBuffer, viewStart - axisBuffer);
-        const newMax = Math.max(curMax != null ? curMax : -Infinity, times[times.length - 1] + axisBuffer, viewEnd + axisBuffer);
+        // Set axis range based on current buffer — allow it to shrink on re-fetch
+        const newMin = Math.min(times[0], viewStart) - axisBuffer;
+        const newMax = Math.max(times[times.length - 1], viewEnd) + axisBuffer;
 
         let series;
         if (plotType === 'heatmap') {
