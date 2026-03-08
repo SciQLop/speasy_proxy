@@ -894,22 +894,25 @@
         return 'rgb(253,231,37)';
     }
 
-    // Viridis as flat RGB byte array for fast canvas rendering
-    function viridisRGB(t) {
-        t = Math.max(0, Math.min(1, t));
-        for (let i = 0; i < VIRIDIS.length - 1; i++) {
-            if (t >= VIRIDIS[i][0] && t <= VIRIDIS[i+1][0]) {
-                const f = (t - VIRIDIS[i][0]) / (VIRIDIS[i+1][0] - VIRIDIS[i][0]);
-                const a = VIRIDIS[i][1], b = VIRIDIS[i+1][1];
-                return [
-                    Math.round(a[0] + f * (b[0] - a[0])),
-                    Math.round(a[1] + f * (b[1] - a[1])),
-                    Math.round(a[2] + f * (b[2] - a[2]))
-                ];
+    // Pre-computed 256-entry viridis LUT (R,G,B as flat Uint8Array)
+    const VIRIDIS_LUT = (function() {
+        const lut = new Uint8Array(256 * 3);
+        for (let i = 0; i < 256; i++) {
+            const t = i / 255;
+            let r, g, b;
+            // Find color stop
+            let j = 0;
+            for (; j < VIRIDIS.length - 1; j++) {
+                if (t <= VIRIDIS[j+1][0]) break;
             }
+            const f = (t - VIRIDIS[j][0]) / (VIRIDIS[j+1][0] - VIRIDIS[j][0]);
+            const a = VIRIDIS[j][1], c = VIRIDIS[j+1][1];
+            lut[i * 3]     = Math.round(a[0] + f * (c[0] - a[0]));
+            lut[i * 3 + 1] = Math.round(a[1] + f * (c[1] - a[1]));
+            lut[i * 3 + 2] = Math.round(a[2] + f * (c[2] - a[2]));
         }
-        return [253, 231, 37];
-    }
+        return lut;
+    })();
 
     function renderSpectrogramImage(times, rows, yBinsFlat, vMin, vMax) {
         // Render spectrogram to an offscreen canvas as a bitmap
@@ -956,13 +959,13 @@
                 } else {
                     norm = (val - vMin) / (vMax - vMin);
                 }
-                const rgb = viridisRGB(norm);
+                const li = Math.max(0, Math.min(255, Math.round(norm * 255))) * 3;
                 // Y=0 is top of canvas, but yBins[0] is lowest value -> flip
                 const py = (nY - 1 - y);
                 const idx = (py * nTime + t) * 4;
-                pixels[idx] = rgb[0];
-                pixels[idx + 1] = rgb[1];
-                pixels[idx + 2] = rgb[2];
+                pixels[idx] = VIRIDIS_LUT[li];
+                pixels[idx + 1] = VIRIDIS_LUT[li + 1];
+                pixels[idx + 2] = VIRIDIS_LUT[li + 2];
                 pixels[idx + 3] = 255;
             }
         }
