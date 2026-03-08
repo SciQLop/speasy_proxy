@@ -224,6 +224,16 @@
                 min-height: 50vh;
             }
         }
+        .add-dropdown-item {
+            padding: 6px 12px;
+            cursor: pointer;
+            white-space: nowrap;
+            color: #e0e6f0;
+            font-size: 0.85rem;
+        }
+        .add-dropdown-item:hover {
+            background: #2a3358;
+        }
     </style>
 </head>
 <body>
@@ -255,8 +265,23 @@
         <input type="datetime-local" id="stop-time">
 
         <button id="btn-plot" disabled>Plot</button>
+
+        <div style="position:relative;display:inline-block;">
+            <button id="btn-add" disabled>Add to plot ▾</button>
+            <div id="add-dropdown" style="display:none;position:absolute;top:100%;left:0;z-index:100;background:#1a1f36;border:1px solid #2a3358;border-radius:6px;min-width:200px;padding:4px 0;box-shadow:0 4px 12px rgba(0,0,0,0.4);">
+            </div>
+        </div>
+
         <button id="btn-log-scale" style="display:none;" title="Toggle log/linear color scale">Log Z</button>
         <button id="btn-log-y" style="display:none;" title="Toggle log/linear Y axis">Log Y</button>
+
+        <div style="position:relative;display:inline-block;">
+            <button id="btn-share">Share</button>
+            <div id="share-popover" style="display:none;position:absolute;top:100%;right:0;z-index:100;background:#1a1f36;border:1px solid #2a3358;border-radius:6px;padding:10px;box-shadow:0 4px 12px rgba(0,0,0,0.4);min-width:300px;">
+                <input type="text" id="share-url" readonly style="width:100%;background:#0b0e17;border:1px solid #2a3358;color:#e0e6f0;padding:6px 8px;border-radius:4px;font-size:0.8rem;margin-bottom:6px;">
+                <button id="btn-copy-url" style="width:100%;">Copy URL</button>
+            </div>
+        </div>
     </div>
 
     <div class="chart-wrapper">
@@ -477,6 +502,7 @@
         selectedProduct = getProductPath(node);
         document.getElementById('product-path').value = selectedProduct;
         document.getElementById('btn-plot').disabled = false;
+        document.getElementById('btn-add').disabled = false;
 
         // Pre-fill date inputs
         if (node.stop_date) {
@@ -606,6 +632,121 @@
                 renderHeatmap();
             }
         });
+
+        // Add to plot dropdown
+        document.getElementById('btn-add').addEventListener('click', () => {
+            const dropdown = document.getElementById('add-dropdown');
+            if (dropdown.style.display === 'none') {
+                populateAddDropdown();
+                dropdown.style.display = 'block';
+            } else {
+                dropdown.style.display = 'none';
+            }
+        });
+
+        // Close dropdown/popover on outside click
+        document.addEventListener('click', (e) => {
+            const addBtn = document.getElementById('btn-add');
+            const dropdown = document.getElementById('add-dropdown');
+            if (!addBtn.contains(e.target) && !dropdown.contains(e.target)) {
+                dropdown.style.display = 'none';
+            }
+            const shareBtn = document.getElementById('btn-share');
+            const popover = document.getElementById('share-popover');
+            if (!shareBtn.contains(e.target) && !popover.contains(e.target)) {
+                popover.style.display = 'none';
+            }
+        });
+
+        // Share button
+        document.getElementById('btn-share').addEventListener('click', () => {
+            const popover = document.getElementById('share-popover');
+            if (popover.style.display === 'none') {
+                updateShareURL();
+                popover.style.display = 'block';
+            } else {
+                popover.style.display = 'none';
+            }
+        });
+
+        document.getElementById('btn-copy-url').addEventListener('click', () => {
+            const urlInput = document.getElementById('share-url');
+            navigator.clipboard.writeText(urlInput.value).then(() => {
+                document.getElementById('btn-copy-url').textContent = 'Copied!';
+                setTimeout(() => { document.getElementById('btn-copy-url').textContent = 'Copy URL'; }, 1500);
+            });
+        });
+    }
+
+    function populateAddDropdown() {
+        const dropdown = document.getElementById('add-dropdown');
+        dropdown.innerHTML = '';
+
+        const newItem = document.createElement('div');
+        newItem.className = 'add-dropdown-item';
+        newItem.textContent = '+ New subplot';
+        newItem.addEventListener('click', () => {
+            addProductToPlot(null);
+            dropdown.style.display = 'none';
+        });
+        dropdown.appendChild(newItem);
+
+        for (let i = 0; i < plotState.plots.length; i++) {
+            const sp = plotState.plots[i];
+            const label = sp.products.length > 0 ? sp.products[0].path.split('/').pop() : 'empty';
+            const item = document.createElement('div');
+            item.className = 'add-dropdown-item';
+            item.textContent = 'Subplot ' + (i + 1) + ': ' + label;
+            const idx = i;
+            item.addEventListener('click', () => {
+                addProductToPlot(idx);
+                dropdown.style.display = 'none';
+            });
+            dropdown.appendChild(item);
+        }
+    }
+
+    function addProductToPlot(subplotIndex) {
+        const product = document.getElementById('product-path').value;
+        const startTime = document.getElementById('start-time').value;
+        const stopTime = document.getElementById('stop-time').value;
+
+        if (!product) { setStatus('No product selected.'); return; }
+        if (!startTime || !stopTime) { setStatus('Please set start and stop times.'); return; }
+
+        plotState.time_range.start = new Date(startTime).toISOString();
+        plotState.time_range.stop = new Date(stopTime).toISOString();
+
+        let subplot;
+        if (subplotIndex === null) {
+            subplot = createSubplotData();
+            plotState.plots.push(subplot);
+        } else {
+            subplot = plotState.plots[subplotIndex];
+        }
+
+        if (subplot.products.some(p => p.path === product)) {
+            setStatus('Product already in this subplot.');
+            return;
+        }
+
+        subplot.products.push({ path: product, label: product });
+        subplot.productData[product] = createProductCache(product);
+
+        updateURL();
+        fetchProductAndRender(plotState.plots.indexOf(subplot), product);
+    }
+
+    function updateShareURL() {
+        if (plotState.plots.length === 0) return;
+        const config = stateToConfig();
+        const encoded = configToBase64(config);
+        const fullUrl = window.location.origin + window.location.pathname + '?config=' + encoded;
+        document.getElementById('share-url').value = fullUrl;
+    }
+
+    async function fetchProductAndRender(subplotIndex, productPath) {
+        setStatus('Fetching ' + productPath + '...');
     }
 
     async function doPlot() {
