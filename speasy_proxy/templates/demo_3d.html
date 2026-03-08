@@ -315,6 +315,20 @@
             };
         }
 
+        function computeAxisRange() {
+            let maxAbs = 2; // minimum range to always show Earth
+            for (const t of trajectories) {
+                for (const p of t.data) {
+                    for (let i = 0; i < 3; i++) {
+                        const v = Math.abs(p[i]);
+                        if (v > maxAbs) maxAbs = v;
+                    }
+                }
+            }
+            maxAbs = Math.ceil(maxAbs * 1.1); // 10% padding
+            return { min: -maxAbs, max: maxAbs };
+        }
+
         function updateChartOption() {
             const trajSeries = trajectories.map(t => ({
                 type: 'line3D',
@@ -322,11 +336,15 @@
                 lineStyle: { width: 2, color: t.color },
                 silent: true
             }));
+            const range = computeAxisRange();
             chart.setOption({
-                xAxis3D: { name: 'X (Re)' },
-                yAxis3D: { name: 'Y (Re)' },
-                zAxis3D: { name: 'Z (Re)' },
-                grid3D: { viewControl: { autoRotate: false } },
+                xAxis3D: { name: 'X (Re)', min: range.min, max: range.max },
+                yAxis3D: { name: 'Y (Re)', min: range.min, max: range.max },
+                zAxis3D: { name: 'Z (Re)', min: range.min, max: range.max },
+                grid3D: {
+                    boxWidth: 100, boxHeight: 100, boxDepth: 100,
+                    viewControl: { autoRotate: false }
+                },
                 series: [earthSeries(), ...trajSeries]
             }, true);
         }
