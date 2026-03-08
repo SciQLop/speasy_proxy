@@ -191,6 +191,60 @@
             color: #4a5568;
         }
 
+        /* Presets */
+        .presets-section {
+            max-width: 900px;
+            width: 100%;
+            margin: 0 auto;
+            padding: 2rem 1.5rem 0;
+        }
+
+        .presets-section h2 {
+            font-size: 1.3rem;
+            font-weight: 600;
+            color: #c0d0e8;
+            margin-bottom: 1.2rem;
+            text-align: center;
+        }
+
+        .presets-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+            gap: 1rem;
+        }
+
+        .preset-card {
+            background: rgba(255,255,255,0.04);
+            border: 1px solid rgba(255,255,255,0.07);
+            border-radius: 10px;
+            padding: 1.2rem;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            text-decoration: none;
+            color: inherit;
+            display: block;
+        }
+
+        .preset-card:hover {
+            background: rgba(255,255,255,0.08);
+            border-color: rgba(107,138,253,0.3);
+            box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+            text-decoration: none;
+        }
+
+        .preset-card .preset-name {
+            font-size: 1rem;
+            font-weight: 600;
+            color: #e8edf5;
+            margin-bottom: 0.4rem;
+        }
+
+        .preset-card .preset-desc {
+            font-size: 0.85rem;
+            color: #6b7fa0;
+            line-height: 1.4;
+        }
+
         /* Footer */
         footer {
             border-top: 1px solid rgba(255,255,255,0.06);
@@ -261,6 +315,11 @@
             Interactive Plot
         </a>
     </div>
+</section>
+
+<section class="presets-section" id="presets-section" style="display:none;">
+    <h2>Featured Plots</h2>
+    <div class="presets-grid" id="presets-grid"></div>
 </section>
 
 <main class="dashboard">
@@ -376,8 +435,41 @@
         }
     }
 
+    function configToBase64(config) {
+        return btoa(JSON.stringify(config))
+            .replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '');
+    }
+
+    async function loadPresets() {
+        try {
+            const baseUrl = window.location.href.replace(/\/$/, '');
+            const resp = await fetch(baseUrl + '/get_presets');
+            if (!resp.ok) return;
+            const presets = await resp.json();
+            const featured = presets.filter(p => p.featured);
+            if (featured.length === 0) return;
+
+            const grid = document.getElementById('presets-grid');
+            for (const preset of featured) {
+                const encoded = configToBase64(preset.config);
+                const plotUrl = baseUrl + '/plot?config=' + encoded;
+                const card = document.createElement('a');
+                card.href = plotUrl;
+                card.className = 'preset-card';
+                card.innerHTML =
+                    '<div class="preset-name">' + preset.name + '</div>' +
+                    (preset.description ? '<div class="preset-desc">' + preset.description + '</div>' : '');
+                grid.appendChild(card);
+            }
+            document.getElementById('presets-section').style.display = '';
+        } catch (e) {
+            console.error('Failed to load presets:', e);
+        }
+    }
+
     updateStatus();
     setInterval(updateStatus, 10000);
+    loadPresets();
 </script>
 
 </body>

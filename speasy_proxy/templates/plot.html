@@ -245,6 +245,12 @@
         <h2>Products</h2>
         <input type="text" id="search-box" placeholder="Search products...">
     </div>
+    <div id="presets-container" style="display:none;border-bottom:1px solid #1e2640;">
+        <div style="padding:8px 16px;cursor:pointer;user-select:none;color:#8892b0;font-size:0.85rem;" id="presets-toggle">
+            <span id="presets-arrow" style="font-size:0.7em;display:inline-block;transition:transform 0.15s;color:#555e7e;">&#9654; </span>Presets
+        </div>
+        <div id="presets-list" style="display:none;max-height:200px;overflow-y:auto;padding:0 8px 8px;"></div>
+    </div>
     <div class="tree-container" id="tree-container">
         <div class="loading-text">Loading inventory...</div>
     </div>
@@ -1763,12 +1769,50 @@
         });
     }
 
+    // ===== Presets =====
+
+    async function loadPresets() {
+        try {
+            const resp = await fetch(API_BASE + 'get_presets');
+            if (!resp.ok) return;
+            const presets = await resp.json();
+            if (presets.length === 0) return;
+
+            const container = document.getElementById('presets-container');
+            const list = document.getElementById('presets-list');
+            const toggle = document.getElementById('presets-toggle');
+            const arrow = document.getElementById('presets-arrow');
+
+            toggle.addEventListener('click', () => {
+                const open = list.style.display !== 'none';
+                list.style.display = open ? 'none' : 'block';
+                arrow.style.transform = open ? '' : 'rotate(90deg)';
+            });
+
+            for (const preset of presets) {
+                const item = document.createElement('div');
+                item.style.cssText = 'padding:4px 8px;cursor:pointer;border-radius:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:0.85rem;';
+                item.textContent = preset.name;
+                item.title = preset.description || preset.name;
+                item.addEventListener('mouseenter', () => { item.style.background = '#1e2640'; });
+                item.addEventListener('mouseleave', () => { item.style.background = ''; });
+                item.addEventListener('click', () => applyConfig(preset.config));
+                list.appendChild(item);
+            }
+
+            container.style.display = '';
+        } catch (e) {
+            console.error('Failed to load presets:', e);
+        }
+    }
+
     // ===== Init =====
 
     document.addEventListener('DOMContentLoaded', () => {
         initChart();
         initResize();
         loadInventory();
+        loadPresets();
         bindControls();
         loadFromURLParams();
     });

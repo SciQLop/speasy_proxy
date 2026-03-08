@@ -1,0 +1,16 @@
+{
+  "name": "Cluster 1 Ion Spectrogram",
+  "description": "CIS-HIA ion energy spectrogram from Cluster 1",
+  "version": 1,
+  "time_range": {
+    "start": "2020-06-15T00:00:00Z",
+    "stop": "2020-06-16T00:00:00Z"
+  },
+  "plots": [
+    {
+      "products": [{ "path": "amda/c1_hia_pad", "label": "C1 HIA PAD" }],
+      "y_axis": { "log": true },
+      "log_z": true
+    }
+  ]
+}

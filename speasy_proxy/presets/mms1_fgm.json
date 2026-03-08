@@ -1,0 +1,15 @@
+{
+  "name": "MMS1 FGM Survey",
+  "description": "MMS1 fluxgate magnetometer survey data",
+  "version": 1,
+  "time_range": {
+    "start": "2020-06-15T00:00:00Z",
+    "stop": "2020-06-16T00:00:00Z"
+  },
+  "plots": [
+    {
+      "products": [{ "path": "cda/MMS1_FGM_SRVY_L2/mms1_fgm_b_gse_srvy_l2", "label": "MMS1 FGM B GSE" }],
+      "y_axis": { "log": false }
+    }
+  ]
+}
