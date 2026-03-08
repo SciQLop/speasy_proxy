@@ -817,7 +817,7 @@
                 data: buildSeriesData(times, vals),
                 sampling: 'lttb',
                 large: true,
-                largeThreshold: 5000
+                largeThreshold: 50000
             });
         }
 
@@ -1096,19 +1096,6 @@
         const dataMax = times[times.length - 1];
         const dataRange = dataMax - dataMin;
 
-        if (preserveView && chart) {
-            const option = chart.getOption();
-            const curMin = option.xAxis[0].min;
-            const curMax = option.xAxis[0].max;
-            return {
-                type: 'time',
-                min: Math.min(curMin != null ? curMin : dataMin - dataRange * 2, dataMin - dataRange * 2),
-                max: Math.max(curMax != null ? curMax : dataMax + dataRange * 2, dataMax + dataRange * 2),
-                axisLabel: { color: '#8892b0' },
-                axisLine: { lineStyle: { color: '#2a3358' } },
-                splitLine: { show: false }
-            };
-        }
         return {
             type: 'time',
             min: dataMin - dataRange * 2,
@@ -1372,7 +1359,7 @@
                     data: buildSeriesData(times, cachedData.columns[colName]),
                     sampling: 'lttb',
                     large: true,
-                    largeThreshold: 5000
+                    largeThreshold: 50000
                 });
             }
         }
