@@ -1033,8 +1033,245 @@
     }
 
     function renderAllSubplots(preserveView) {
-        // Will be fully implemented in Task 5
-        setStatus('Rendering not yet implemented');
+        const n = plotState.plots.length;
+        if (n === 0) return;
+
+        const grids = [];
+        const xAxes = [];
+        const yAxes = [];
+        const series = [];
+        const TOP_PAD = 30;
+        const BOT_PAD = 60;
+        const GAP = 40;
+
+        const chartHeight = chart.getHeight();
+        const usableHeight = chartHeight - TOP_PAD - BOT_PAD - GAP * (n - 1);
+        const subplotHeight = Math.max(80, usableHeight / n);
+
+        for (let i = 0; i < n; i++) {
+            const subplot = plotState.plots[i];
+            const topPx = TOP_PAD + i * (subplotHeight + GAP);
+
+            grids.push({
+                left: 80, right: 20, top: topPx, height: subplotHeight, containLabel: false
+            });
+
+            const firstCache = subplot.productData[subplot.products[0]?.path];
+            const times = firstCache?.times || [];
+
+            xAxes.push({
+                type: 'time',
+                gridIndex: i,
+                axisLabel: { show: i === n - 1, color: '#8892b0' },
+                axisLine: { lineStyle: { color: '#2a3358' } },
+                splitLine: { show: false },
+                min: times.length > 0 ? times[0] - (times[times.length-1] - times[0]) * 2 : undefined,
+                max: times.length > 0 ? times[times.length-1] + (times[times.length-1] - times[0]) * 2 : undefined
+            });
+
+            if (subplot.plotType === 'heatmap' && firstCache) {
+                const yBins = firstCache.yAxis;
+                const yBinsFlat = Array.isArray(yBins?.[0]) ? yBins[0] : (yBins || []);
+                const yEdges = computeYEdges(yBinsFlat);
+                const yLabel = firstCache.yAxisName + (firstCache.yAxisUnit ? ' (' + firstCache.yAxisUnit + ')' : '');
+
+                yAxes.push({
+                    type: subplot.y_axis.log ? 'log' : 'value',
+                    gridIndex: i,
+                    name: yLabel,
+                    nameTextStyle: { color: '#8892b0' },
+                    axisLabel: { color: '#8892b0' },
+                    axisLine: { lineStyle: { color: '#2a3358' } },
+                    splitLine: { show: false },
+                    min: subplot.y_axis.log ? Math.max(yEdges[0], 1e-10) : yEdges[0],
+                    max: yEdges[yBinsFlat.length]
+                });
+
+                series.push({
+                    type: 'scatter',
+                    data: [],
+                    xAxisIndex: i,
+                    yAxisIndex: i,
+                    silent: true
+                });
+
+                subplot._gridIndex = i;
+            } else {
+                yAxes.push({
+                    type: subplot.y_axis.log ? 'log' : 'value',
+                    gridIndex: i,
+                    name: firstCache?.unit || '',
+                    nameTextStyle: { color: '#8892b0' },
+                    axisLabel: { color: '#8892b0' },
+                    axisLine: { lineStyle: { color: '#2a3358' } },
+                    splitLine: { lineStyle: { color: '#1e2640' } }
+                });
+
+                let colorIdx = 0;
+                for (const prod of subplot.products) {
+                    const cache = subplot.productData[prod.path];
+                    if (!cache || cache.times.length === 0) continue;
+
+                    for (let c = 0; c < cache.columnNames.length; c++) {
+                        const colName = cache.columnNames[c];
+                        const seriesName = subplot.products.length > 1
+                            ? prod.path.split('/').pop() + ' ' + colName
+                            : colName;
+                        series.push({
+                            name: seriesName,
+                            type: 'line',
+                            showSymbol: false,
+                            lineStyle: { width: 1.2 },
+                            color: CHART_COLORS[colorIdx % CHART_COLORS.length],
+                            data: buildSeriesData(cache.times, cache.columns[colName]),
+                            sampling: 'lttb',
+                            large: true,
+                            largeThreshold: 50000,
+                            xAxisIndex: i,
+                            yAxisIndex: i
+                        });
+                        colorIdx++;
+                    }
+                }
+            }
+        }
+
+        const xAxisIndices = xAxes.map((_, i) => i);
+        const firstTimes = plotState.plots[0].productData[plotState.plots[0].products[0]?.path]?.times || [];
+        const dzStart = preserveView && currentView.start != null ? currentView.start : (firstTimes[0] || 0);
+        const dzEnd = preserveView && currentView.end != null ? currentView.end : (firstTimes[firstTimes.length - 1] || 0);
+
+        const dataZoom = [
+            {
+                type: 'inside',
+                xAxisIndex: xAxisIndices,
+                filterMode: 'none',
+                zoomOnMouseWheel: false,
+                moveOnMouseWheel: false,
+                moveOnMouseMove: true,
+                preventDefaultMouseMove: true,
+                startValue: dzStart,
+                endValue: dzEnd
+            },
+            {
+                type: 'slider',
+                xAxisIndex: xAxisIndices,
+                bottom: 8,
+                height: 20,
+                borderColor: '#2a3358',
+                backgroundColor: '#111627',
+                fillerColor: 'rgba(107,138,253,0.15)',
+                handleStyle: { color: '#6b8afd' },
+                textStyle: { color: '#8892b0' },
+                filterMode: 'none',
+                startValue: dzStart,
+                endValue: dzEnd
+            }
+        ];
+
+        const option = {
+            backgroundColor: 'transparent',
+            animation: false,
+            legend: {
+                type: 'scroll',
+                top: 5,
+                textStyle: { color: '#e0e6f0' }
+            },
+            tooltip: {
+                trigger: 'axis',
+                backgroundColor: '#1a1f36',
+                borderColor: '#2a3358',
+                textStyle: { color: '#e0e6f0', fontSize: 12 }
+            },
+            grid: grids,
+            xAxis: xAxes,
+            yAxis: yAxes,
+            dataZoom: dataZoom,
+            series: series,
+            graphic: []
+        };
+
+        chart.setOption(option, true);
+
+        if (!preserveView) {
+            currentView.start = dzStart;
+            currentView.end = dzEnd;
+        }
+
+        // Render heatmap images after chart is set up
+        for (const subplot of plotState.plots) {
+            if (subplot.plotType === 'heatmap') {
+                renderSubplotHeatmap(subplot);
+            }
+        }
+
+        setupMultiZoomHandler();
+        updateShareURL();
+    }
+
+    function computeYEdges(yBinsFlat) {
+        const yEdges = new Array(yBinsFlat.length + 1);
+        for (let i = 1; i < yBinsFlat.length; i++) {
+            yEdges[i] = (yBinsFlat[i - 1] + yBinsFlat[i]) / 2;
+        }
+        yEdges[0] = yBinsFlat[0] - (yBinsFlat.length > 1 ? (yBinsFlat[1] - yBinsFlat[0]) / 2 : 0.5);
+        yEdges[yBinsFlat.length] = yBinsFlat[yBinsFlat.length - 1] +
+            (yBinsFlat.length > 1 ? (yBinsFlat[yBinsFlat.length-1] - yBinsFlat[yBinsFlat.length-2]) / 2 : 0.5);
+        return yEdges;
+    }
+
+    function renderSubplotHeatmap(subplot) {
+        const cache = subplot.productData[subplot.products[0]?.path];
+        if (!cache || !cache.yAxis || cache.rows.length === 0) return;
+
+        const yBinsFlat = Array.isArray(cache.yAxis[0]) ? cache.yAxis[0] : cache.yAxis;
+
+        let vMin = Infinity, vMax = -Infinity;
+        for (const row of cache.rows) {
+            if (!row) continue;
+            for (const val of row) {
+                if (val != null && !isNaN(val) && val > 0) {
+                    if (val < vMin) vMin = val;
+                    if (val > vMax) vMax = val;
+                }
+            }
+        }
+        if (vMin === Infinity) vMin = 1e-30;
+        if (vMax === -Infinity) vMax = 1;
+        if (vMin === vMax) vMax = vMin * 10;
+
+        const img = renderSpectrogramImage(cache.times, cache.rows, yBinsFlat, vMin, vMax, subplot.logScale);
+        if (!img) return;
+
+        subplot.lastHeatmapImg = img;
+        updateSubplotHeatmapGraphic(subplot, img);
+    }
+
+    function updateSubplotHeatmapGraphic(subplot, img) {
+        const gridIdx = subplot._gridIndex;
+        const tStartPx = chart.convertToPixel({ xAxisIndex: gridIdx }, img.tStart);
+        const tEndPx = chart.convertToPixel({ xAxisIndex: gridIdx }, img.tEnd);
+        const yMinPx = chart.convertToPixel({ yAxisIndex: gridIdx }, img.yMin);
+        const yMaxPx = chart.convertToPixel({ yAxisIndex: gridIdx }, img.yMax);
+
+        chart.setOption({
+            graphic: [{
+                type: 'image',
+                z: -1,
+                style: {
+                    image: img.canvas,
+                    x: Math.min(tStartPx, tEndPx),
+                    y: Math.min(yMinPx, yMaxPx),
+                    width: Math.abs(tEndPx - tStartPx),
+                    height: Math.abs(yMaxPx - yMinPx)
+                },
+                silent: true
+            }]
+        });
+    }
+
+    function setupMultiZoomHandler() {
+        // Will be implemented in Task 6
     }
 
     function buildSeriesData(times, values) {
@@ -1167,7 +1404,7 @@
         return lut;
     })();
 
-    function renderSpectrogramImage(times, rows, yBinsFlat, vMin, vMax) {
+    function renderSpectrogramImage(times, rows, yBinsFlat, vMin, vMax, logScaleParam) {
         // Render spectrogram to an offscreen canvas as a bitmap
         // Only render the visible time range for performance
         const view = (currentView.start != null && currentView.end != null)
@@ -1213,7 +1450,7 @@
                 const val = row[y];
                 if (val == null || isNaN(val) || val <= 0) continue;
                 let norm;
-                if (logScale) {
+                if (logScaleParam) {
                     norm = (Math.log10(val) - logVMin) / (logVMax - logVMin);
                 } else {
                     norm = (val - vMin) / (vMax - vMin);
