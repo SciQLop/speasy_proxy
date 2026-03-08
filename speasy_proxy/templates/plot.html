@@ -293,14 +293,46 @@
     // State
     let chart = null;
     let inventory = null;
-    let selectedProduct = null;
-    let cachedData = null;
+    let selectedProduct = null;  // currently selected in the tree (not yet plotted)
     let leafIndex = [];
     let zoomDebounceTimer = null;
-    let plotType = 'line'; // 'line' or 'heatmap'
-    let logScale = true;   // log color scale for heatmaps
-    let logYAxis = false;  // log Y axis for heatmaps
-    let lastHeatmapImg = null; // cached rendered spectrogram image
+
+    // Multi-plot state — single source of truth
+    const plotState = {
+        version: 1,
+        time_range: { start: null, stop: null },
+        plots: []  // array of subplot objects
+    };
+
+    let currentView = { start: null, end: null };
+    let isFetching = false;
+
+    function createSubplotData() {
+        return {
+            products: [],      // [{path, label}]
+            y_axis: { log: false },
+            plotType: 'line',   // 'line' or 'heatmap'
+            logScale: true,     // for heatmap Z-axis
+            lastHeatmapImg: null,
+            productData: {}     // keyed by product path
+        };
+    }
+
+    function createProductCache(path) {
+        return {
+            path: path,
+            intervals: [],
+            times: [],
+            columns: {},
+            columnNames: [],
+            unit: '',
+            yAxis: null,
+            yAxisName: '',
+            yAxisUnit: '',
+            rows: [],
+            displayType: ''
+        };
+    }
 
     // ===== Helpers =====
 
@@ -1159,8 +1191,6 @@
     // range (e.g. after zooming out then back in), discard the cache and re-fetch
     // at the current zoom level for full-resolution data.
 
-    let currentView = { start: null, end: null }; // millisecond timestamps
-    let isFetching = false;
     const BUFFER_RATIO = 1.0; // pre-fetch 1x view width on each side
     const REFETCH_THRESHOLD = 0.3; // if view < 30% of cached range, re-fetch
 
