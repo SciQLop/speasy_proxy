@@ -336,13 +336,13 @@
             return key.startsWith('__spz_') || METADATA_KEYS.has(key);
         }
 
-        function isLeaf(node) {
-            return node && typeof node === 'object' && '__spz_uid__' in node;
-        }
-
         function hasVisibleChildren(node) {
             if (typeof node !== 'object' || node === null) return false;
             return Object.keys(node).some(k => !isMetadataKey(k));
+        }
+
+        function isLeaf(node) {
+            return node && typeof node === 'object' && '__spz_uid__' in node && !hasVisibleChildren(node);
         }
 
         function findTimeBounds(node) {
