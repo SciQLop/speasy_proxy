@@ -926,13 +926,19 @@
         const renderStart = view.start - viewRange * 0.5;
         const renderEnd = view.end + viewRange * 0.5;
 
-        let iStart = 0, iEnd = times.length;
-        for (let i = 0; i < times.length; i++) {
-            if (times[i] >= renderStart) { iStart = i; break; }
+        // Binary search for visible time range
+        let lo = 0, hi = times.length;
+        while (lo < hi) {
+            const mid = (lo + hi) >> 1;
+            if (times[mid] < renderStart) lo = mid + 1; else hi = mid;
         }
-        for (let i = times.length - 1; i >= 0; i--) {
-            if (times[i] <= renderEnd) { iEnd = i + 1; break; }
+        const iStart = lo;
+        lo = iStart; hi = times.length;
+        while (lo < hi) {
+            const mid = (lo + hi) >> 1;
+            if (times[mid] <= renderEnd) lo = mid + 1; else hi = mid;
         }
+        const iEnd = lo;
 
         const nTime = iEnd - iStart;
         const nY = yBinsFlat.length;
