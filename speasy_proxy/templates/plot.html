@@ -1160,8 +1160,9 @@
     //
     // Strategy: track the visible time window explicitly (not via dataZoom %).
     // On every zoom/pan, ensure we have data covering visible range + 1x buffer
-    // on each side. The xAxis min/max is set wider than the data so the user
-    // can always pan further without hitting a wall.
+    // on each side. When the view shrinks below REFETCH_THRESHOLD of the cached
+    // range (e.g. after zooming out then back in), discard the cache and re-fetch
+    // at the current zoom level for full-resolution data.
 
     let currentView = { start: null, end: null }; // millisecond timestamps
     let isFetching = false;
