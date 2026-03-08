@@ -1166,6 +1166,7 @@
     let currentView = { start: null, end: null }; // millisecond timestamps
     let isFetching = false;
     const BUFFER_RATIO = 1.0; // pre-fetch 1x view width on each side
+    const REFETCH_THRESHOLD = 0.3; // if view < 30% of cached range, re-fetch
 
     function getVisibleRange() {
         // Read the actual axis extent from the chart — most reliable source
@@ -1254,7 +1255,50 @@
         const viewRange = viewEnd - viewStart;
         const buffer = viewRange * BUFFER_RATIO;
 
-        // We want data covering [viewStart - buffer, viewEnd + buffer]
+        // Check if we've zoomed in far enough that cached data is oversampled
+        // for the wide range — if so, discard and re-fetch for current view
+        const cachedStart = cachedData.times[0];
+        const cachedEnd = cachedData.times[cachedData.times.length - 1];
+        const cachedRange = cachedEnd - cachedStart;
+
+        if (cachedRange > 0 && viewRange / cachedRange < REFETCH_THRESHOLD) {
+            // Sliding window reset: discard cache and re-fetch at current zoom level
+            isFetching = true;
+            showLoading(true);
+            setStatus('Re-fetching at higher resolution...');
+
+            const fetchStart = new Date(viewStart - buffer).toISOString();
+            const fetchEnd = new Date(viewEnd + buffer).toISOString();
+
+            try {
+                const data = await fetchData(selectedProduct, fetchStart, fetchEnd);
+                if (data && data.values && data.axes && data.axes.length > 0 &&
+                    data.axes[0].values.length > 0) {
+                    // Reset cache entirely
+                    cachedData.times = [];
+                    cachedData.intervals = [];
+                    if (plotType === 'heatmap') {
+                        cachedData.rows = [];
+                    } else {
+                        for (const cn of cachedData.columnNames) {
+                            cachedData.columns[cn] = [];
+                        }
+                    }
+                    mergeData(data, viewStart - buffer, viewEnd + buffer);
+                    updateChartData(viewStart, viewEnd);
+                }
+            } catch (e) {
+                console.error('Sliding window re-fetch error:', e);
+            }
+
+            showLoading(false);
+            setStatus('Loaded ' + cachedData.times.length + ' timestamps, ' +
+                       cachedData.columnNames.length + ' columns');
+            isFetching = false;
+            return;
+        }
+
+        // Normal gap-based fetching
         const fetchStart = viewStart - buffer;
         const fetchEnd = viewEnd + buffer;
 
@@ -1276,7 +1320,6 @@
                     mergeData(data, gap[0], gap[1]);
                     fetched = true;
                 } else {
-                    // No data in this range — mark it as covered anyway to avoid re-fetching
                     cachedData.intervals = mergeIntervals(
                         cachedData.intervals.concat([[gap[0], gap[1]]]));
                 }
