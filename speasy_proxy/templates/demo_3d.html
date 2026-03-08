@@ -465,6 +465,53 @@
             return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
         }
 
+        async function replotAll() {
+            const checked = document.querySelectorAll('.tree-node input[type="checkbox"]:checked');
+            if (checked.length === 0) return;
+            const startVal = document.getElementById('startTime').value;
+            const stopVal = document.getElementById('stopTime').value;
+            if (!startVal || !stopVal) return;
+
+            // keep existing colors for each uid
+            const existingColors = new Map();
+            for (const [uid, t] of trajectories) existingColors.set(uid, t.color);
+            trajectories.clear();
+
+            const coordSys = document.getElementById('coordSys').value;
+            const startISO = new Date(startVal).toISOString();
+            const stopISO = new Date(stopVal).toISOString();
+
+            setStatus('Refreshing all trajectories...');
+            const fetches = Array.from(checked).map(async (cb) => {
+                const uid = cb.dataset.uid;
+                const span = cb.closest('.tree-node');
+                const swatch = span.querySelector('.color-swatch');
+                span.classList.add('loading');
+                try {
+                    const url = `${API_BASE}get_data?path=${encodeURIComponent(uid)}&format=json&coordinate_system=${coordSys}&start_time=${encodeURIComponent(startISO)}&stop_time=${encodeURIComponent(stopISO)}`;
+                    const resp = await fetch(url);
+                    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+                    const json = await resp.json();
+                    const values = json.values.values;
+                    const reData = values.map(p => [p[0] / EARTH_RADIUS_KM, p[1] / EARTH_RADIUS_KM, p[2] / EARTH_RADIUS_KM]);
+                    const color = existingColors.get(uid) || COLORS[colorIndex++ % COLORS.length];
+                    trajectories.set(uid, { name: uid.split('/').pop(), color, data: reData, uid });
+                    swatch.style.background = color;
+                } catch (err) {
+                    setStatus('Error fetching ' + uid.split('/').pop() + ': ' + err.message);
+                } finally {
+                    span.classList.remove('loading');
+                }
+            });
+            await Promise.all(fetches);
+            updateChartOption();
+            setStatus(`Refreshed ${trajectories.size} trajectory(ies).`);
+        }
+
+        document.getElementById('startTime').addEventListener('change', replotAll);
+        document.getElementById('stopTime').addEventListener('change', replotAll);
+        document.getElementById('coordSys').addEventListener('change', replotAll);
+
         // ---- Search / filter ----
         document.getElementById('searchInput').addEventListener('input', function() {
             const q = this.value.toLowerCase().trim();
