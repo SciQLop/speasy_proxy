@@ -191,6 +191,18 @@
             border-top: 1px solid #1e2640;
         }
 
+        /* ---- Resize Handle ---- */
+        .resize-handle {
+            width: 5px;
+            cursor: col-resize;
+            background: #1e2640;
+            flex-shrink: 0;
+            transition: background 0.15s;
+        }
+        .resize-handle:hover, .resize-handle.active {
+            background: #6b8afd;
+        }
+
         /* ---- Responsive ---- */
         @media (max-width: 768px) {
             body {
@@ -226,6 +238,8 @@
         <div class="loading-text">Loading inventory...</div>
     </div>
 </aside>
+
+<div class="resize-handle" id="resize-handle"></div>
 
 <!-- Main area -->
 <div class="main">
@@ -777,15 +791,15 @@
         return data;
     }
 
-    function renderChart() {
+    function renderChart(preserveView) {
         if (plotType === 'heatmap') {
-            renderHeatmap();
+            renderHeatmap(preserveView);
         } else {
-            renderLineChart();
+            renderLineChart(preserveView);
         }
     }
 
-    function renderLineChart() {
+    function renderLineChart(preserveView) {
         const times = cachedData.times;
         const columnNames = cachedData.columnNames;
 
@@ -832,14 +846,7 @@
                     return html;
                 }
             },
-            xAxis: {
-                type: 'time',
-                min: times[0] - (times[times.length-1] - times[0]) * 2,
-                max: times[times.length-1] + (times[times.length-1] - times[0]) * 2,
-                axisLabel: { color: '#8892b0' },
-                axisLine: { lineStyle: { color: '#2a3358' } },
-                splitLine: { show: false }
-            },
+            xAxis: makeXAxis(times, preserveView),
             yAxis: {
                 type: 'value',
                 name: cachedData.unit,
@@ -849,14 +856,16 @@
                 splitLine: { lineStyle: { color: '#1e2640' } }
             },
             visualMap: null,
-            dataZoom: makeDataZoom(times[0], times[times.length - 1]),
+            dataZoom: makeDataZoomForView(times, preserveView),
             grid: { left: 60, right: 20, top: 40, bottom: 50, containLabel: false },
             series: series
         };
 
         chart.setOption(option, true);
-        currentView.start = times[0];
-        currentView.end = times[times.length - 1];
+        if (!preserveView) {
+            currentView.start = times[0];
+            currentView.end = times[times.length - 1];
+        }
         setupZoomHandler();
     }
 
@@ -884,16 +893,104 @@
         return 'rgb(253,231,37)';
     }
 
-    function renderHeatmap() {
+    // Viridis as flat RGB byte array for fast canvas rendering
+    function viridisRGB(t) {
+        t = Math.max(0, Math.min(1, t));
+        for (let i = 0; i < VIRIDIS.length - 1; i++) {
+            if (t >= VIRIDIS[i][0] && t <= VIRIDIS[i+1][0]) {
+                const f = (t - VIRIDIS[i][0]) / (VIRIDIS[i+1][0] - VIRIDIS[i][0]);
+                const a = VIRIDIS[i][1], b = VIRIDIS[i+1][1];
+                return [
+                    Math.round(a[0] + f * (b[0] - a[0])),
+                    Math.round(a[1] + f * (b[1] - a[1])),
+                    Math.round(a[2] + f * (b[2] - a[2]))
+                ];
+            }
+        }
+        return [253, 231, 37];
+    }
+
+    function renderSpectrogramImage(times, rows, yBinsFlat, vMin, vMax) {
+        // Render spectrogram to an offscreen canvas as a bitmap
+        // Only render the visible time range for performance
+        const view = (currentView.start != null && currentView.end != null)
+            ? currentView : { start: times[0], end: times[times.length - 1] };
+
+        // Find time indices within visible range (with some margin)
+        const viewRange = view.end - view.start;
+        const renderStart = view.start - viewRange * 0.5;
+        const renderEnd = view.end + viewRange * 0.5;
+
+        let iStart = 0, iEnd = times.length;
+        for (let i = 0; i < times.length; i++) {
+            if (times[i] >= renderStart) { iStart = i; break; }
+        }
+        for (let i = times.length - 1; i >= 0; i--) {
+            if (times[i] <= renderEnd) { iEnd = i + 1; break; }
+        }
+
+        const nTime = iEnd - iStart;
+        const nY = yBinsFlat.length;
+        if (nTime <= 0 || nY <= 0) return null;
+
+        const canvas = document.createElement('canvas');
+        canvas.width = nTime;
+        canvas.height = nY;
+        const ctx = canvas.getContext('2d');
+        const imgData = ctx.createImageData(nTime, nY);
+        const pixels = imgData.data;
+
+        const logVMin = Math.log10(Math.max(vMin, 1e-30));
+        const logVMax = Math.log10(vMax);
+
+        for (let t = 0; t < nTime; t++) {
+            const row = rows[iStart + t];
+            if (!row) continue;
+            for (let y = 0; y < nY; y++) {
+                const val = row[y];
+                if (val == null || isNaN(val) || val <= 0) continue;
+                let norm;
+                if (logScale) {
+                    norm = (Math.log10(val) - logVMin) / (logVMax - logVMin);
+                } else {
+                    norm = (val - vMin) / (vMax - vMin);
+                }
+                const rgb = viridisRGB(norm);
+                // Y=0 is top of canvas, but yBins[0] is lowest value -> flip
+                const py = (nY - 1 - y);
+                const idx = (py * nTime + t) * 4;
+                pixels[idx] = rgb[0];
+                pixels[idx + 1] = rgb[1];
+                pixels[idx + 2] = rgb[2];
+                pixels[idx + 3] = 255;
+            }
+        }
+
+        ctx.putImageData(imgData, 0, 0);
+        return {
+            dataURL: canvas.toDataURL(),
+            tStart: times[iStart],
+            tEnd: times[Math.min(iEnd, times.length) - 1],
+            yMin: yBinsFlat[0],
+            yMax: yBinsFlat[nY - 1]
+        };
+    }
+
+    function renderHeatmap(preserveView) {
         const times = cachedData.times;
         const yBins = cachedData.yAxis;
         const rows = cachedData.rows;
+
+        if (!yBins || yBins.length === 0 || !rows || rows.length === 0) return;
+
+        // Handle time-dependent Y-axis: if yBins is 2D (array of arrays), use first row
+        const yBinsFlat = Array.isArray(yBins[0]) ? yBins[0] : yBins;
 
         // Compute value range for colormap
         let vMin = Infinity, vMax = -Infinity;
         for (let t = 0; t < rows.length; t++) {
             if (!rows[t]) continue;
-            for (let y = 0; y < yBins.length; y++) {
+            for (let y = 0; y < yBinsFlat.length; y++) {
                 const val = rows[t][y];
                 if (val != null && !isNaN(val) && val > 0) {
                     if (val < vMin) vMin = val;
@@ -905,67 +1002,29 @@
         if (vMax === -Infinity) vMax = 1;
         if (vMin === vMax) vMax = vMin * 10;
 
-        const logVMin = Math.log10(Math.max(vMin, 1e-30));
-        const logVMax = Math.log10(vMax);
-        const linVMin = vMin;
-        const linVMax = vMax;
-
-        // Compute Y-bin edges for rectangles
-        const yEdges = new Array(yBins.length + 1);
-        for (let i = 1; i < yBins.length; i++) {
-            yEdges[i] = (yBins[i - 1] + yBins[i]) / 2;
+        // Compute Y-bin edges
+        const yEdges = new Array(yBinsFlat.length + 1);
+        for (let i = 1; i < yBinsFlat.length; i++) {
+            yEdges[i] = (yBinsFlat[i - 1] + yBinsFlat[i]) / 2;
         }
-        yEdges[0] = yBins[0] - (yBins.length > 1 ? (yBins[1] - yBins[0]) / 2 : 0.5);
-        yEdges[yBins.length] = yBins[yBins.length - 1] + (yBins.length > 1 ? (yBins[yBins.length-1] - yBins[yBins.length-2]) / 2 : 0.5);
-
-        // Build data: each item = [timeStart, timeEnd, yBottom, yTop, colorNormalized]
-        const customData = [];
-        for (let t = 0; t < times.length; t++) {
-            const tStart = times[t];
-            const tEnd = (t + 1 < times.length) ? times[t + 1] : tStart + (t > 0 ? times[t] - times[t-1] : 1000);
-            if (!rows[t]) continue;
-            for (let y = 0; y < yBins.length; y++) {
-                const val = rows[t][y];
-                if (val == null || isNaN(val) || val <= 0) continue;
-                let norm;
-                if (logScale) {
-                    norm = (Math.log10(val) - logVMin) / (logVMax - logVMin);
-                } else {
-                    norm = (val - linVMin) / (linVMax - linVMin);
-                }
-                customData.push([tStart, tEnd, yEdges[y], yEdges[y + 1], norm, val]);
-            }
-        }
+        yEdges[0] = yBinsFlat[0] - (yBinsFlat.length > 1 ? (yBinsFlat[1] - yBinsFlat[0]) / 2 : 0.5);
+        yEdges[yBinsFlat.length] = yBinsFlat[yBinsFlat.length - 1] + (yBinsFlat.length > 1 ? (yBinsFlat[yBinsFlat.length-1] - yBinsFlat[yBinsFlat.length-2]) / 2 : 0.5);
 
         const yLabel = cachedData.yAxisName +
             (cachedData.yAxisUnit ? ' (' + cachedData.yAxisUnit + ')' : '');
 
+        // Render bitmap
+        const img = renderSpectrogramImage(times, rows, yBinsFlat, vMin, vMax);
+        if (!img) return;
+
+        // Use a dummy transparent scatter series so ECharts manages axes/zoom properly
+        // The actual image is rendered via graphic layer positioned to match the axes
         const option = {
             backgroundColor: 'transparent',
             animation: false,
-            tooltip: {
-                backgroundColor: '#1a1f36',
-                borderColor: '#2a3358',
-                textStyle: { color: '#e0e6f0', fontSize: 12 },
-                formatter: function(params) {
-                    if (!params || !params.value) return '';
-                    const d = params.value;
-                    const time = new Date(d[0]).toISOString().replace('T', ' ').replace('Z', '');
-                    const yMid = ((d[2] + d[3]) / 2);
-                    return '<b>' + escapeHtml(time) + '</b><br>' +
-                           yLabel + ': ' + yMid.toPrecision(4) + '<br>' +
-                           'Value: ' + d[5].toExponential(3);
-                }
-            },
+            tooltip: { show: false },
             legend: null,
-            xAxis: {
-                type: 'time',
-                min: times[0] - (times[times.length-1] - times[0]) * 2,
-                max: times[times.length-1] + (times[times.length-1] - times[0]) * 2,
-                axisLabel: { color: '#8892b0' },
-                axisLine: { lineStyle: { color: '#2a3358' } },
-                splitLine: { show: false }
-            },
+            xAxis: makeXAxis(times, preserveView),
             yAxis: {
                 type: logYAxis ? 'log' : 'value',
                 name: yLabel,
@@ -973,74 +1032,97 @@
                 axisLabel: { color: '#8892b0' },
                 axisLine: { lineStyle: { color: '#2a3358' } },
                 splitLine: { show: false },
-                min: logYAxis ? Math.max(yEdges[0], 1e-10) : null,
-                max: null
+                min: logYAxis ? Math.max(yEdges[0], 1e-10) : yEdges[0],
+                max: yEdges[yBinsFlat.length]
             },
-            visualMap: {
-                show: true,
-                min: 0,
-                max: 1,
-                calculable: true,
-                orient: 'vertical',
-                right: 10,
-                top: 40,
-                bottom: 60,
-                textStyle: { color: '#8892b0' },
-                inRange: {
-                    color: VIRIDIS.map(function(v) {
-                        return 'rgb(' + v[1][0] + ',' + v[1][1] + ',' + v[1][2] + ')';
-                    })
-                },
-                formatter: function(val) {
-                    if (logScale) {
-                        const actual = Math.pow(10, logVMin + val * (logVMax - logVMin));
-                        return actual.toExponential(1);
-                    }
-                    const actual = linVMin + val * (linVMax - linVMin);
-                    return actual.toExponential(1);
-                }
-            },
-            dataZoom: makeDataZoom(times[0], times[times.length - 1]),
-            grid: { left: 80, right: 100, top: 20, bottom: 50, containLabel: false },
+            visualMap: null,
+            dataZoom: makeDataZoomForView(times, preserveView),
+            grid: { left: 80, right: 20, top: 20, bottom: 50, containLabel: false },
             series: [{
-                type: 'custom',
-                data: customData,
-                renderItem: function(params, api) {
-                    const tStart = api.value(0);
-                    const tEnd = api.value(1);
-                    const yBottom = api.value(2);
-                    const yTop = api.value(3);
-                    const norm = api.value(4);
-
-                    const topLeft = api.coord([tStart, yTop]);
-                    const bottomRight = api.coord([tEnd, yBottom]);
-
-                    if (!topLeft || !bottomRight) return null;
-
-                    const rectShape = {
-                        x: topLeft[0],
-                        y: topLeft[1],
-                        width: Math.max(bottomRight[0] - topLeft[0], 1),
-                        height: Math.max(bottomRight[1] - topLeft[1], 1)
-                    };
-
-                    return {
-                        type: 'rect',
-                        shape: rectShape,
-                        style: {
-                            fill: viridisColor(norm)
-                        }
-                    };
-                },
-                encode: { x: [0, 1], y: [2, 3] },
-                progressive: 5000
+                type: 'scatter',
+                data: [],
+                silent: true
             }]
         };
 
         chart.setOption(option, true);
-        currentView.start = times[0];
-        currentView.end = times[times.length - 1];
+
+        // Position the image to match chart coordinates
+        updateHeatmapGraphic(img);
+
+        if (!preserveView) {
+            currentView.start = times[0];
+            currentView.end = times[times.length - 1];
+        }
         setupZoomHandler();
+
+        // Re-render image on zoom/resize so it stays aligned
+        chart.off('finished');
+        chart.on('finished', function() {
+            const latestImg = renderSpectrogramImage(
+                cachedData.times, cachedData.rows,
+                Array.isArray(cachedData.yAxis[0]) ? cachedData.yAxis[0] : cachedData.yAxis,
+                vMin, vMax);
+            if (latestImg) updateHeatmapGraphic(latestImg);
+        });
+    }
+
+    function updateHeatmapGraphic(img) {
+        // Convert data coordinates to pixel coordinates
+        const tStartPx = chart.convertToPixel({ xAxisIndex: 0 }, img.tStart);
+        const tEndPx = chart.convertToPixel({ xAxisIndex: 0 }, img.tEnd);
+        const yMinPx = chart.convertToPixel({ yAxisIndex: 0 }, img.yMin);
+        const yMaxPx = chart.convertToPixel({ yAxisIndex: 0 }, img.yMax);
+
+        chart.setOption({
+            graphic: [{
+                type: 'image',
+                z: -1,
+                style: {
+                    image: img.dataURL,
+                    x: Math.min(tStartPx, tEndPx),
+                    y: Math.min(yMinPx, yMaxPx),
+                    width: Math.abs(tEndPx - tStartPx),
+                    height: Math.abs(yMaxPx - yMinPx)
+                },
+                silent: true
+            }]
+        });
+    }
+
+    function makeXAxis(times, preserveView) {
+        const dataMin = times[0];
+        const dataMax = times[times.length - 1];
+        const dataRange = dataMax - dataMin;
+
+        if (preserveView && chart) {
+            const option = chart.getOption();
+            const curMin = option.xAxis[0].min;
+            const curMax = option.xAxis[0].max;
+            return {
+                type: 'time',
+                min: Math.min(curMin != null ? curMin : dataMin - dataRange * 2, dataMin - dataRange * 2),
+                max: Math.max(curMax != null ? curMax : dataMax + dataRange * 2, dataMax + dataRange * 2),
+                axisLabel: { color: '#8892b0' },
+                axisLine: { lineStyle: { color: '#2a3358' } },
+                splitLine: { show: false }
+            };
+        }
+        return {
+            type: 'time',
+            min: dataMin - dataRange * 2,
+            max: dataMax + dataRange * 2,
+            axisLabel: { color: '#8892b0' },
+            axisLine: { lineStyle: { color: '#2a3358' } },
+            splitLine: { show: false }
+        };
+    }
+
+    function makeDataZoomForView(times, preserveView) {
+        if (preserveView && currentView.start != null && currentView.end != null) {
+            return makeDataZoom(currentView.start, currentView.end);
+        }
+        return makeDataZoom(times[0], times[times.length - 1]);
     }
 
     function makeDataZoom(startVal, endVal) {
@@ -1049,8 +1131,8 @@
                 type: 'inside',
                 xAxisIndex: 0,
                 filterMode: 'none',
-                zoomOnMouseWheel: 'ctrl',
-                moveOnMouseWheel: true,
+                zoomOnMouseWheel: false,
+                moveOnMouseWheel: false,
                 moveOnMouseMove: true,
                 preventDefaultMouseMove: true,
                 startValue: startVal,
@@ -1109,11 +1191,51 @@
         return null;
     }
 
+    const PAN_FACTOR = 0.002;   // pan sensitivity per pixel of wheel delta
+    const ZOOM_FACTOR = 0.001;  // zoom sensitivity per pixel of wheel delta
+
     function setupZoomHandler() {
         chart.off('datazoom');
         chart.on('datazoom', () => {
             if (zoomDebounceTimer) clearTimeout(zoomDebounceTimer);
             zoomDebounceTimer = setTimeout(onZoomPan, 200);
+        });
+
+        // Custom mouse wheel: dampened pan/zoom
+        const chartDom = chart.getDom();
+        chartDom.removeEventListener('wheel', handleWheel, true);
+        chartDom.addEventListener('wheel', handleWheel, { passive: false, capture: true });
+    }
+
+    function handleWheel(e) {
+        e.preventDefault();
+        e.stopPropagation();
+        const view = getVisibleRange();
+        if (!view) return;
+
+        const range = view.end - view.start;
+        // Clamp delta to [-150, 150] to avoid huge jumps but preserve magnitude
+        const delta = Math.max(-150, Math.min(150, e.deltaY));
+
+        let newStart, newEnd;
+        if (e.ctrlKey || e.metaKey) {
+            // Zoom
+            const zoomAmount = range * ZOOM_FACTOR * delta;
+            newStart = view.start + zoomAmount;
+            newEnd = view.end - zoomAmount;
+            if (newEnd - newStart < 1000) return; // minimum 1 second
+        } else {
+            // Pan
+            const panAmount = range * PAN_FACTOR * delta;
+            newStart = view.start + panAmount;
+            newEnd = view.end + panAmount;
+        }
+
+        chart.dispatchAction({
+            type: 'dataZoom',
+            dataZoomIndex: 0,
+            startValue: newStart,
+            endValue: newEnd
         });
     }
 
@@ -1188,7 +1310,7 @@
         let series;
         if (plotType === 'heatmap') {
             // Re-render the full heatmap (custom series needs full rebuild)
-            renderHeatmap();
+            renderHeatmap(true);
             return;
         } else {
             series = [];
@@ -1289,10 +1411,45 @@
         }
     }
 
+    // ===== Sidebar Resize =====
+
+    function initResize() {
+        const handle = document.getElementById('resize-handle');
+        const sidebar = document.querySelector('.sidebar');
+        let startX, startWidth;
+
+        handle.addEventListener('mousedown', (e) => {
+            e.preventDefault();
+            startX = e.clientX;
+            startWidth = sidebar.getBoundingClientRect().width;
+            handle.classList.add('active');
+            document.body.style.cursor = 'col-resize';
+            document.body.style.userSelect = 'none';
+
+            function onMouseMove(e) {
+                const newWidth = Math.max(160, Math.min(startWidth + e.clientX - startX, window.innerWidth - 200));
+                sidebar.style.width = newWidth + 'px';
+                if (chart) chart.resize();
+            }
+
+            function onMouseUp() {
+                handle.classList.remove('active');
+                document.body.style.cursor = '';
+                document.body.style.userSelect = '';
+                document.removeEventListener('mousemove', onMouseMove);
+                document.removeEventListener('mouseup', onMouseUp);
+            }
+
+            document.addEventListener('mousemove', onMouseMove);
+            document.addEventListener('mouseup', onMouseUp);
+        });
+    }
+
     // ===== Init =====
 
     document.addEventListener('DOMContentLoaded', () => {
         initChart();
+        initResize();
         loadInventory();
         bindControls();
         loadFromURLParams();
