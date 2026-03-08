@@ -34,3 +34,9 @@ def home(request: Request, user_agent: Annotated[str | None, Header()] = None,
 def plot(request: Request, x_scheme: Annotated[str | None, Header()] = None):
     base_url = _build_base_url(request, x_scheme)
     return templates.TemplateResponse(request, name="plot.html", context={"request": request, 'base_url': base_url})
+
+
+@router.get('/demo_3d', response_class=HTMLResponse)
+def demo_3d(request: Request, x_scheme: Annotated[str | None, Header()] = None):
+    base_url = _build_base_url(request, x_scheme)
+    return templates.TemplateResponse(request, name="demo_3d.html", context={"request": request, 'base_url': base_url})

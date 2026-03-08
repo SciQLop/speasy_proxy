@@ -325,7 +325,7 @@
                 xAxis3D: { name: 'X (Re)' },
                 yAxis3D: { name: 'Y (Re)' },
                 zAxis3D: { name: 'Z (Re)' },
-                grid3D: { autoRotate: false },
+                grid3D: { viewControl: { autoRotate: false } },
                 series: [earthSeries(), ...trajSeries]
             }, true);
         }
@@ -464,7 +464,7 @@
                 const resp = await fetch(url);
                 if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
                 const json = await resp.json();
-                const values = json.data.values.values;
+                const values = json.values.values;
                 const reData = values.map(p => [p[0] / EARTH_RADIUS_KM, p[1] / EARTH_RADIUS_KM, p[2] / EARTH_RADIUS_KM]);
 
                 const color = COLORS[colorIndex % COLORS.length];
