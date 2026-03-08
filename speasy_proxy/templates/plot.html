@@ -272,6 +272,7 @@
             </div>
         </div>
 
+        <button id="btn-clear" style="display:none;" title="Remove all subplots">Clear</button>
         <button id="btn-log-scale" style="display:none;" title="Toggle log/linear color scale">Log Z</button>
         <button id="btn-log-y" style="display:none;" title="Toggle log/linear Y axis">Log Y</button>
 
@@ -619,19 +620,19 @@
             if (e.key === 'Enter') doPlot();
         });
         document.getElementById('btn-log-scale').addEventListener('click', () => {
-            if (plotState.plots.length === 0) return;
-            const sp = plotState.plots[0];
-            sp.logScale = !sp.logScale;
-            document.getElementById('btn-log-scale').textContent = sp.logScale ? 'Log Z' : 'Linear Z';
-            if (sp.plotType === 'heatmap') renderAllSubplots(true);
+            const heatmapPlots = plotState.plots.filter(sp => sp.plotType === 'heatmap');
+            if (heatmapPlots.length === 0) return;
+            for (const sp of heatmapPlots) sp.logScale = !sp.logScale;
+            document.getElementById('btn-log-scale').textContent = heatmapPlots[0].logScale ? 'Log Z' : 'Linear Z';
+            renderAllSubplots(true);
         });
         document.getElementById('btn-log-y').addEventListener('click', () => {
             if (plotState.plots.length === 0) return;
-            const sp = plotState.plots[0];
-            sp.y_axis.log = !sp.y_axis.log;
-            document.getElementById('btn-log-y').textContent = sp.y_axis.log ? 'Log Y' : 'Linear Y';
+            for (const sp of plotState.plots) sp.y_axis.log = !sp.y_axis.log;
+            document.getElementById('btn-log-y').textContent = plotState.plots[0].y_axis.log ? 'Log Y' : 'Linear Y';
             renderAllSubplots(true);
         });
+        document.getElementById('btn-clear').addEventListener('click', clearAllPlots);
 
         // Add to plot dropdown
         document.getElementById('btn-add').addEventListener('click', () => {
@@ -694,10 +695,28 @@
         for (let i = 0; i < plotState.plots.length; i++) {
             const sp = plotState.plots[i];
             const label = sp.products.length > 0 ? sp.products[0].path.split('/').pop() : 'empty';
+
             const item = document.createElement('div');
             item.className = 'add-dropdown-item';
-            item.textContent = 'Subplot ' + (i + 1) + ': ' + label;
+            item.style.cssText = 'display:flex;justify-content:space-between;align-items:center;';
+
+            const textSpan = document.createElement('span');
+            textSpan.textContent = 'Subplot ' + (i + 1) + ': ' + label;
+            textSpan.style.cssText = 'flex:1;overflow:hidden;text-overflow:ellipsis;';
+            item.appendChild(textSpan);
+
+            const removeBtn = document.createElement('span');
+            removeBtn.textContent = '\u2715';
+            removeBtn.title = 'Remove subplot';
+            removeBtn.style.cssText = 'margin-left:8px;color:#ee6666;cursor:pointer;padding:0 4px;';
             const idx = i;
+            removeBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                removeSubplot(idx);
+                dropdown.style.display = 'none';
+            });
+            item.appendChild(removeBtn);
+
             item.addEventListener('click', () => {
                 addProductToPlot(idx);
                 dropdown.style.display = 'none';
@@ -735,6 +754,47 @@
 
         updateURL();
         fetchProductAndRender(plotState.plots.indexOf(subplot), product);
+    }
+
+    function removeSubplot(index) {
+        plotState.plots.splice(index, 1);
+        if (plotState.plots.length === 0) {
+            chart.clear();
+            document.getElementById('btn-clear').style.display = 'none';
+            setStatus('Ready');
+        } else {
+            renderAllSubplots();
+        }
+        updateURL();
+    }
+
+    function clearAllPlots() {
+        plotState.plots = [];
+        chart.clear();
+        document.getElementById('btn-clear').style.display = 'none';
+        document.getElementById('btn-log-scale').style.display = 'none';
+        document.getElementById('btn-log-y').style.display = 'none';
+        history.replaceState(null, '', window.location.pathname);
+        setStatus('Ready');
+    }
+
+    function evictProductCache(cache) {
+        if (cache.times.length <= MAX_CACHE_POINTS) return;
+        const excess = cache.times.length - MAX_CACHE_POINTS;
+        cache.times = cache.times.slice(excess);
+        if (cache.rows.length > 0) {
+            cache.rows = cache.rows.slice(excess);
+        } else {
+            for (const cn of cache.columnNames) {
+                cache.columns[cn] = cache.columns[cn].slice(excess);
+            }
+        }
+        if (cache.times.length > 0) {
+            const newStart = cache.times[0];
+            cache.intervals = cache.intervals
+                .map(iv => [Math.max(iv[0], newStart), iv[1]])
+                .filter(iv => iv[1] > iv[0]);
+        }
     }
 
     function updateShareURL() {
@@ -1135,7 +1195,8 @@
 
         const hasHeatmap = plotState.plots.some(sp => sp.plotType === 'heatmap');
         document.getElementById('btn-log-scale').style.display = hasHeatmap ? '' : 'none';
-        document.getElementById('btn-log-y').style.display = hasHeatmap ? '' : 'none';
+        document.getElementById('btn-log-y').style.display = n > 0 ? '' : 'none';
+        document.getElementById('btn-clear').style.display = n > 0 ? '' : 'none';
 
         setupMultiZoomHandler();
         updateShareURL();
@@ -1294,6 +1355,11 @@
         }
 
         if (anyFetched) {
+            for (const subplot of plotState.plots) {
+                for (const prod of subplot.products) {
+                    evictProductCache(subplot.productData[prod.path]);
+                }
+            }
             renderAllSubplots(true);
         }
 
@@ -1518,7 +1584,8 @@
             },
             plots: plotState.plots.map(sp => ({
                 products: sp.products.map(p => ({ path: p.path, label: p.label })),
-                y_axis: { log: sp.y_axis.log }
+                y_axis: { log: sp.y_axis.log },
+                log_z: sp.logScale
             }))
         };
         return config;
@@ -1592,6 +1659,7 @@
         for (const plotDef of config.plots) {
             const subplot = createSubplotData();
             subplot.y_axis.log = plotDef.y_axis?.log || false;
+            if (plotDef.log_z !== undefined) subplot.logScale = plotDef.log_z;
             for (const prod of plotDef.products) {
                 subplot.products.push({ path: prod.path, label: prod.label || prod.path });
                 subplot.productData[prod.path] = createProductCache(prod.path);
