@@ -1,0 +1,27 @@
+{
+  "name": "Space Weather Overview",
+  "description": "IMF, AE index, solar wind pressure and beta from OMNI 1-min",
+  "version": 1,
+  "time_range": {
+    "start": "2025-01-15T00:00:00Z",
+    "stop": "2025-01-16T00:00:00Z"
+  },
+  "plots": [
+    {
+      "products": [{ "path": "amda/omni_hro2_1min_b_gse", "label": "OMNI B GSE" }],
+      "y_axis": { "log": false }
+    },
+    {
+      "products": [{ "path": "amda/omni_hro2_1min_ae_index", "label": "AE Index" }],
+      "y_axis": { "log": false }
+    },
+    {
+      "products": [{ "path": "amda/omni_hro2_1min_sw_p", "label": "SW RAM Pressure" }],
+      "y_axis": { "log": false }
+    },
+    {
+      "products": [{ "path": "amda/omni_hro2_1min_beta", "label": "SW Beta" }],
+      "y_axis": { "log": true }
+    }
+  ]
+}
