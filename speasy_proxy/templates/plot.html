@@ -1068,6 +1068,7 @@
         const xAxes = [];
         const yAxes = [];
         const series = [];
+        const titles = [];
         const TOP_PAD = 30;
         const BOT_PAD = 60;
         const GAP = 40;
@@ -1082,6 +1083,14 @@
 
             grids.push({
                 left: 80, right: 20, top: topPx, height: subplotHeight, containLabel: false
+            });
+
+            const subplotTitle = subplot.products.map(p => p.label || p.path.split('/').pop()).join(', ');
+            titles.push({
+                text: subplotTitle,
+                left: 85,
+                top: topPx,
+                textStyle: { color: '#8892b0', fontSize: 11, fontWeight: 'normal' }
             });
 
             const firstCache = subplot.productData[subplot.products[0]?.path];
@@ -1156,10 +1165,11 @@
                     const cache = subplot.productData[prod.path];
                     if (!cache || cache.times.length === 0) continue;
 
+                    const prodLabel = prod.label || prod.path.split('/').pop();
                     for (let c = 0; c < cache.columnNames.length; c++) {
                         const colName = cache.columnNames[c];
-                        const seriesName = subplot.products.length > 1
-                            ? prod.path.split('/').pop() + ' ' + colName
+                        const seriesName = n > 1 || subplot.products.length > 1
+                            ? prodLabel + ' ' + colName
                             : colName;
                         series.push({
                             name: seriesName,
@@ -1216,6 +1226,7 @@
         const option = {
             backgroundColor: 'transparent',
             animation: false,
+            title: titles,
             legend: {
                 type: 'scroll',
                 top: 5,
