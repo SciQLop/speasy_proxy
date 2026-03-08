@@ -336,7 +336,7 @@
                 zAxis3D: { name: 'Z (Re)', min: range.min, max: range.max },
                 grid3D: {
                     boxWidth: 100, boxHeight: 100, boxDepth: 100,
-                    viewControl: { autoRotate: false },
+                    viewControl: { autoRotate: false, minDistance: 0.5, maxDistance: 500 },
                     light: {
                         main: { intensity: 1.2, shadow: false },
                         ambient: { intensity: 0.4 }
