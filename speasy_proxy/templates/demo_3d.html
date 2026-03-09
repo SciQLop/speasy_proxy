@@ -14,43 +14,59 @@
             background: #0b0e17;
             color: #e0e6f0;
             display: flex;
-            flex-direction: column;
             height: 100vh;
             height: 100dvh;
-            overflow: hidden;
-        }
-
-        .app-container {
-            display: flex;
-            flex: 1;
             overflow: hidden;
         }
 
         /* ---- Sidebar ---- */
         .sidebar {
             width: 320px;
-            min-width: 320px;
+            min-width: 260px;
             background: #111627;
             border-right: 1px solid #1e2640;
             display: flex;
             flex-direction: column;
             overflow: hidden;
-            transition: transform 0.25s ease;
+            transition: width 0.15s, min-width 0.15s;
         }
 
-        .sidebar.collapsed { transform: translateX(-100%); position: absolute; }
+        .sidebar.collapsed {
+            width: 0;
+            min-width: 0;
+            border-right: none;
+            overflow: hidden;
+        }
+
+        .sidebar-collapse-btn {
+            position: absolute;
+            left: 0;
+            top: 50%;
+            transform: translateY(-50%);
+            z-index: 10;
+            width: 20px;
+            height: 48px;
+            background: #1a1f36;
+            border: 1px solid #2a3358;
+            border-left: none;
+            border-radius: 0 6px 6px 0;
+            color: #8892b0;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.7rem;
+            transition: left 0.15s;
+        }
+
+        .sidebar-collapse-btn:hover {
+            background: #2a3358;
+            color: #e0e6f0;
+        }
 
         .sidebar-header {
             padding: 16px;
             border-bottom: 1px solid #1e2640;
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-        }
-
-        .sidebar-header .header-left {
-            display: flex;
-            flex-direction: column;
         }
 
         .sidebar-header .back-link {
@@ -66,61 +82,27 @@
         .sidebar-header h2 {
             font-size: 1.1rem;
             font-weight: 600;
+            margin-bottom: 10px;
         }
 
-        .sidebar-toggle {
-            background: none;
-            border: none;
-            color: #8892b0;
-            font-size: 1.2rem;
-            cursor: pointer;
-            padding: 4px 8px;
-            border-radius: 4px;
-        }
-
-        .sidebar-toggle:hover { background: #1a1f36; color: #e0e6f0; }
-
-        .panel-open-btn {
-            position: absolute;
-            top: 10px;
-            left: 10px;
-            z-index: 10;
-            background: #111627;
-            border: 1px solid #1e2640;
-            color: #e0e6f0;
-            font-size: 1.2rem;
-            cursor: pointer;
-            padding: 6px 10px;
-            border-radius: 6px;
-            display: none;
-        }
-
-        .panel-open-btn:hover { background: #1a1f36; }
-
-        .panel-open-btn.visible { display: block; }
-
-        .search-box {
-            padding: 10px 16px;
-            border-bottom: 1px solid #1e2640;
-        }
-
-        .search-box input {
+        .sidebar-header input[type="text"] {
             width: 100%;
             padding: 8px 10px;
-            background: #0b0e17;
             border: 1px solid #2a3358;
-            border-radius: 4px;
+            border-radius: 6px;
+            background: #0b0e17;
             color: #e0e6f0;
-            font-size: 0.85rem;
+            font-size: 0.9rem;
             outline: none;
         }
 
-        .search-box input:focus { border-color: #6b8afd; }
+        .sidebar-header input[type="text"]:focus { border-color: #6b8afd; }
 
         .tree-container {
             flex: 1;
             overflow-y: auto;
-            padding: 8px 0;
+            padding: 8px 12px;
+            font-size: 0.85rem;
         }
 
         .tree-container ul {
@@ -128,7 +110,7 @@
             padding-left: 16px;
         }
 
-        .tree-container > ul { padding-left: 8px; }
+        .tree-container > ul { padding-left: 0; }
 
         .tree-container li { margin: 1px 0; }
 
@@ -138,7 +120,7 @@
             padding: 3px 8px;
             cursor: pointer;
             border-radius: 3px;
-            font-size: 0.82rem;
+            font-size: 0.85rem;
             user-select: none;
             white-space: nowrap;
         }
@@ -176,84 +158,8 @@
 
         .tree-node.loading { opacity: 0.5; }
 
-        /* ---- Controls bar (above chart) ---- */
-        .controls-bar {
-            background: #111627;
-            border-bottom: 1px solid #1e2640;
-        }
-
-        .controls-bar-header {
-            display: flex;
-            align-items: center;
-            padding: 6px 16px;
-            cursor: pointer;
-            user-select: none;
-            gap: 8px;
-        }
-
-        .controls-bar-header:hover { background: #1a1f36; }
-
-        .controls-bar-header .toggle-icon {
-            color: #8892b0;
-            font-size: 0.7rem;
-            width: 16px;
-            text-align: center;
-        }
-
-        .controls-bar-header h3 {
-            font-size: 0.85rem;
-            font-weight: 500;
-            color: #8892b0;
-        }
-
-        .controls-bar-header .controls-summary {
-            margin-left: auto;
-            font-size: 0.75rem;
-            color: #6b7fa0;
-        }
-
-        .controls-body {
-            display: none;
-            padding: 8px 16px 12px;
-            border-top: 1px solid #1e2640;
-        }
-
-        .controls-body.open { display: block; }
-
-        .controls-row {
-            display: flex;
-            gap: 12px;
-            align-items: end;
-            flex-wrap: wrap;
-        }
-
-        .controls-field {
-            display: flex;
-            flex-direction: column;
-            gap: 3px;
-        }
-
-        .controls-field label {
-            font-size: 0.75rem;
-            color: #8892b0;
-        }
-
-        .controls-field select,
-        .controls-field input[type="datetime-local"] {
-            padding: 5px 8px;
-            background: #0b0e17;
-            border: 1px solid #2a3358;
-            border-radius: 4px;
-            color: #e0e6f0;
-            font-size: 0.82rem;
-            outline: none;
-        }
-
-        .controls-field select:focus,
-        .controls-field input[type="datetime-local"]:focus { border-color: #6b8afd; }
-
         /* ---- Main area ---- */
-        .main-area {
+        .main {
             flex: 1;
             display: flex;
             flex-direction: column;
@@ -261,6 +167,71 @@
             position: relative;
         }
 
+        /* Controls bar */
+        .controls-bar {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 10px 16px;
+            background: #111627;
+            border-bottom: 1px solid #1e2640;
+            flex-wrap: wrap;
+            overflow: hidden;
+            transition: height 0.15s, padding 0.15s;
+        }
+
+        .controls-bar.collapsed {
+            height: 0;
+            padding: 0 16px;
+            border-bottom: none;
+            overflow: hidden;
+        }
+
+        .controls-collapse-btn {
+            background: #1a1f36;
+            border: 1px solid #2a3358;
+            border-top: none;
+            border-radius: 0 0 6px 6px;
+            color: #8892b0;
+            cursor: pointer;
+            font-size: 0.65rem;
+            padding: 2px 16px;
+            align-self: center;
+            margin: 0 auto;
+            display: block;
+            transition: background 0.15s;
+            position: relative;
+            z-index: 5;
+        }
+
+        .controls-collapse-btn:hover {
+            background: #2a3358;
+            color: #e0e6f0;
+        }
+
+        .controls-bar label {
+            font-size: 0.8rem;
+            color: #8892b0;
+            margin-right: 2px;
+        }
+
+        .controls-bar select,
+        .controls-bar input[type="datetime-local"] {
+            padding: 6px 10px;
+            border: 1px solid #2a3358;
+            border-radius: 6px;
+            background: #0b0e17;
+            color: #e0e6f0;
+            font-size: 0.85rem;
+            outline: none;
+        }
+
+        .controls-bar select:focus,
+        .controls-bar input[type="datetime-local"]:focus {
+            border-color: #6b8afd;
+        }
+
+        /* Chart area */
         #chart3d { flex: 1; }
 
         /* ---- Status bar ---- */
@@ -279,9 +250,7 @@
 
         /* ---- Mobile ---- */
         @media (max-width: 700px) {
-            .app-container {
-                flex-direction: column;
-            }
+            body { flex-direction: column; }
 
             .sidebar {
                 position: fixed;
@@ -290,12 +259,23 @@
                 width: 85vw;
                 min-width: unset;
                 max-width: 360px;
+                transition: transform 0.2s;
                 transform: translateX(-100%);
             }
 
-            .sidebar.open { transform: translateX(0); }
+            .sidebar.collapsed { width: 85vw; min-width: unset; border-right: 1px solid #1e2640; }
+            .sidebar.mobile-open { transform: translateX(0); }
 
-            .panel-open-btn { display: block; }
+            .sidebar-collapse-btn {
+                position: fixed;
+                left: 0;
+                top: 10px;
+                width: 32px;
+                height: 32px;
+                border-radius: 0 6px 6px 0;
+                font-size: 0.9rem;
+                z-index: 10;
+            }
 
             .overlay {
                 position: fixed;
@@ -319,520 +299,498 @@
                 height: 18px;
             }
 
-            .controls-row { flex-direction: column; gap: 8px; }
-
-            .controls-field select,
-            .controls-field input[type="datetime-local"] {
-                padding: 8px;
-                font-size: 0.9rem;
-                width: 100%;
+            .controls-bar {
+                flex-direction: column;
+                align-items: stretch;
+                gap: 6px;
             }
 
-            .controls-bar-header .controls-summary { display: none; }
+            .controls-bar select,
+            .controls-bar input[type="datetime-local"] {
+                width: 100%;
+                padding: 8px;
+                font-size: 0.9rem;
+            }
 
             .status-bar { font-size: 0.75rem; }
         }
     </style>
 </head>
 <body>
-    <div class="app-container">
-        <div class="overlay" id="overlay"></div>
-        <div class="sidebar" id="sidebar">
-            <div class="sidebar-header">
-                <div class="header-left">
-                    <a href="{{ base_url }}/" class="back-link">&larr; Home</a>
-                    <h2>3D Orbit Viewer</h2>
-                </div>
-                <button class="sidebar-toggle" id="closeSidebar" title="Close panel">&times;</button>
-            </div>
-            <div class="search-box">
-                <input type="text" id="searchInput" placeholder="Search satellites...">
-            </div>
-            <div class="tree-container" id="treeContainer"></div>
-        </div>
-        <div class="main-area">
-            <button class="panel-open-btn" id="openSidebar" title="Open panel">&#9776;</button>
-            <div class="controls-bar">
-                <div class="controls-bar-header" id="controlsToggle">
-                    <span class="toggle-icon" id="controlsToggleIcon">&#9654;</span>
-                    <h3>Controls</h3>
-                    <span class="controls-summary" id="controlsSummary">GSE</span>
-                </div>
-                <div class="controls-body" id="controlsBody">
-                    <div class="controls-row">
-                        <div class="controls-field">
-                            <label>Coordinate System</label>
-                            <select id="coordSys">
-                                <option value="GSE">GSE</option>
-                                <option value="GSM">GSM</option>
-                                <option value="GEO">GEO</option>
-                                <option value="GM">GM</option>
-                                <option value="SM">SM</option>
-                                <option value="GEITOD">GEITOD</option>
-                                <option value="GEIJ2000">GEIJ2000</option>
-                            </select>
-                        </div>
-                        <div class="controls-field">
-                            <label>Start Time</label>
-                            <input type="datetime-local" id="startTime">
-                        </div>
-                        <div class="controls-field">
-                            <label>Stop Time</label>
-                            <input type="datetime-local" id="stopTime">
-                        </div>
-                    </div>
-                </div>
-            </div>
-            <div id="chart3d"></div>
-        </div>
+
+<div class="overlay" id="overlay"></div>
+
+<!-- Sidebar -->
+<div class="sidebar" id="sidebar">
+    <div class="sidebar-header">
+        <a href="{{ base_url }}/" class="back-link">&larr; Home</a>
+        <h2>3D Orbit Viewer</h2>
+        <input type="text" id="searchInput" placeholder="Search satellites...">
     </div>
+    <div class="tree-container" id="treeContainer"></div>
+</div>
+
+<button class="sidebar-collapse-btn" id="sidebar-collapse-btn" title="Toggle sidebar">&#9664;</button>
+
+<!-- Main area -->
+<div class="main">
+    <div class="controls-bar" id="controls-bar">
+        <label>Coords</label>
+        <select id="coordSys">
+            <option value="GSE">GSE</option>
+            <option value="GSM">GSM</option>
+            <option value="GEO">GEO</option>
+            <option value="GM">GM</option>
+            <option value="SM">SM</option>
+            <option value="GEITOD">GEITOD</option>
+            <option value="GEIJ2000">GEIJ2000</option>
+        </select>
+
+        <label for="startTime">Start</label>
+        <input type="datetime-local" id="startTime">
+
+        <label for="stopTime">Stop</label>
+        <input type="datetime-local" id="stopTime">
+    </div>
+    <button class="controls-collapse-btn" id="controls-collapse-btn" title="Toggle controls">&#9650;</button>
+
+    <div id="chart3d"></div>
+
     <div class="status-bar" id="statusBar">Ready</div>
+</div>
 
-    <script>
-        const API_BASE = '{{ base_url }}/';
-        const EARTH_RADIUS_KM = 6371.0;
-        const COLORS = ['#5470c6','#91cc75','#fac858','#ee6666','#73c0de','#3ba272','#fc8452','#9a60b4','#ea7ccc'];
-        const METADATA_KEYS = new Set([
-            '__spz_name__','__spz_provider__','__spz_type__','__spz_uid__',
-            '__spz_dataset__','__spz_description__','__spz_is_virtual__',
-            '__spz_virtual_products_list__',
-            'UNITS','FILLVAL','SCALETYP','COORDINATE_SYSTEM','FIELDNAM',
-            'CATDESC','DEPEND_0','DEPEND_1','LABL_PTR_1',
-            'start_date','stop_date','maxDate','minDate',
-            'build_date','Id','Resolution','Geometry','TrajectoryGeometry','ResourceId'
-        ]);
+<script>
+    const API_BASE = '{{ base_url }}/';
+    const EARTH_RADIUS_KM = 6371.0;
+    const COLORS = ['#5470c6','#91cc75','#fac858','#ee6666','#73c0de','#3ba272','#fc8452','#9a60b4','#ea7ccc'];
+    const METADATA_KEYS = new Set([
+        '__spz_name__','__spz_provider__','__spz_type__','__spz_uid__',
+        '__spz_dataset__','__spz_description__','__spz_is_virtual__',
+        '__spz_virtual_products_list__',
+        'UNITS','FILLVAL','SCALETYP','COORDINATE_SYSTEM','FIELDNAM',
+        'CATDESC','DEPEND_0','DEPEND_1','LABL_PTR_1',
+        'start_date','stop_date','maxDate','minDate',
+        'build_date','Id','Resolution','Geometry','TrajectoryGeometry','ResourceId'
+    ]);
 
-        // uid -> { name, color, data, uid }
-        const trajectories = new Map();
-        let colorIndex = 0;
-        let chart = null;
+    // uid -> { name, color, data, uid }
+    const trajectories = new Map();
+    let colorIndex = 0;
+    let chart = null;
 
-        // ---- Earth texture ----
-        let earthPixels = null;
-        let earthTexW = 0;
-        let earthTexH = 0;
+    // ---- Earth texture ----
+    let earthPixels = null;
+    let earthTexW = 0;
+    let earthTexH = 0;
 
-        function loadEarthTexture() {
-            return new Promise(resolve => {
-                const img = new Image();
-                img.crossOrigin = 'anonymous';
-                img.onload = () => {
-                    const w = 512, h = 256;
-                    const c = document.createElement('canvas');
-                    c.width = w; c.height = h;
-                    const ctx = c.getContext('2d');
-                    ctx.drawImage(img, 0, 0, w, h);
-                    earthPixels = ctx.getImageData(0, 0, w, h).data;
-                    earthTexW = w;
-                    earthTexH = h;
-                    resolve(true);
-                };
-                img.onerror = () => resolve(false);
-                img.src = API_BASE + 'static/earth_bluemarble.jpg';
-            });
-        }
-
-        function sampleEarthColor(x, y, z) {
-            if (!earthPixels) return '#2255aa';
-            const r = Math.sqrt(x * x + y * y + z * z) || 1;
-            const lat = Math.asin(Math.max(-1, Math.min(1, z / r)));
-            const lon = Math.atan2(y, x);
-            const px = Math.floor(((lon + Math.PI) / (2 * Math.PI)) * (earthTexW - 1));
-            const py = Math.floor(((Math.PI / 2 - lat) / Math.PI) * (earthTexH - 1));
-            const i = (py * earthTexW + px) * 4;
-            return `rgb(${earthPixels[i]},${earthPixels[i + 1]},${earthPixels[i + 2]})`;
-        }
-
-        function setStatus(msg) {
-            document.getElementById('statusBar').textContent = msg;
-        }
-
-        // ---- Chart ----
-        function initChart() {
-            chart = echarts.init(document.getElementById('chart3d'), 'dark');
-            initChartOption();
-            new ResizeObserver(() => chart.resize()).observe(document.getElementById('chart3d'));
-        }
-
-        function earthSeries() {
-            return {
-                type: 'surface',
-                parametric: true,
-                wireframe: { show: false },
-                shading: earthPixels ? 'lambert' : 'color',
-                itemStyle: earthPixels
-                    ? { color: params => sampleEarthColor(params.value[0], params.value[1], params.value[2]) }
-                    : { color: '#2255aa', opacity: 0.6 },
-                parametricEquation: {
-                    u: { min: 0, max: Math.PI, step: Math.PI / 60 },
-                    v: { min: 0, max: 2 * Math.PI, step: Math.PI / 60 },
-                    x: (u, v) => Math.sin(u) * Math.cos(v),
-                    y: (u, v) => Math.sin(u) * Math.sin(v),
-                    z: (u, v) => Math.cos(u)
-                },
-                silent: true
+    function loadEarthTexture() {
+        return new Promise(resolve => {
+            const img = new Image();
+            img.crossOrigin = 'anonymous';
+            img.onload = () => {
+                const w = 512, h = 256;
+                const c = document.createElement('canvas');
+                c.width = w; c.height = h;
+                const ctx = c.getContext('2d');
+                ctx.drawImage(img, 0, 0, w, h);
+                earthPixels = ctx.getImageData(0, 0, w, h).data;
+                earthTexW = w;
+                earthTexH = h;
+                resolve(true);
             };
-        }
+            img.onerror = () => resolve(false);
+            img.src = API_BASE + 'static/earth_bluemarble.jpg';
+        });
+    }
 
-        function computeAxisRange() {
-            let maxAbs = 2;
-            for (const t of trajectories.values()) {
-                for (const p of t.data) {
-                    for (let i = 0; i < 3; i++) {
-                        const v = Math.abs(p[i]);
-                        if (v > maxAbs) maxAbs = v;
-                    }
+    function sampleEarthColor(x, y, z) {
+        if (!earthPixels) return '#2255aa';
+        const r = Math.sqrt(x * x + y * y + z * z) || 1;
+        const lat = Math.asin(Math.max(-1, Math.min(1, z / r)));
+        const lon = Math.atan2(y, x);
+        const px = Math.floor(((lon + Math.PI) / (2 * Math.PI)) * (earthTexW - 1));
+        const py = Math.floor(((Math.PI / 2 - lat) / Math.PI) * (earthTexH - 1));
+        const i = (py * earthTexW + px) * 4;
+        return `rgb(${earthPixels[i]},${earthPixels[i + 1]},${earthPixels[i + 2]})`;
+    }
+
+    function setStatus(msg) {
+        document.getElementById('statusBar').textContent = msg;
+    }
+
+    // ---- Chart ----
+    function initChart() {
+        chart = echarts.init(document.getElementById('chart3d'), 'dark');
+        initChartOption();
+        new ResizeObserver(() => chart.resize()).observe(document.getElementById('chart3d'));
+    }
+
+    function earthSeries() {
+        return {
+            type: 'surface',
+            parametric: true,
+            wireframe: { show: false },
+            shading: earthPixels ? 'lambert' : 'color',
+            itemStyle: earthPixels
+                ? { color: params => sampleEarthColor(params.value[0], params.value[1], params.value[2]) }
+                : { color: '#2255aa', opacity: 0.6 },
+            parametricEquation: {
+                u: { min: 0, max: Math.PI, step: Math.PI / 60 },
+                v: { min: 0, max: 2 * Math.PI, step: Math.PI / 60 },
+                x: (u, v) => Math.sin(u) * Math.cos(v),
+                y: (u, v) => Math.sin(u) * Math.sin(v),
+                z: (u, v) => Math.cos(u)
+            },
+            silent: true
+        };
+    }
+
+    function computeAxisRange() {
+        let maxAbs = 2;
+        for (const t of trajectories.values()) {
+            for (const p of t.data) {
+                for (let i = 0; i < 3; i++) {
+                    const v = Math.abs(p[i]);
+                    if (v > maxAbs) maxAbs = v;
                 }
             }
-            maxAbs = Math.ceil(maxAbs * 1.1);
-            return { min: -maxAbs, max: maxAbs };
+        }
+        maxAbs = Math.ceil(maxAbs * 1.1);
+        return { min: -maxAbs, max: maxAbs };
+    }
+
+    function initChartOption() {
+        chart.setOption({
+            xAxis3D: { name: 'X (Re)' },
+            yAxis3D: { name: 'Y (Re)' },
+            zAxis3D: { name: 'Z (Re)' },
+            grid3D: {
+                boxWidth: 100, boxHeight: 100, boxDepth: 100,
+                viewControl: { autoRotate: false, minDistance: 0.5, maxDistance: 500 },
+                light: {
+                    main: { intensity: 1.2, shadow: false },
+                    ambient: { intensity: 0.4 }
+                }
+            },
+            series: [earthSeries()]
+        });
+    }
+
+    function updateChartOption() {
+        const trajSeries = Array.from(trajectories.values()).map(t => ({
+            type: 'line3D',
+            name: t.name,
+            data: t.data,
+            lineStyle: { width: 2, color: t.color },
+            silent: true
+        }));
+        const range = computeAxisRange();
+        chart.setOption({
+            xAxis3D: { min: range.min, max: range.max },
+            yAxis3D: { min: range.min, max: range.max },
+            zAxis3D: { min: range.min, max: range.max },
+            series: [earthSeries(), ...trajSeries]
+        }, { replaceMerge: ['series'] });
+    }
+
+    // ---- Inventory tree ----
+    function isMetadataKey(key) {
+        return key.startsWith('__spz_') || METADATA_KEYS.has(key);
+    }
+
+    function hasVisibleChildren(node) {
+        if (typeof node !== 'object' || node === null) return false;
+        return Object.keys(node).some(k => !isMetadataKey(k));
+    }
+
+    function isLeaf(node) {
+        return node && typeof node === 'object' && '__spz_uid__' in node && !hasVisibleChildren(node);
+    }
+
+    function findTimeBounds(node) {
+        if (!node || typeof node !== 'object') return null;
+        if (node.start_date && node.stop_date) return { start: node.start_date, stop: node.stop_date };
+        return null;
+    }
+
+    function buildTree(obj, parentEl, parentNode) {
+        const ul = document.createElement('ul');
+        for (const key of Object.keys(obj)) {
+            if (isMetadataKey(key)) continue;
+            const val = obj[key];
+            if (typeof val !== 'object' || val === null) continue;
+
+            const li = document.createElement('li');
+            const displayName = val.__spz_name__ || key;
+            li.dataset.name = displayName.toLowerCase();
+
+            if (isLeaf(val)) {
+                const span = document.createElement('div');
+                span.className = 'tree-node';
+                const uid = (val.__spz_provider__ || 'ssc') + '/' + val.__spz_uid__;
+                const bounds = findTimeBounds(val) || findTimeBounds(parentNode) || {};
+
+                const toggle = document.createElement('span');
+                toggle.className = 'toggle';
+                toggle.textContent = ' ';
+                span.appendChild(toggle);
+
+                const cb = document.createElement('input');
+                cb.type = 'checkbox';
+                cb.dataset.uid = uid;
+                cb.dataset.timeBoundsJson = JSON.stringify(bounds);
+                span.appendChild(cb);
+
+                const swatch = document.createElement('span');
+                swatch.className = 'color-swatch';
+                span.appendChild(swatch);
+
+                span.appendChild(document.createTextNode(displayName));
+
+                cb.addEventListener('change', () => onToggleSatellite(cb, span, swatch));
+                span.addEventListener('click', (e) => {
+                    if (e.target === cb) return;
+                    cb.checked = !cb.checked;
+                    cb.dispatchEvent(new Event('change'));
+                });
+
+                li.appendChild(span);
+            } else if (hasVisibleChildren(val)) {
+                const span = document.createElement('div');
+                span.className = 'tree-node';
+                const toggle = document.createElement('span');
+                toggle.className = 'toggle';
+                toggle.textContent = '\u25b6';
+                span.appendChild(toggle);
+                span.appendChild(document.createTextNode(displayName));
+
+                const childContainer = document.createElement('div');
+                childContainer.className = 'tree-children';
+                buildTree(val, childContainer, val);
+                span.addEventListener('click', () => {
+                    const open = childContainer.classList.toggle('open');
+                    toggle.textContent = open ? '\u25bc' : '\u25b6';
+                });
+                li.appendChild(span);
+                li.appendChild(childContainer);
+            } else {
+                continue;
+            }
+
+            ul.appendChild(li);
+        }
+        parentEl.appendChild(ul);
+    }
+
+    async function onToggleSatellite(cb, span, swatch) {
+        const uid = cb.dataset.uid;
+
+        if (!cb.checked) {
+            trajectories.delete(uid);
+            span.classList.remove('plotted');
+            swatch.style.display = 'none';
+            updateChartOption();
+            setStatus(`Removed ${uid.split('/').pop()}.`);
+            return;
         }
 
-        function initChartOption() {
-            chart.setOption({
-                xAxis3D: { name: 'X (Re)' },
-                yAxis3D: { name: 'Y (Re)' },
-                zAxis3D: { name: 'Z (Re)' },
-                grid3D: {
-                    boxWidth: 100, boxHeight: 100, boxDepth: 100,
-                    viewControl: { autoRotate: false, minDistance: 0.5, maxDistance: 500 },
-                    light: {
-                        main: { intensity: 1.2, shadow: false },
-                        ambient: { intensity: 0.4 }
-                    }
-                },
-                series: [earthSeries()]
-            });
-        }
-
-        function updateChartOption() {
-            const trajSeries = Array.from(trajectories.values()).map(t => ({
-                type: 'line3D',
-                name: t.name,
-                data: t.data,
-                lineStyle: { width: 2, color: t.color },
-                silent: true
-            }));
-            const range = computeAxisRange();
-            chart.setOption({
-                xAxis3D: { min: range.min, max: range.max },
-                yAxis3D: { min: range.min, max: range.max },
-                zAxis3D: { min: range.min, max: range.max },
-                series: [earthSeries(), ...trajSeries]
-            }, { replaceMerge: ['series'] });
-        }
-
-        // ---- Inventory tree ----
-        function isMetadataKey(key) {
-            return key.startsWith('__spz_') || METADATA_KEYS.has(key);
-        }
-
-        function hasVisibleChildren(node) {
-            if (typeof node !== 'object' || node === null) return false;
-            return Object.keys(node).some(k => !isMetadataKey(k));
-        }
-
-        function isLeaf(node) {
-            return node && typeof node === 'object' && '__spz_uid__' in node && !hasVisibleChildren(node);
-        }
-
-        function findTimeBounds(node) {
-            if (!node || typeof node !== 'object') return null;
-            if (node.start_date && node.stop_date) return { start: node.start_date, stop: node.stop_date };
-            return null;
-        }
-
-        function buildTree(obj, parentEl, parentNode) {
-            const ul = document.createElement('ul');
-            for (const key of Object.keys(obj)) {
-                if (isMetadataKey(key)) continue;
-                const val = obj[key];
-                if (typeof val !== 'object' || val === null) continue;
-
-                const li = document.createElement('li');
-                const displayName = val.__spz_name__ || key;
-                li.dataset.name = displayName.toLowerCase();
-
-                if (isLeaf(val)) {
-                    const span = document.createElement('div');
-                    span.className = 'tree-node';
-                    const uid = (val.__spz_provider__ || 'ssc') + '/' + val.__spz_uid__;
-                    const bounds = findTimeBounds(val) || findTimeBounds(parentNode) || {};
-
-                    const toggle = document.createElement('span');
-                    toggle.className = 'toggle';
-                    toggle.textContent = ' ';
-                    span.appendChild(toggle);
-
-                    const cb = document.createElement('input');
-                    cb.type = 'checkbox';
-                    cb.dataset.uid = uid;
-                    cb.dataset.timeBoundsJson = JSON.stringify(bounds);
-                    span.appendChild(cb);
-
-                    const swatch = document.createElement('span');
-                    swatch.className = 'color-swatch';
-                    span.appendChild(swatch);
-
-                    const label = document.createTextNode(displayName);
-                    span.appendChild(label);
-
-                    cb.addEventListener('change', () => onToggleSatellite(cb, span, swatch));
-                    span.addEventListener('click', (e) => {
-                        if (e.target === cb) return;
-                        cb.checked = !cb.checked;
-                        cb.dispatchEvent(new Event('change'));
-                    });
-
-                    li.appendChild(span);
-                } else if (hasVisibleChildren(val)) {
-                    const span = document.createElement('div');
-                    span.className = 'tree-node';
-                    const toggle = document.createElement('span');
-                    toggle.className = 'toggle';
-                    toggle.textContent = '\u25b6';
-                    span.appendChild(toggle);
-                    span.appendChild(document.createTextNode(displayName));
-
-                    const childContainer = document.createElement('div');
-                    childContainer.className = 'tree-children';
-                    buildTree(val, childContainer, val);
-                    span.addEventListener('click', () => {
-                        const open = childContainer.classList.toggle('open');
-                        toggle.textContent = open ? '\u25bc' : '\u25b6';
-                    });
-                    li.appendChild(span);
-                    li.appendChild(childContainer);
+        const startVal = document.getElementById('startTime').value;
+        const stopVal = document.getElementById('stopTime').value;
+        if (!startVal || !stopVal) {
+            try {
+                const bounds = JSON.parse(cb.dataset.timeBoundsJson || '{}');
+                if (bounds.start) {
+                    const e = new Date(bounds.stop || bounds.start);
+                    const s = new Date(e.getTime() - 86400000);
+                    document.getElementById('startTime').value = toLocalISOString(s);
+                    document.getElementById('stopTime').value = toLocalISOString(e);
                 } else {
-                    continue;
-                }
-
-                ul.appendChild(li);
-            }
-            parentEl.appendChild(ul);
-        }
-
-        async function onToggleSatellite(cb, span, swatch) {
-            const uid = cb.dataset.uid;
-
-            if (!cb.checked) {
-                trajectories.delete(uid);
-                span.classList.remove('plotted');
-                swatch.style.display = 'none';
-                updateChartOption();
-                setStatus(`Removed ${uid.split('/').pop()}.`);
-                return;
-            }
-
-            const startVal = document.getElementById('startTime').value;
-            const stopVal = document.getElementById('stopTime').value;
-            if (!startVal || !stopVal) {
-                // try to use satellite time bounds for a sensible default
-                try {
-                    const bounds = JSON.parse(cb.dataset.timeBoundsJson || '{}');
-                    if (bounds.start) {
-                        const e = new Date(bounds.stop || bounds.start);
-                        const s = new Date(e.getTime() - 86400000);
-                        document.getElementById('startTime').value = toLocalISOString(s);
-                        document.getElementById('stopTime').value = toLocalISOString(e);
-                        updateControlsSummary();
-                    } else {
-                        cb.checked = false;
-                        setStatus('Set start and stop times first.');
-                        return;
-                    }
-                } catch (_) {
                     cb.checked = false;
                     setStatus('Set start and stop times first.');
                     return;
                 }
+            } catch (_) {
+                cb.checked = false;
+                setStatus('Set start and stop times first.');
+                return;
             }
+        }
 
-            const coordSys = document.getElementById('coordSys').value;
-            const startISO = new Date(document.getElementById('startTime').value).toISOString();
-            const stopISO = new Date(document.getElementById('stopTime').value).toISOString();
-            const url = `${API_BASE}get_data?path=${encodeURIComponent(uid)}&format=json&coordinate_system=${coordSys}&start_time=${encodeURIComponent(startISO)}&stop_time=${encodeURIComponent(stopISO)}`;
+        const coordSys = document.getElementById('coordSys').value;
+        const startISO = new Date(document.getElementById('startTime').value).toISOString();
+        const stopISO = new Date(document.getElementById('stopTime').value).toISOString();
+        const url = `${API_BASE}get_data?path=${encodeURIComponent(uid)}&format=json&coordinate_system=${coordSys}&start_time=${encodeURIComponent(startISO)}&stop_time=${encodeURIComponent(stopISO)}`;
 
+        span.classList.add('loading');
+        setStatus(`Fetching ${uid.split('/').pop()}...`);
+        try {
+            const resp = await fetch(url);
+            if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+            const json = await resp.json();
+            const values = json.values.values;
+            const reData = values.map(p => [p[0] / EARTH_RADIUS_KM, p[1] / EARTH_RADIUS_KM, p[2] / EARTH_RADIUS_KM]);
+
+            const color = COLORS[colorIndex % COLORS.length];
+            colorIndex++;
+            const name = uid.split('/').pop();
+            trajectories.set(uid, { name, color, data: reData, uid });
+            swatch.style.background = color;
+            swatch.style.display = 'inline-block';
+            span.classList.add('plotted');
+            updateChartOption();
+            setStatus(`Plotted ${name} (${reData.length} points).`);
+        } catch (err) {
+            cb.checked = false;
+            setStatus('Error: ' + err.message);
+        } finally {
+            span.classList.remove('loading');
+        }
+    }
+
+    function toLocalISOString(d) {
+        const pad = n => String(n).padStart(2, '0');
+        return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+    }
+
+    async function replotAll() {
+        const checked = document.querySelectorAll('.tree-node input[type="checkbox"]:checked');
+        if (checked.length === 0) return;
+        const startVal = document.getElementById('startTime').value;
+        const stopVal = document.getElementById('stopTime').value;
+        if (!startVal || !stopVal) return;
+
+        const existingColors = new Map();
+        for (const [uid, t] of trajectories) existingColors.set(uid, t.color);
+        trajectories.clear();
+
+        const coordSys = document.getElementById('coordSys').value;
+        const startISO = new Date(startVal).toISOString();
+        const stopISO = new Date(stopVal).toISOString();
+
+        setStatus('Refreshing all trajectories...');
+        const fetches = Array.from(checked).map(async (cb) => {
+            const uid = cb.dataset.uid;
+            const span = cb.closest('.tree-node');
+            const swatch = span.querySelector('.color-swatch');
             span.classList.add('loading');
-            setStatus(`Fetching ${uid.split('/').pop()}...`);
             try {
+                const url = `${API_BASE}get_data?path=${encodeURIComponent(uid)}&format=json&coordinate_system=${coordSys}&start_time=${encodeURIComponent(startISO)}&stop_time=${encodeURIComponent(stopISO)}`;
                 const resp = await fetch(url);
                 if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
                 const json = await resp.json();
                 const values = json.values.values;
                 const reData = values.map(p => [p[0] / EARTH_RADIUS_KM, p[1] / EARTH_RADIUS_KM, p[2] / EARTH_RADIUS_KM]);
-
-                const color = COLORS[colorIndex % COLORS.length];
-                colorIndex++;
-                const name = uid.split('/').pop();
-                trajectories.set(uid, { name, color, data: reData, uid });
+                const color = existingColors.get(uid) || COLORS[colorIndex++ % COLORS.length];
+                trajectories.set(uid, { name: uid.split('/').pop(), color, data: reData, uid });
                 swatch.style.background = color;
-                swatch.style.display = 'inline-block';
-                span.classList.add('plotted');
-                updateChartOption();
-                setStatus(`Plotted ${name} (${reData.length} points).`);
             } catch (err) {
-                cb.checked = false;
-                setStatus('Error: ' + err.message);
+                setStatus('Error fetching ' + uid.split('/').pop() + ': ' + err.message);
             } finally {
                 span.classList.remove('loading');
             }
-        }
-
-        function toLocalISOString(d) {
-            const pad = n => String(n).padStart(2, '0');
-            return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
-        }
-
-        async function replotAll() {
-            const checked = document.querySelectorAll('.tree-node input[type="checkbox"]:checked');
-            if (checked.length === 0) return;
-            const startVal = document.getElementById('startTime').value;
-            const stopVal = document.getElementById('stopTime').value;
-            if (!startVal || !stopVal) return;
-
-            // keep existing colors for each uid
-            const existingColors = new Map();
-            for (const [uid, t] of trajectories) existingColors.set(uid, t.color);
-            trajectories.clear();
-
-            const coordSys = document.getElementById('coordSys').value;
-            const startISO = new Date(startVal).toISOString();
-            const stopISO = new Date(stopVal).toISOString();
-
-            setStatus('Refreshing all trajectories...');
-            const fetches = Array.from(checked).map(async (cb) => {
-                const uid = cb.dataset.uid;
-                const span = cb.closest('.tree-node');
-                const swatch = span.querySelector('.color-swatch');
-                span.classList.add('loading');
-                try {
-                    const url = `${API_BASE}get_data?path=${encodeURIComponent(uid)}&format=json&coordinate_system=${coordSys}&start_time=${encodeURIComponent(startISO)}&stop_time=${encodeURIComponent(stopISO)}`;
-                    const resp = await fetch(url);
-                    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-                    const json = await resp.json();
-                    const values = json.values.values;
-                    const reData = values.map(p => [p[0] / EARTH_RADIUS_KM, p[1] / EARTH_RADIUS_KM, p[2] / EARTH_RADIUS_KM]);
-                    const color = existingColors.get(uid) || COLORS[colorIndex++ % COLORS.length];
-                    trajectories.set(uid, { name: uid.split('/').pop(), color, data: reData, uid });
-                    swatch.style.background = color;
-                } catch (err) {
-                    setStatus('Error fetching ' + uid.split('/').pop() + ': ' + err.message);
-                } finally {
-                    span.classList.remove('loading');
-                }
-            });
-            await Promise.all(fetches);
-            updateChartOption();
-            setStatus(`Refreshed ${trajectories.size} trajectory(ies).`);
-        }
-
-        document.getElementById('startTime').addEventListener('change', replotAll);
-        document.getElementById('stopTime').addEventListener('change', replotAll);
-        document.getElementById('coordSys').addEventListener('change', replotAll);
-
-        // ---- Search / filter ----
-        document.getElementById('searchInput').addEventListener('input', function() {
-            const q = this.value.toLowerCase().trim();
-            filterTree(document.getElementById('treeContainer'), q);
         });
+        await Promise.all(fetches);
+        updateChartOption();
+        setStatus(`Refreshed ${trajectories.size} trajectory(ies).`);
+    }
 
-        function filterTree(container, query) {
-            const items = container.querySelectorAll('li');
-            if (!query) {
-                items.forEach(li => li.classList.remove('hidden'));
-                return;
+    document.getElementById('startTime').addEventListener('change', replotAll);
+    document.getElementById('stopTime').addEventListener('change', replotAll);
+    document.getElementById('coordSys').addEventListener('change', replotAll);
+
+    // ---- Search / filter ----
+    document.getElementById('searchInput').addEventListener('input', function() {
+        const q = this.value.toLowerCase().trim();
+        filterTree(document.getElementById('treeContainer'), q);
+    });
+
+    function filterTree(container, query) {
+        const items = container.querySelectorAll('li');
+        if (!query) {
+            items.forEach(li => li.classList.remove('hidden'));
+            return;
+        }
+        items.forEach(li => {
+            const name = li.dataset.name || '';
+            const childUl = li.querySelector(':scope > .tree-children');
+            let childMatch = false;
+            if (childUl) {
+                filterTree(childUl, query);
+                childMatch = Array.from(childUl.querySelectorAll('li')).some(c => !c.classList.contains('hidden'));
             }
-            items.forEach(li => {
-                const name = li.dataset.name || '';
-                const childUl = li.querySelector(':scope > .tree-children');
-                let childMatch = false;
-                if (childUl) {
-                    filterTree(childUl, query);
-                    childMatch = Array.from(childUl.querySelectorAll('li')).some(c => !c.classList.contains('hidden'));
-                }
-                const selfMatch = name.includes(query);
-                li.classList.toggle('hidden', !selfMatch && !childMatch);
-                if (childMatch && childUl) childUl.classList.add('open');
-            });
-        }
-
-        // ---- Controls bar toggle ----
-        document.getElementById('controlsToggle').addEventListener('click', () => {
-            const body = document.getElementById('controlsBody');
-            const icon = document.getElementById('controlsToggleIcon');
-            const open = body.classList.toggle('open');
-            icon.textContent = open ? '\u25bc' : '\u25b6';
-            setTimeout(() => chart && chart.resize(), 50);
+            const selfMatch = name.includes(query);
+            li.classList.toggle('hidden', !selfMatch && !childMatch);
+            if (childMatch && childUl) childUl.classList.add('open');
         });
+    }
 
-        function updateControlsSummary() {
-            const cs = document.getElementById('coordSys').value;
-            const s = document.getElementById('startTime').value;
-            const e = document.getElementById('stopTime').value;
-            let summary = cs;
-            if (s && e) summary += '  |  ' + s.replace('T', ' ') + ' \u2192 ' + e.replace('T', ' ');
-            document.getElementById('controlsSummary').textContent = summary;
-        }
+    // ---- Controls bar collapse ----
+    (function initControlsCollapse() {
+        const bar = document.getElementById('controls-bar');
+        const btn = document.getElementById('controls-collapse-btn');
+        btn.addEventListener('click', () => {
+            bar.classList.toggle('collapsed');
+            btn.innerHTML = bar.classList.contains('collapsed') ? '&#9660;' : '&#9650;';
+            setTimeout(() => chart && chart.resize(), 200);
+        });
+    })();
 
-        document.getElementById('coordSys').addEventListener('change', updateControlsSummary);
-        document.getElementById('startTime').addEventListener('change', updateControlsSummary);
-        document.getElementById('stopTime').addEventListener('change', updateControlsSummary);
-
-        // ---- Sidebar toggle ----
+    // ---- Sidebar collapse ----
+    (function initSidebarCollapse() {
         const sidebar = document.getElementById('sidebar');
+        const btn = document.getElementById('sidebar-collapse-btn');
         const overlay = document.getElementById('overlay');
-        const openBtn = document.getElementById('openSidebar');
         const isMobile = () => window.matchMedia('(max-width: 700px)').matches;
 
-        function openSidebar() {
-            sidebar.classList.add('open');
-            sidebar.classList.remove('collapsed');
-            overlay.classList.add('visible');
-            openBtn.classList.remove('visible');
+        function updateBtnPosition() {
+            if (isMobile()) {
+                btn.innerHTML = '&#9776;';
+                return;
+            }
+            const collapsed = sidebar.classList.contains('collapsed');
+            btn.style.left = collapsed ? '0' : sidebar.offsetWidth + 'px';
+            btn.innerHTML = collapsed ? '&#9654;' : '&#9664;';
         }
 
-        function closeSidebar() {
+        btn.addEventListener('click', () => {
             if (isMobile()) {
-                sidebar.classList.remove('open');
-                overlay.classList.remove('visible');
-                openBtn.classList.add('visible');
+                sidebar.classList.toggle('mobile-open');
+                overlay.classList.toggle('visible', sidebar.classList.contains('mobile-open'));
             } else {
                 sidebar.classList.toggle('collapsed');
-                openBtn.classList.toggle('visible', sidebar.classList.contains('collapsed'));
             }
-            setTimeout(() => chart && chart.resize(), 300);
-        }
-
-        document.getElementById('openSidebar').addEventListener('click', openSidebar);
-        document.getElementById('closeSidebar').addEventListener('click', closeSidebar);
-        overlay.addEventListener('click', () => {
-            sidebar.classList.remove('open');
-            overlay.classList.remove('visible');
-            openBtn.classList.add('visible');
+            updateBtnPosition();
+            setTimeout(() => chart && chart.resize(), 200);
         });
 
-        if (isMobile()) openBtn.classList.add('visible');
+        overlay.addEventListener('click', () => {
+            sidebar.classList.remove('mobile-open');
+            overlay.classList.remove('visible');
+        });
 
-        // ---- Init ----
-        async function loadInventory() {
-            setStatus('Loading inventory...');
-            try {
-                const resp = await fetch(API_BASE + 'get_inventory?format=json&provider=ssc');
-                if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-                const inv = await resp.json();
-                buildTree(inv, document.getElementById('treeContainer'), inv);
-                setStatus('Ready — check satellites to plot their orbits.');
-            } catch (err) {
-                setStatus('Failed to load inventory: ' + err.message);
-            }
+        updateBtnPosition();
+        new ResizeObserver(updateBtnPosition).observe(sidebar);
+    })();
+
+    // ---- Init ----
+    async function loadInventory() {
+        setStatus('Loading inventory...');
+        try {
+            const resp = await fetch(API_BASE + 'get_inventory?format=json&provider=ssc');
+            if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+            const inv = await resp.json();
+            buildTree(inv, document.getElementById('treeContainer'), inv);
+            setStatus('Ready — check satellites to plot their orbits.');
+        } catch (err) {
+            setStatus('Failed to load inventory: ' + err.message);
         }
+    }
 
-        (async () => {
-            await loadEarthTexture();
-            initChart();
-            loadInventory();
-        })();
-    </script>
+    (async () => {
+        await loadEarthTexture();
+        initChart();
+        loadInventory();
+    })();
+</script>
 </body>
 </html>
