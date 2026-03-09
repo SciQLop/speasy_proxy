@@ -512,15 +512,46 @@
 
     const MAX_DISTANCE_RE = 500;
 
+    // Region classification: 0 = magnetosphere, 1 = magnetosheath, 2 = solar wind
+    function classifyPoint(x, y, z, mpParams, bsParams) {
+        const r = Math.sqrt(x * x + y * y + z * z);
+        if (r < 1e-6) return 0;
+        const cosTheta = x / r;
+        const theta = Math.acos(Math.max(-1, Math.min(1, cosTheta)));
+        const rMp = mpParams.r0 * Math.pow(2 / (1 + cosTheta), mpParams.alpha);
+        if (r <= rMp) return 0;
+        const rBs = bsParams.r0 * Math.pow(2 / (1 + cosTheta), bsParams.alpha);
+        if (r <= rBs) return 1;
+        return 2;
+    }
+
+    function currentBoundaryParams() {
+        const Dp = parseFloat(document.getElementById('dpSlider').value);
+        const Bz = parseFloat(document.getElementById('bzSlider').value);
+        const mp = shueParams(Dp, Bz);
+        const bs = { r0: mp.r0 * 1.28, alpha: mp.alpha * 1.05 };
+        return { mp, bs };
+    }
+
     function toReData(values) {
+        const { mp, bs } = currentBoundaryParams();
         const result = [];
         for (const p of values) {
             const x = p[0] / EARTH_RADIUS_KM, y = p[1] / EARTH_RADIUS_KM, z = p[2] / EARTH_RADIUS_KM;
             if (x * x + y * y + z * z > MAX_DISTANCE_RE * MAX_DISTANCE_RE) continue;
             if (!isFinite(x) || !isFinite(y) || !isFinite(z)) continue;
-            result.push([x, y, z]);
+            result.push([x, y, z, classifyPoint(x, y, z, mp, bs)]);
         }
         return result;
+    }
+
+    function reclassifyAllTrajectories() {
+        const { mp, bs } = currentBoundaryParams();
+        for (const t of trajectories.values()) {
+            for (const p of t.data) {
+                p[3] = classifyPoint(p[0], p[1], p[2], mp, bs);
+            }
+        }
     }
 
     // uid -> { name, color, data, uid }
@@ -693,23 +724,56 @@
         });
     }
 
+    const REGION_COLORS = ['#91cc75', '#fac858', '#ee6666']; // magnetosphere, magnetosheath, solar wind
+
     function updateChartOption() {
         const Dp = parseFloat(document.getElementById('dpSlider').value);
         const Bz = parseFloat(document.getElementById('bzSlider').value);
-        const trajSeries = Array.from(trajectories.values()).map(t => ({
-            type: 'line3D',
-            name: t.name,
-            data: t.data,
-            lineStyle: { width: 2, color: t.color },
-            silent: true
-        }));
+        const showBoundaries = document.getElementById('showMagnetopause').checked
+                            || document.getElementById('showBowShock').checked;
+        const trajSeries = Array.from(trajectories.values()).map((t, i) => {
+            const s = {
+                type: 'line3D',
+                name: t.name,
+                data: t.data,
+                lineStyle: { width: 2 },
+                silent: true
+            };
+            if (showBoundaries) {
+                s.lineStyle.color = REGION_COLORS[0];
+                s.visualMap = false;
+            } else {
+                s.lineStyle.color = t.color;
+            }
+            return s;
+        });
         const range = computeAxisRange();
-        chart.setOption({
+        const opts = {
             xAxis3D: { min: range.min, max: range.max },
             yAxis3D: { min: range.min, max: range.max },
             zAxis3D: { min: range.min, max: range.max },
             series: [earthSeries(), ...magnetosphereSeries(Dp, Bz), ...trajSeries]
-        }, { replaceMerge: ['series'] });
+        };
+        if (showBoundaries && trajSeries.length > 0) {
+            opts.visualMap = {
+                show: true,
+                type: 'piecewise',
+                dimension: 3,
+                pieces: [
+                    { value: 0, label: 'Magnetosphere', color: REGION_COLORS[0] },
+                    { value: 1, label: 'Magnetosheath', color: REGION_COLORS[1] },
+                    { value: 2, label: 'Solar Wind', color: REGION_COLORS[2] }
+                ],
+                seriesIndex: trajSeries.map((_, i) => i + 1 + magnetosphereSeries(Dp, Bz).length),
+                orient: 'horizontal',
+                bottom: 10,
+                left: 'center',
+                textStyle: { color: '#8892b0' }
+            };
+        } else {
+            opts.visualMap = { show: false };
+        }
+        chart.setOption(opts, { replaceMerge: ['series', 'visualMap'] });
     }
 
     // ---- Inventory tree ----
@@ -1106,14 +1170,23 @@
     document.getElementById('coordSys').addEventListener('change', replotAll);
 
     // Magnetosphere controls
-    document.getElementById('showMagnetopause').addEventListener('change', updateChartOption);
-    document.getElementById('showBowShock').addEventListener('change', updateChartOption);
+    document.getElementById('showMagnetopause').addEventListener('change', () => {
+        reclassifyAllTrajectories();
+        updateChartOption();
+    });
+    document.getElementById('showBowShock').addEventListener('change', () => {
+        reclassifyAllTrajectories();
+        updateChartOption();
+    });
 
 
     let magnetoTimer = null;
     function debouncedMagnetoUpdate() {
         if (magnetoTimer) clearTimeout(magnetoTimer);
-        magnetoTimer = setTimeout(updateChartOption, 500);
+        magnetoTimer = setTimeout(() => {
+            reclassifyAllTrajectories();
+            updateChartOption();
+        }, 500);
     }
 
     document.getElementById('dpSlider').addEventListener('input', function() {
