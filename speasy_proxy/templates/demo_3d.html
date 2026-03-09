@@ -469,6 +469,15 @@
 
         <span class="controls-sep"></span>
 
+        <div class="duration-btns" id="viewBtns">
+            <button data-view="reset" title="Reset view">Reset</button>
+            <button data-view="xy" title="XY plane (top)">XY</button>
+            <button data-view="xz" title="XZ plane (front)">XZ</button>
+            <button data-view="yz" title="YZ plane (side)">YZ</button>
+        </div>
+
+        <span class="controls-sep"></span>
+
         <label>Dp</label>
         <input type="range" id="dpSlider" min="0.5" max="20" step="0.5" value="2">
         <span class="controls-value" id="dpValue">2.0 nPa</span>
@@ -1070,6 +1079,24 @@
         document.querySelectorAll('#durationBtns button').forEach(b => b.classList.remove('active'));
         btn.classList.add('active');
         applyDuration(parseInt(btn.dataset.days));
+    });
+
+    // ---- View alignment ----
+    const VIEW_ANGLES = {
+        reset: { alpha: 40, beta: 40 },
+        xy:    { alpha: 90, beta: 0 },
+        xz:    { alpha: 0,  beta: 0 },
+        yz:    { alpha: 0,  beta: 90 }
+    };
+
+    document.getElementById('viewBtns').addEventListener('click', (e) => {
+        const btn = e.target.closest('button[data-view]');
+        if (!btn) return;
+        const view = VIEW_ANGLES[btn.dataset.view];
+        if (!view) return;
+        const opts = { grid3D: { viewControl: { alpha: view.alpha, beta: view.beta } } };
+        if (btn.dataset.view === 'reset') opts.grid3D.viewControl.distance = 150;
+        chart.setOption(opts);
     });
 
     document.getElementById('startTime').addEventListener('change', replotAll);
