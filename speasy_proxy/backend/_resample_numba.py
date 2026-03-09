@@ -1,3 +1,5 @@
+import math
+
 import numba
 import numpy as np
 
@@ -20,22 +22,26 @@ def min_max_indices(values: np.ndarray, n_buckets: int) -> np.ndarray:
             end = int((i + 1) * n / n_buckets)
             if start >= end:
                 continue
-            mn_idx = start
-            mx_idx = start
-            mn_val = values[start, col]
-            mx_val = values[start, col]
-            for j in range(start + 1, end):
+            mn_idx = -1
+            mx_idx = -1
+            mn_val = math.inf
+            mx_val = -math.inf
+            for j in range(start, end):
                 v = values[j, col]
+                if math.isnan(v):
+                    continue
                 if v < mn_val:
                     mn_val = v
                     mn_idx = j
                 if v > mx_val:
                     mx_val = v
                     mx_idx = j
-            raw[count] = mn_idx
-            count += 1
-            raw[count] = mx_idx
-            count += 1
+            if mn_idx >= 0:
+                raw[count] = mn_idx
+                count += 1
+            if mx_idx >= 0:
+                raw[count] = mx_idx
+                count += 1
 
     return np.unique(raw[:count])
 
@@ -59,10 +65,13 @@ def lttb_single_indices(values_1d: np.ndarray, n_out: int) -> np.ndarray:
         next_bucket_end = min(int((i + 1) * bucket_size) + 1, n)
 
         next_sum = 0.0
-        next_count = next_bucket_end - next_bucket_start
+        next_count = 0
         for k in range(next_bucket_start, next_bucket_end):
-            next_sum += values_1d[k]
-        next_avg = next_sum / next_count if next_count > 0 else 0.0
+            v = values_1d[k]
+            if not math.isnan(v):
+                next_sum += v
+                next_count += 1
+        next_avg = next_sum / next_count if next_count > 0 else math.nan
 
         if bucket_start >= bucket_end:
             indices[i] = bucket_start
@@ -72,14 +81,27 @@ def lttb_single_indices(values_1d: np.ndarray, n_out: int) -> np.ndarray:
         prev_val = values_1d[prev_idx]
         best_idx = bucket_start
         max_area = -1.0
-        for j in range(bucket_start, bucket_end):
-            area = abs(
-                (j - prev_idx) * (next_avg - prev_val)
-                - (values_1d[j] - prev_val) * (next_bucket_start - prev_idx)
-            )
-            if area > max_area:
-                max_area = area
-                best_idx = j
+        prev_is_nan = math.isnan(prev_val)
+        next_is_nan = math.isnan(next_avg)
+
+        if prev_is_nan or next_is_nan:
+            # Pick first non-NaN point in bucket
+            for j in range(bucket_start, bucket_end):
+                if not math.isnan(values_1d[j]):
+                    best_idx = j
+                    break
+        else:
+            for j in range(bucket_start, bucket_end):
+                v = values_1d[j]
+                if math.isnan(v):
+                    continue
+                area = abs(
+                    (j - prev_idx) * (next_avg - prev_val)
+                    - (v - prev_val) * (next_bucket_start - prev_idx)
+                )
+                if area > max_area:
+                    max_area = area
+                    best_idx = j
 
         indices[i] = best_idx
         prev_idx = best_idx
