@@ -45,6 +45,9 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+fast = [
+    "numba",
+]
 dev = [
     "pytest",
     "ddt",

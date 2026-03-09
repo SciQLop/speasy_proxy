@@ -35,7 +35,7 @@ RUN chown -R speasy /home/speasy/speasy_proxy
 USER speasy
 WORKDIR /home/speasy/speasy_proxy
 
-RUN uv sync --no-dev && \
+RUN uv sync --no-dev --extra fast && \
     uv pip install $SPEASY gunicorn jupyter-console
 
 ADD docker/entry_point.sh /home/speasy/entry_point.sh
