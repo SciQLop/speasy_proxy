@@ -16,6 +16,7 @@
             display: flex;
             flex-direction: column;
             height: 100vh;
+            height: 100dvh;
             overflow: hidden;
         }
 
@@ -34,11 +35,22 @@
             display: flex;
             flex-direction: column;
             overflow: hidden;
+            transition: transform 0.25s ease;
         }
+
+        .sidebar.collapsed { transform: translateX(-100%); position: absolute; }
 
         .sidebar-header {
             padding: 16px;
             border-bottom: 1px solid #1e2640;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .sidebar-header .header-left {
+            display: flex;
+            flex-direction: column;
         }
 
         .sidebar-header .back-link {
@@ -55,6 +67,37 @@
             font-size: 1.1rem;
             font-weight: 600;
         }
+
+        .sidebar-toggle {
+            background: none;
+            border: none;
+            color: #8892b0;
+            font-size: 1.2rem;
+            cursor: pointer;
+            padding: 4px 8px;
+            border-radius: 4px;
+        }
+
+        .sidebar-toggle:hover { background: #1a1f36; color: #e0e6f0; }
+
+        .panel-open-btn {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            z-index: 10;
+            background: #111627;
+            border: 1px solid #1e2640;
+            color: #e0e6f0;
+            font-size: 1.2rem;
+            cursor: pointer;
+            padding: 6px 10px;
+            border-radius: 6px;
+            display: none;
+        }
+
+        .panel-open-btn:hover { background: #1a1f36; }
+
+        .panel-open-btn.visible { display: block; }
 
         .search-box {
             padding: 10px 16px;
@@ -168,6 +211,7 @@
             display: flex;
             flex-direction: column;
             overflow: hidden;
+            position: relative;
         }
 
         #chart3d { flex: 1; }
@@ -185,14 +229,69 @@
         ::-webkit-scrollbar { width: 6px; }
         ::-webkit-scrollbar-track { background: transparent; }
         ::-webkit-scrollbar-thumb { background: #2a3358; border-radius: 3px; }
+
+        /* ---- Mobile ---- */
+        @media (max-width: 700px) {
+            .app-container {
+                flex-direction: column;
+            }
+
+            .sidebar {
+                position: fixed;
+                top: 0; left: 0; bottom: 0;
+                z-index: 100;
+                width: 85vw;
+                min-width: unset;
+                max-width: 360px;
+                transform: translateX(-100%);
+            }
+
+            .sidebar.open { transform: translateX(0); }
+
+            .panel-open-btn { display: block; }
+
+            .overlay {
+                position: fixed;
+                inset: 0;
+                background: rgba(0,0,0,0.5);
+                z-index: 99;
+                display: none;
+            }
+
+            .overlay.visible { display: block; }
+
+            .tree-node {
+                padding: 6px 8px;
+                font-size: 0.9rem;
+            }
+
+            .tree-node .toggle { font-size: 0.8rem; }
+
+            .tree-node input[type="checkbox"] {
+                width: 18px;
+                height: 18px;
+            }
+
+            .controls select,
+            .controls input[type="datetime-local"] {
+                padding: 8px;
+                font-size: 0.9rem;
+            }
+
+            .status-bar { font-size: 0.75rem; }
+        }
     </style>
 </head>
 <body>
     <div class="app-container">
-        <div class="sidebar">
+        <div class="overlay" id="overlay"></div>
+        <div class="sidebar" id="sidebar">
             <div class="sidebar-header">
-                <a href="{{ base_url }}/" class="back-link">&larr; Home</a>
-                <h2>3D Orbit Viewer</h2>
+                <div class="header-left">
+                    <a href="{{ base_url }}/" class="back-link">&larr; Home</a>
+                    <h2>3D Orbit Viewer</h2>
+                </div>
+                <button class="sidebar-toggle" id="closeSidebar" title="Close panel">&times;</button>
             </div>
             <div class="search-box">
                 <input type="text" id="searchInput" placeholder="Search satellites...">
@@ -216,6 +315,7 @@
             </div>
         </div>
         <div class="main-area">
+            <button class="panel-open-btn" id="openSidebar" title="Open panel">&#9776;</button>
             <div id="chart3d"></div>
         </div>
     </div>
@@ -588,6 +688,41 @@
                 if (childMatch && childUl) childUl.classList.add('open');
             });
         }
+
+        // ---- Sidebar toggle ----
+        const sidebar = document.getElementById('sidebar');
+        const overlay = document.getElementById('overlay');
+        const openBtn = document.getElementById('openSidebar');
+        const isMobile = () => window.matchMedia('(max-width: 700px)').matches;
+
+        function openSidebar() {
+            sidebar.classList.add('open');
+            sidebar.classList.remove('collapsed');
+            overlay.classList.add('visible');
+            openBtn.classList.remove('visible');
+        }
+
+        function closeSidebar() {
+            if (isMobile()) {
+                sidebar.classList.remove('open');
+                overlay.classList.remove('visible');
+                openBtn.classList.add('visible');
+            } else {
+                sidebar.classList.toggle('collapsed');
+                openBtn.classList.toggle('visible', sidebar.classList.contains('collapsed'));
+            }
+            setTimeout(() => chart && chart.resize(), 300);
+        }
+
+        document.getElementById('openSidebar').addEventListener('click', openSidebar);
+        document.getElementById('closeSidebar').addEventListener('click', closeSidebar);
+        overlay.addEventListener('click', () => {
+            sidebar.classList.remove('open');
+            overlay.classList.remove('visible');
+            openBtn.classList.add('visible');
+        });
+
+        if (isMobile()) openBtn.classList.add('visible');
 
         // ---- Init ----
         async function loadInventory() {
