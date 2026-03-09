@@ -40,6 +40,11 @@ def lttb_single_indices(values_1d: np.ndarray, n_out: int) -> np.ndarray:
         next_bucket_end = min(int((i + 1) * bucket_size) + 1, n)
         next_avg = np.mean(values_1d[next_bucket_start:next_bucket_end])
 
+        if bucket_start >= bucket_end:
+            indices[i] = bucket_start
+            prev_idx = bucket_start
+            continue
+
         prev_val = values_1d[prev_idx]
         j = np.arange(bucket_start, bucket_end)
         areas = np.abs(
