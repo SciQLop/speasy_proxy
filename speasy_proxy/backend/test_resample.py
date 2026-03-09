@@ -84,3 +84,38 @@ def test_invalid_strategy_raises():
     var = _make_var(100, n_cols=1)
     with pytest.raises(KeyError):
         resample(var, max_points=10, strategy='invalid')
+
+
+# --- Backend equivalence tests ---
+
+from speasy_proxy.backend import _resample_numpy as np_backend
+
+try:
+    from speasy_proxy.backend import _resample_numba as nb_backend
+    HAS_NUMBA = True
+except ImportError:
+    HAS_NUMBA = False
+
+
+@pytest.mark.parametrize("n,n_cols,n_buckets", [
+    (100, 1, 10), (1000, 3, 50), (10000, 2, 99),
+])
+def test_min_max_backends_match(n, n_cols, n_buckets):
+    if not HAS_NUMBA:
+        pytest.skip("numba not installed")
+    values = np.random.default_rng(42).standard_normal((n, n_cols))
+    np_idx = np_backend.min_max_indices(values, n_buckets)
+    nb_idx = nb_backend.min_max_indices(values, n_buckets)
+    np.testing.assert_array_equal(np_idx, nb_idx)
+
+
+@pytest.mark.parametrize("n,n_out", [
+    (100, 10), (1000, 50), (5000, 99),
+])
+def test_lttb_backends_match(n, n_out):
+    if not HAS_NUMBA:
+        pytest.skip("numba not installed")
+    values = np.random.default_rng(42).standard_normal(n)
+    np_idx = np_backend.lttb_single_indices(values, n_out)
+    nb_idx = nb_backend.lttb_single_indices(values, n_out)
+    np.testing.assert_array_equal(np_idx, nb_idx)
