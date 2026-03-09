@@ -70,6 +70,12 @@ class InventoryManager:
                 self._save_inventory_as_pickled_dict(_all, "all", version, pickle_proto, target=result)
         return result
 
+    def build_inventories(self):
+        """Build serialized inventories from the already-loaded speasy tree (no network)."""
+        self._inventories = self._build_all_inventories()
+        self._last_update = datetime.now(UTC)
+        log.info("Inventories built from in-memory tree.")
+
     def ensure_update(self):
         result = self._do_update()
         if result is not None:

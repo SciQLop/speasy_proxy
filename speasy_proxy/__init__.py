@@ -15,8 +15,13 @@ import logging
 from .backend.inventory_updater import InventoryManager
 from .config import core as config
 from contextlib import asynccontextmanager
+import speasy as spz
 
 log = logging.getLogger(__name__)
+
+log.info("Updating inventories at import time (runs once with --preload)...")
+spz.update_inventories()
+log.info("Inventories updated.")
 
 
 def get_application(lifespan=None) -> FastAPI:
@@ -58,7 +63,7 @@ async def lifespan(app: FastAPI):
     log.info("Starting up speasy-proxy...")
     mgr = InventoryManager(update_interval_seconds=config.inventory_update_interval.get())
     app.state.inventory_manager = mgr
-    await mgr.update_async()
+    mgr.build_inventories()
     task = asyncio.create_task(mgr.periodic_update_loop())
     yield
     task.cancel()
