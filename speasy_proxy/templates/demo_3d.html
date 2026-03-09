@@ -231,8 +231,111 @@
             border-color: #6b8afd;
         }
 
+        .controls-sep {
+            width: 1px;
+            height: 24px;
+            background: #2a3358;
+            flex-shrink: 0;
+        }
+
+        .controls-bar input[type="checkbox"] {
+            accent-color: #6b8afd;
+            margin-right: 4px;
+            vertical-align: middle;
+        }
+
+        .controls-bar input[type="range"] {
+            width: 80px;
+            accent-color: #6b8afd;
+            vertical-align: middle;
+        }
+
+        .controls-value {
+            font-size: 0.75rem;
+            color: #8892b0;
+            min-width: 50px;
+        }
+
+        .duration-btns {
+            display: flex;
+            gap: 4px;
+        }
+
+        .duration-btns button {
+            padding: 4px 10px;
+            border: 1px solid #2a3358;
+            border-radius: 4px;
+            background: #0b0e17;
+            color: #8892b0;
+            font-size: 0.78rem;
+            cursor: pointer;
+            transition: background 0.15s, color 0.15s;
+        }
+
+        .duration-btns button:hover {
+            background: #2a3358;
+            color: #e0e6f0;
+        }
+
+        .duration-btns button.active {
+            background: #6b8afd;
+            color: #fff;
+            border-color: #6b8afd;
+        }
+
         /* Chart area */
-        #chart3d { flex: 1; }
+        .chart-wrapper {
+            flex: 1;
+            position: relative;
+            overflow: hidden;
+        }
+
+        #chart3d { width: 100%; height: 100%; }
+
+        .chart-loading-overlay {
+            position: absolute;
+            inset: 0;
+            display: none;
+            align-items: center;
+            justify-content: center;
+            background: rgba(11, 14, 23, 0.75);
+            z-index: 10;
+            pointer-events: none;
+        }
+
+        .chart-loading-overlay.visible { display: flex; }
+
+        .chart-loading-overlay .spinner {
+            width: 36px;
+            height: 36px;
+            border: 3px solid #2a3358;
+            border-top-color: #6b8afd;
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+        }
+
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+        .fetch-bar {
+            position: absolute;
+            top: 0;
+            left: 0;
+            height: 2px;
+            background: #6b8afd;
+            z-index: 20;
+            opacity: 0;
+            transition: opacity 0.2s;
+            animation: fetch-bar-slide 1.2s ease-in-out infinite;
+        }
+
+        .fetch-bar.active { opacity: 1; }
+
+        @keyframes fetch-bar-slide {
+            0% { left: 0; width: 0; }
+            30% { left: 0; width: 40%; }
+            70% { left: 60%; width: 40%; }
+            100% { left: 100%; width: 0; }
+        }
 
         /* ---- Status bar ---- */
         .status-bar {
@@ -351,10 +454,38 @@
 
         <label for="stopTime">Stop</label>
         <input type="datetime-local" id="stopTime">
+
+        <div class="duration-btns" id="durationBtns">
+            <button data-days="1">1d</button>
+            <button data-days="3">3d</button>
+            <button data-days="7" class="active">7d</button>
+            <button data-days="30">30d</button>
+        </div>
+
+        <span class="controls-sep"></span>
+
+        <label><input type="checkbox" id="showMagnetopause"> Magnetopause</label>
+        <label><input type="checkbox" id="showBowShock"> Bow Shock</label>
+
+        <span class="controls-sep"></span>
+
+        <label>Dp</label>
+        <input type="range" id="dpSlider" min="0.5" max="20" step="0.5" value="2">
+        <span class="controls-value" id="dpValue">2.0 nPa</span>
+
+        <label>Bz</label>
+        <input type="range" id="bzSlider" min="-20" max="20" step="0.5" value="0">
+        <span class="controls-value" id="bzValue">0.0 nT</span>
     </div>
     <button class="controls-collapse-btn" id="controls-collapse-btn" title="Toggle controls">&#9650;</button>
 
-    <div id="chart3d"></div>
+    <div class="chart-wrapper">
+        <div class="fetch-bar" id="fetch-bar"></div>
+        <div id="chart3d"></div>
+        <div class="chart-loading-overlay" id="loading-overlay">
+            <div class="spinner"></div>
+        </div>
+    </div>
 
     <div class="status-bar" id="statusBar">Ready</div>
 </div>
@@ -364,14 +495,24 @@
     const EARTH_RADIUS_KM = 6371.0;
     const COLORS = ['#5470c6','#91cc75','#fac858','#ee6666','#73c0de','#3ba272','#fc8452','#9a60b4','#ea7ccc'];
     const METADATA_KEYS = new Set([
-        '__spz_name__','__spz_provider__','__spz_type__','__spz_uid__',
-        '__spz_dataset__','__spz_description__','__spz_is_virtual__',
-        '__spz_virtual_products_list__',
         'UNITS','FILLVAL','SCALETYP','COORDINATE_SYSTEM','FIELDNAM',
         'CATDESC','DEPEND_0','DEPEND_1','LABL_PTR_1',
         'start_date','stop_date','maxDate','minDate',
         'build_date','Id','Resolution','Geometry','TrajectoryGeometry','ResourceId','GroupId'
     ]);
+
+    const MAX_DISTANCE_RE = 500;
+
+    function toReData(values) {
+        const result = [];
+        for (const p of values) {
+            const x = p[0] / EARTH_RADIUS_KM, y = p[1] / EARTH_RADIUS_KM, z = p[2] / EARTH_RADIUS_KM;
+            if (x * x + y * y + z * z > MAX_DISTANCE_RE * MAX_DISTANCE_RE) continue;
+            if (!isFinite(x) || !isFinite(y) || !isFinite(z)) continue;
+            result.push([x, y, z]);
+        }
+        return result;
+    }
 
     // uid -> { name, color, data, uid }
     const trajectories = new Map();
@@ -388,7 +529,7 @@
             const img = new Image();
             img.crossOrigin = 'anonymous';
             img.onload = () => {
-                const w = 512, h = 256;
+                const w = img.naturalWidth, h = img.naturalHeight;
                 const c = document.createElement('canvas');
                 c.width = w; c.height = h;
                 const ctx = c.getContext('2d');
@@ -418,6 +559,14 @@
         document.getElementById('statusBar').textContent = msg;
     }
 
+    function showLoading(visible) {
+        document.getElementById('loading-overlay').classList.toggle('visible', visible);
+    }
+
+    function showFetchBar(active) {
+        document.getElementById('fetch-bar').classList.toggle('active', active);
+    }
+
     // ---- Chart ----
     function initChart() {
         chart = echarts.init(document.getElementById('chart3d'), 'dark');
@@ -435,8 +584,8 @@
                 ? { color: params => sampleEarthColor(params.value[0], params.value[1], params.value[2]) }
                 : { color: '#2255aa', opacity: 0.6 },
             parametricEquation: {
-                u: { min: 0, max: Math.PI, step: Math.PI / 60 },
-                v: { min: 0, max: 2 * Math.PI, step: Math.PI / 60 },
+                u: { min: 0, max: Math.PI, step: Math.PI / 180 },
+                v: { min: 0, max: 2 * Math.PI, step: Math.PI / 180 },
                 x: (u, v) => Math.sin(u) * Math.cos(v),
                 y: (u, v) => Math.sin(u) * Math.sin(v),
                 z: (u, v) => Math.cos(u)
@@ -459,6 +608,65 @@
         return { min: -maxAbs, max: maxAbs };
     }
 
+    // ---- Magnetosphere models ----
+
+    // Shue et al. 1998 magnetopause
+    function shueParams(Dp, Bz) {
+        const r0 = (10.22 + 1.29 * Math.tanh(0.184 * (Bz + 8.14))) * Math.pow(Dp, -1.0 / 6.6);
+        const alpha = (0.58 - 0.007 * Bz) * (1 + 0.024 * Math.log(Dp));
+        return { r0, alpha };
+    }
+
+    function magnetopauseSeries(Dp, Bz) {
+        const { r0, alpha } = shueParams(Dp, Bz);
+        const thetaMax = 0.95 * Math.PI;
+        return {
+            type: 'surface',
+            parametric: true,
+            wireframe: { show: true, lineStyle: { color: 'rgba(100,180,255,0.6)', width: 1 } },
+            shading: 'color',
+            itemStyle: { color: 'rgba(100,180,255,0.35)', opacity: 0.35 },
+            parametricEquation: {
+                u: { min: 0, max: thetaMax, step: thetaMax / 40 },
+                v: { min: 0, max: 2 * Math.PI, step: Math.PI / 20 },
+                x: (u, v) => { const r = r0 * Math.pow(2 / (1 + Math.cos(u)), alpha); return r * Math.cos(u); },
+                y: (u, v) => { const r = r0 * Math.pow(2 / (1 + Math.cos(u)), alpha); return r * Math.sin(u) * Math.cos(v); },
+                z: (u, v) => { const r = r0 * Math.pow(2 / (1 + Math.cos(u)), alpha); return r * Math.sin(u) * Math.sin(v); }
+            },
+            silent: true
+        };
+    }
+
+    // Bow shock: scaled from magnetopause (Farris & Russell 1994 approx)
+    function bowShockSeries(Dp, Bz) {
+        const { r0, alpha } = shueParams(Dp, Bz);
+        const r0_bs = r0 * 1.28;
+        const alpha_bs = alpha * 1.05;
+        const thetaMax = 0.85 * Math.PI;
+        return {
+            type: 'surface',
+            parametric: true,
+            wireframe: { show: true, lineStyle: { color: 'rgba(255,140,100,0.6)', width: 1 } },
+            shading: 'color',
+            itemStyle: { color: 'rgba(255,140,100,0.30)', opacity: 0.30 },
+            parametricEquation: {
+                u: { min: 0, max: thetaMax, step: thetaMax / 40 },
+                v: { min: 0, max: 2 * Math.PI, step: Math.PI / 20 },
+                x: (u, v) => { const r = r0_bs * Math.pow(2 / (1 + Math.cos(u)), alpha_bs); return r * Math.cos(u); },
+                y: (u, v) => { const r = r0_bs * Math.pow(2 / (1 + Math.cos(u)), alpha_bs); return r * Math.sin(u) * Math.cos(v); },
+                z: (u, v) => { const r = r0_bs * Math.pow(2 / (1 + Math.cos(u)), alpha_bs); return r * Math.sin(u) * Math.sin(v); }
+            },
+            silent: true
+        };
+    }
+
+    function magnetosphereSeries(Dp, Bz) {
+        const series = [];
+        if (document.getElementById('showMagnetopause').checked) series.push(magnetopauseSeries(Dp, Bz));
+        if (document.getElementById('showBowShock').checked) series.push(bowShockSeries(Dp, Bz));
+        return series;
+    }
+
     function initChartOption() {
         chart.setOption({
             xAxis3D: { name: 'X (Re)' },
@@ -466,17 +674,19 @@
             zAxis3D: { name: 'Z (Re)' },
             grid3D: {
                 boxWidth: 100, boxHeight: 100, boxDepth: 100,
-                viewControl: { autoRotate: false, minDistance: 0.5, maxDistance: 500 },
+                viewControl: { autoRotate: false, distance: 150, minDistance: 0.5, maxDistance: 5000 },
                 light: {
                     main: { intensity: 1.2, shadow: false },
                     ambient: { intensity: 0.4 }
                 }
             },
-            series: [earthSeries()]
+            series: [earthSeries(), ...magnetosphereSeries(2, 0)]
         });
     }
 
     function updateChartOption() {
+        const Dp = parseFloat(document.getElementById('dpSlider').value);
+        const Bz = parseFloat(document.getElementById('bzSlider').value);
         const trajSeries = Array.from(trajectories.values()).map(t => ({
             type: 'line3D',
             name: t.name,
@@ -489,7 +699,7 @@
             xAxis3D: { min: range.min, max: range.max },
             yAxis3D: { min: range.min, max: range.max },
             zAxis3D: { min: range.min, max: range.max },
-            series: [earthSeries(), ...trajSeries]
+            series: [earthSeries(), ...magnetosphereSeries(Dp, Bz), ...trajSeries]
         }, { replaceMerge: ['series'] });
     }
 
@@ -513,71 +723,198 @@
         return null;
     }
 
+    function extractGroupName(groupId) {
+        if (!groupId || typeof groupId !== 'string') return null;
+        const parts = groupId.split('/');
+        return parts[parts.length - 1] || null;
+    }
+
+    function makeLeafNode(val, key, parentNode) {
+        const li = document.createElement('li');
+        const displayName = val.__spz_name__ || key;
+        li.dataset.name = displayName.toLowerCase();
+
+        const span = document.createElement('div');
+        span.className = 'tree-node';
+        const uid = (val.__spz_provider__ || 'ssc') + '/' + val.__spz_uid__;
+        const bounds = findTimeBounds(val) || findTimeBounds(parentNode) || {};
+
+        const toggle = document.createElement('span');
+        toggle.className = 'toggle';
+        toggle.textContent = ' ';
+        span.appendChild(toggle);
+
+        const cb = document.createElement('input');
+        cb.type = 'checkbox';
+        cb.dataset.uid = uid;
+        cb.dataset.timeBoundsJson = JSON.stringify(bounds);
+        span.appendChild(cb);
+
+        const swatch = document.createElement('span');
+        swatch.className = 'color-swatch';
+        span.appendChild(swatch);
+
+        span.appendChild(document.createTextNode(displayName));
+
+        cb.addEventListener('change', () => onToggleSatellite(cb, span, swatch));
+        span.addEventListener('click', (e) => {
+            if (e.target === cb) return;
+            cb.checked = !cb.checked;
+            cb.dispatchEvent(new Event('change'));
+        });
+
+        li.appendChild(span);
+        return li;
+    }
+
+    function makeFolderNode(name, children) {
+        const li = document.createElement('li');
+        li.dataset.name = name.toLowerCase();
+
+        const span = document.createElement('div');
+        span.className = 'tree-node';
+        const toggle = document.createElement('span');
+        toggle.className = 'toggle';
+        toggle.textContent = '\u25b6';
+        span.appendChild(toggle);
+
+        const groupCb = document.createElement('input');
+        groupCb.type = 'checkbox';
+        groupCb.className = 'group-checkbox';
+        span.appendChild(groupCb);
+
+        span.appendChild(document.createTextNode(name));
+
+        const childContainer = document.createElement('div');
+        childContainer.className = 'tree-children';
+        const ul = document.createElement('ul');
+        children.forEach(child => ul.appendChild(child));
+        childContainer.appendChild(ul);
+
+        groupCb.addEventListener('change', () => {
+            const leafCbs = childContainer.querySelectorAll('input[type="checkbox"][data-uid]');
+            if (groupCb.checked && !document.getElementById('stopTime').value) {
+                let minStop = null;
+                for (const cb of leafCbs) {
+                    try {
+                        const bounds = JSON.parse(cb.dataset.timeBoundsJson || '{}');
+                        if (bounds.stop) {
+                            const t = new Date(bounds.stop).getTime();
+                            if (minStop === null || t < minStop) minStop = t;
+                        }
+                    } catch (_) {}
+                }
+                if (minStop !== null) {
+                    const stop = new Date(minStop);
+                    const start = new Date(minStop - getSelectedDurationMs());
+                    document.getElementById('stopTime').value = toLocalISOString(stop);
+                    document.getElementById('startTime').value = toLocalISOString(start);
+                }
+            }
+            for (const cb of leafCbs) {
+                if (cb.checked !== groupCb.checked) {
+                    cb.checked = groupCb.checked;
+                    cb.dispatchEvent(new Event('change'));
+                }
+            }
+        });
+
+        span.addEventListener('click', (e) => {
+            if (e.target === groupCb) return;
+            const open = childContainer.classList.toggle('open');
+            toggle.textContent = open ? '\u25bc' : '\u25b6';
+        });
+
+        li.appendChild(span);
+        li.appendChild(childContainer);
+        return li;
+    }
+
+    function makeCollapsibleNode(name, buildChildren) {
+        const li = document.createElement('li');
+        li.dataset.name = name.toLowerCase();
+        const span = document.createElement('div');
+        span.className = 'tree-node';
+        const toggle = document.createElement('span');
+        toggle.className = 'toggle';
+        toggle.textContent = '\u25b6';
+        span.appendChild(toggle);
+        span.appendChild(document.createTextNode(name));
+
+        const childContainer = document.createElement('div');
+        childContainer.className = 'tree-children';
+        buildChildren(childContainer);
+
+        span.addEventListener('click', () => {
+            const open = childContainer.classList.toggle('open');
+            toggle.textContent = open ? '\u25bc' : '\u25b6';
+        });
+        li.appendChild(span);
+        li.appendChild(childContainer);
+        return li;
+    }
+
+    function buildGroupedLeaves(childKeys, val) {
+        const groups = new Map();
+        const ungrouped = [];
+        for (const k of childKeys) {
+            const child = val[k];
+            const groupName = extractGroupName(child.GroupId);
+            if (groupName) {
+                if (!groups.has(groupName)) groups.set(groupName, []);
+                groups.get(groupName).push({ key: k, val: child });
+            } else {
+                ungrouped.push({ key: k, val: child });
+            }
+        }
+
+        const innerUl = document.createElement('ul');
+        const sortedGroups = [...groups.entries()]
+            .filter(([, members]) => members.length > 1)
+            .sort((a, b) => a[0].localeCompare(b[0]));
+        for (const [groupName, members] of sortedGroups) {
+            const leafNodes = members
+                .sort((a, b) => (a.val.__spz_name__ || a.key).localeCompare(b.val.__spz_name__ || b.key))
+                .map(m => makeLeafNode(m.val, m.key, val));
+            innerUl.appendChild(makeFolderNode(groupName, leafNodes));
+        }
+
+        const singleGroupMembers = [...groups.entries()]
+            .filter(([, members]) => members.length === 1)
+            .map(([, members]) => members[0]);
+        const allFlat = [...ungrouped, ...singleGroupMembers]
+            .sort((a, b) => (a.val.__spz_name__ || a.key).localeCompare(b.val.__spz_name__ || b.key));
+        for (const item of allFlat) {
+            innerUl.appendChild(makeLeafNode(item.val, item.key, val));
+        }
+        return innerUl;
+    }
+
     function buildTree(obj, parentEl, parentNode) {
         const ul = document.createElement('ul');
+
         for (const key of Object.keys(obj)) {
             if (isMetadataKey(key)) continue;
             const val = obj[key];
             if (typeof val !== 'object' || val === null) continue;
 
-            const li = document.createElement('li');
-            const displayName = val.__spz_name__ || key;
-            li.dataset.name = displayName.toLowerCase();
-
             if (isLeaf(val)) {
-                const span = document.createElement('div');
-                span.className = 'tree-node';
-                const uid = (val.__spz_provider__ || 'ssc') + '/' + val.__spz_uid__;
-                const bounds = findTimeBounds(val) || findTimeBounds(parentNode) || {};
-
-                const toggle = document.createElement('span');
-                toggle.className = 'toggle';
-                toggle.textContent = ' ';
-                span.appendChild(toggle);
-
-                const cb = document.createElement('input');
-                cb.type = 'checkbox';
-                cb.dataset.uid = uid;
-                cb.dataset.timeBoundsJson = JSON.stringify(bounds);
-                span.appendChild(cb);
-
-                const swatch = document.createElement('span');
-                swatch.className = 'color-swatch';
-                span.appendChild(swatch);
-
-                span.appendChild(document.createTextNode(displayName));
-
-                cb.addEventListener('change', () => onToggleSatellite(cb, span, swatch));
-                span.addEventListener('click', (e) => {
-                    if (e.target === cb) return;
-                    cb.checked = !cb.checked;
-                    cb.dispatchEvent(new Event('change'));
-                });
-
-                li.appendChild(span);
+                ul.appendChild(makeLeafNode(val, key, parentNode));
             } else if (hasVisibleChildren(val)) {
-                const span = document.createElement('div');
-                span.className = 'tree-node';
-                const toggle = document.createElement('span');
-                toggle.className = 'toggle';
-                toggle.textContent = '\u25b6';
-                span.appendChild(toggle);
-                span.appendChild(document.createTextNode(displayName));
+                const displayName = val.__spz_name__ || key;
+                const childKeys = Object.keys(val).filter(k => !isMetadataKey(k) && typeof val[k] === 'object' && val[k] !== null);
+                const allChildrenLeaves = childKeys.length > 0 && childKeys.every(k => isLeaf(val[k]));
 
-                const childContainer = document.createElement('div');
-                childContainer.className = 'tree-children';
-                buildTree(val, childContainer, val);
-                span.addEventListener('click', () => {
-                    const open = childContainer.classList.toggle('open');
-                    toggle.textContent = open ? '\u25bc' : '\u25b6';
-                });
-                li.appendChild(span);
-                li.appendChild(childContainer);
-            } else {
-                continue;
+                if (allChildrenLeaves) {
+                    ul.appendChild(makeCollapsibleNode(displayName, container => {
+                        container.appendChild(buildGroupedLeaves(childKeys, val));
+                    }));
+                } else {
+                    ul.appendChild(makeCollapsibleNode(displayName, container => {
+                        buildTree(val, container, val);
+                    }));
+                }
             }
-
-            ul.appendChild(li);
         }
         parentEl.appendChild(ul);
     }
@@ -601,7 +938,7 @@
                 const bounds = JSON.parse(cb.dataset.timeBoundsJson || '{}');
                 if (bounds.start) {
                     const e = new Date(bounds.stop || bounds.start);
-                    const s = new Date(e.getTime() - 86400000);
+                    const s = new Date(e.getTime() - getSelectedDurationMs());
                     document.getElementById('startTime').value = toLocalISOString(s);
                     document.getElementById('stopTime').value = toLocalISOString(e);
                 } else {
@@ -619,16 +956,23 @@
         const coordSys = document.getElementById('coordSys').value;
         const startISO = new Date(document.getElementById('startTime').value).toISOString();
         const stopISO = new Date(document.getElementById('stopTime').value).toISOString();
-        const url = `${API_BASE}get_data?path=${encodeURIComponent(uid)}&format=json&coordinate_system=${coordSys}&start_time=${encodeURIComponent(startISO)}&stop_time=${encodeURIComponent(stopISO)}`;
+        if (new Date(startISO) >= new Date(stopISO)) {
+            cb.checked = false;
+            setStatus('Start time must be before stop time.');
+            return;
+        }
+        const url = `${API_BASE}get_data?path=${encodeURIComponent(uid)}&format=json&coordinate_system=${coordSys}&start_time=${encodeURIComponent(startISO)}&stop_time=${encodeURIComponent(stopISO)}&max_points=10000`;
 
         span.classList.add('loading');
+        showLoading(true);
+        showFetchBar(true);
         setStatus(`Fetching ${uid.split('/').pop()}...`);
         try {
             const resp = await fetch(url);
             if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
             const json = await resp.json();
             const values = json.values.values;
-            const reData = values.map(p => [p[0] / EARTH_RADIUS_KM, p[1] / EARTH_RADIUS_KM, p[2] / EARTH_RADIUS_KM]);
+            const reData = toReData(values);
 
             const color = COLORS[colorIndex % COLORS.length];
             colorIndex++;
@@ -644,6 +988,8 @@
             setStatus('Error: ' + err.message);
         } finally {
             span.classList.remove('loading');
+            showLoading(false);
+            showFetchBar(false);
         }
     }
 
@@ -653,11 +999,15 @@
     }
 
     async function replotAll() {
-        const checked = document.querySelectorAll('.tree-node input[type="checkbox"]:checked');
+        const checked = document.querySelectorAll('.tree-node input[type="checkbox"][data-uid]:checked');
         if (checked.length === 0) return;
         const startVal = document.getElementById('startTime').value;
         const stopVal = document.getElementById('stopTime').value;
         if (!startVal || !stopVal) return;
+        if (new Date(startVal) >= new Date(stopVal)) {
+            setStatus('Start time must be before stop time.');
+            return;
+        }
 
         const existingColors = new Map();
         for (const [uid, t] of trajectories) existingColors.set(uid, t.color);
@@ -667,36 +1017,86 @@
         const startISO = new Date(startVal).toISOString();
         const stopISO = new Date(stopVal).toISOString();
 
+        showLoading(true);
+        showFetchBar(true);
         setStatus('Refreshing all trajectories...');
+        const errors = [];
         const fetches = Array.from(checked).map(async (cb) => {
             const uid = cb.dataset.uid;
             const span = cb.closest('.tree-node');
             const swatch = span.querySelector('.color-swatch');
             span.classList.add('loading');
             try {
-                const url = `${API_BASE}get_data?path=${encodeURIComponent(uid)}&format=json&coordinate_system=${coordSys}&start_time=${encodeURIComponent(startISO)}&stop_time=${encodeURIComponent(stopISO)}`;
+                const url = `${API_BASE}get_data?path=${encodeURIComponent(uid)}&format=json&coordinate_system=${coordSys}&start_time=${encodeURIComponent(startISO)}&stop_time=${encodeURIComponent(stopISO)}&max_points=10000`;
                 const resp = await fetch(url);
                 if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
                 const json = await resp.json();
                 const values = json.values.values;
-                const reData = values.map(p => [p[0] / EARTH_RADIUS_KM, p[1] / EARTH_RADIUS_KM, p[2] / EARTH_RADIUS_KM]);
+                const reData = toReData(values);
                 const color = existingColors.get(uid) || COLORS[colorIndex++ % COLORS.length];
                 trajectories.set(uid, { name: uid.split('/').pop(), color, data: reData, uid });
                 swatch.style.background = color;
             } catch (err) {
-                setStatus('Error fetching ' + uid.split('/').pop() + ': ' + err.message);
+                errors.push(uid.split('/').pop() + ': ' + err.message);
             } finally {
                 span.classList.remove('loading');
             }
         });
         await Promise.all(fetches);
         updateChartOption();
-        setStatus(`Refreshed ${trajectories.size} trajectory(ies).`);
+        showLoading(false);
+        showFetchBar(false);
+        const msg = `Refreshed ${trajectories.size} trajectory(ies).`;
+        setStatus(errors.length ? msg + ' Errors: ' + errors.join('; ') : msg);
     }
 
+    function getSelectedDurationMs() {
+        const active = document.querySelector('#durationBtns button.active');
+        return (active ? parseInt(active.dataset.days) : 7) * 86400000;
+    }
+
+    function applyDuration(days) {
+        const stopVal = document.getElementById('stopTime').value;
+        if (!stopVal) return;
+        const stop = new Date(stopVal);
+        const start = new Date(stop.getTime() - days * 86400000);
+        document.getElementById('startTime').value = toLocalISOString(start);
+        replotAll();
+    }
+
+    document.getElementById('durationBtns').addEventListener('click', (e) => {
+        const btn = e.target.closest('button[data-days]');
+        if (!btn) return;
+        document.querySelectorAll('#durationBtns button').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        applyDuration(parseInt(btn.dataset.days));
+    });
+
     document.getElementById('startTime').addEventListener('change', replotAll);
-    document.getElementById('stopTime').addEventListener('change', replotAll);
+    document.getElementById('stopTime').addEventListener('change', () => {
+        applyDuration(getSelectedDurationMs() / 86400000);
+    });
     document.getElementById('coordSys').addEventListener('change', replotAll);
+
+    // Magnetosphere controls
+    document.getElementById('showMagnetopause').addEventListener('change', updateChartOption);
+    document.getElementById('showBowShock').addEventListener('change', updateChartOption);
+
+
+    let magnetoTimer = null;
+    function debouncedMagnetoUpdate() {
+        if (magnetoTimer) clearTimeout(magnetoTimer);
+        magnetoTimer = setTimeout(updateChartOption, 500);
+    }
+
+    document.getElementById('dpSlider').addEventListener('input', function() {
+        document.getElementById('dpValue').textContent = parseFloat(this.value).toFixed(1) + ' nPa';
+        debouncedMagnetoUpdate();
+    });
+    document.getElementById('bzSlider').addEventListener('input', function() {
+        document.getElementById('bzValue').textContent = parseFloat(this.value).toFixed(1) + ' nT';
+        debouncedMagnetoUpdate();
+    });
 
     // ---- Search / filter ----
     document.getElementById('searchInput').addEventListener('input', function() {
@@ -705,22 +1105,27 @@
     });
 
     function filterTree(container, query) {
-        const items = container.querySelectorAll('li');
-        if (!query) {
-            items.forEach(li => li.classList.remove('hidden'));
-            return;
-        }
+        const items = container.querySelectorAll(':scope > ul > li');
         items.forEach(li => {
+            const childContainer = li.querySelector(':scope > .tree-children');
+            if (!query) {
+                li.classList.remove('hidden');
+                if (childContainer) filterTree(childContainer, '');
+                return;
+            }
             const name = li.dataset.name || '';
-            const childUl = li.querySelector(':scope > .tree-children');
             let childMatch = false;
-            if (childUl) {
-                filterTree(childUl, query);
-                childMatch = Array.from(childUl.querySelectorAll('li')).some(c => !c.classList.contains('hidden'));
+            if (childContainer) {
+                filterTree(childContainer, query);
+                childMatch = Array.from(childContainer.querySelectorAll(':scope > ul > li')).some(c => !c.classList.contains('hidden'));
             }
             const selfMatch = name.includes(query);
             li.classList.toggle('hidden', !selfMatch && !childMatch);
-            if (childMatch && childUl) childUl.classList.add('open');
+            if (childMatch && childContainer) {
+                childContainer.classList.add('open');
+                const toggle = li.querySelector(':scope > .tree-node .toggle');
+                if (toggle) toggle.textContent = '\u25bc';
+            }
         });
     }
 
@@ -774,6 +1179,8 @@
 
     // ---- Init ----
     async function loadInventory() {
+        showLoading(true);
+        showFetchBar(true);
         setStatus('Loading inventory...');
         try {
             const resp = await fetch(API_BASE + 'get_inventory?format=json&provider=ssc');
@@ -783,6 +1190,9 @@
             setStatus('Ready — check satellites to plot their orbits.');
         } catch (err) {
             setStatus('Failed to load inventory: ' + err.message);
+        } finally {
+            showLoading(false);
+            showFetchBar(false);
         }
     }
 
