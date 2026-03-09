@@ -427,6 +427,7 @@
     let selectedProduct = null;  // currently selected in the tree (not yet plotted)
     let leafIndex = [];
     let zoomDebounceTimer = null;
+    let suppressDataZoom = false;
 
     // Multi-plot state — single source of truth
     const plotState = {
@@ -437,7 +438,7 @@
     };
 
     let currentView = { start: null, end: null };
-    let isFetching = false;
+    let fetchController = null;
 
     function createSubplotData() {
         return {
@@ -1000,7 +1001,7 @@
         await fetchAllAndRender();
     }
 
-    async function fetchData(product, startTime, stopTime) {
+    async function fetchData(product, startTime, stopTime, signal) {
         const startISO = new Date(startTime).toISOString();
         const stopISO = new Date(stopTime).toISOString();
         const maxPoints = Math.max(10000, (document.getElementById('chart-container')?.clientWidth || 2000) * (1 + 2 * BUFFER_RATIO));
@@ -1009,7 +1010,7 @@
                     '&start_time=' + encodeURIComponent(startISO) +
                     '&stop_time=' + encodeURIComponent(stopISO) +
                     '&max_points=' + maxPoints;
-        const resp = await fetch(url);
+        const resp = await fetch(url, signal ? { signal } : undefined);
         if (!resp.ok) {
             let msg = `Server error ${resp.status}`;
             try {
@@ -1392,8 +1393,10 @@
             graphic: []
         };
 
+        suppressDataZoom = true;
         chart.setOption(option, true);
         chart.resize();
+        suppressDataZoom = false;
 
         if (!preserveView) {
             currentView.start = dzStart;
@@ -1503,6 +1506,7 @@
     function setupMultiZoomHandler() {
         chart.off('datazoom');
         chart.on('datazoom', () => {
+            if (suppressDataZoom) return;
             if (zoomDebounceTimer) clearTimeout(zoomDebounceTimer);
             zoomDebounceTimer = setTimeout(onMultiZoomPan, 200);
         });
@@ -1547,7 +1551,6 @@
 
     async function onMultiZoomPan() {
         if (plotState.plots.length === 0) return;
-        if (isFetching) return;
 
         const view = getVisibleRange();
         if (!view) return;
@@ -1561,7 +1564,9 @@
         const viewRange = view.end - view.start;
         const buffer = viewRange * BUFFER_RATIO;
 
-        isFetching = true;
+        if (fetchController) fetchController.abort();
+        const controller = new AbortController();
+        fetchController = controller;
         showFetchBar(true);
 
         const fetchStart = new Date(view.start - buffer).toISOString();
@@ -1574,21 +1579,26 @@
                 if (!cache || cache.times.length === 0) continue;
 
                 fetchJobs.push(
-                    fetchData(prod.path, fetchStart, fetchStop)
+                    fetchData(prod.path, fetchStart, fetchStop, controller.signal)
                         .then(data => ({ cache, data }))
-                        .catch(e => { console.error('Fetch error for', prod.path, e); return null; })
+                        .catch(e => {
+                            if (e.name !== 'AbortError') console.error('Fetch error for', prod.path, e);
+                            return null;
+                        })
                 );
             }
         }
 
         const results = await Promise.all(fetchJobs);
-        let anyFetched = false;
-        for (const r of results) {
-            if (!r || !r.data?.axes?.[0]?.values?.length) continue;
-            resetProductCache(r.cache);
-            mergeProductData(r.cache, r.data, view.start - buffer, view.end + buffer);
-            anyFetched = true;
+
+        if (controller.signal.aborted) return;
+
+        const valid = results.filter(r => r && r.data?.axes?.[0]?.values?.length);
+        if (valid.length > 0) {
+            for (const r of valid) resetProductCache(r.cache);
+            for (const r of valid) mergeProductData(r.cache, r.data, view.start - buffer, view.end + buffer);
         }
+        const anyFetched = valid.length > 0;
 
         if (anyFetched) {
             for (const subplot of plotState.plots) {
@@ -1596,11 +1606,18 @@
                     evictProductCache(subplot.productData[prod.path]);
                 }
             }
+            const liveView = getVisibleRange();
+            if (liveView) {
+                currentView.start = liveView.start;
+                currentView.end = liveView.end;
+            }
             renderAllSubplots(true);
         }
 
-        showFetchBar(false);
-        isFetching = false;
+        if (fetchController === controller) {
+            showFetchBar(false);
+            fetchController = null;
+        }
     }
 
     function resetProductCache(cache) {
@@ -1839,12 +1856,25 @@
             newEnd = view.end + panAmount;
         }
 
-        chart.dispatchAction({
-            type: 'dataZoom',
-            dataZoomIndex: 0,
-            startValue: newStart,
-            endValue: newEnd
-        });
+        currentView.start = newStart;
+        currentView.end = newEnd;
+
+        const padding = (newEnd - newStart) * 2;
+        const xAxisUpdate = plotState.plots.map(() => ({
+            min: newStart - padding,
+            max: newEnd + padding
+        }));
+        const dzUpdate = [
+            { startValue: newStart, endValue: newEnd },
+            { startValue: newStart, endValue: newEnd }
+        ];
+
+        suppressDataZoom = true;
+        chart.setOption({ xAxis: xAxisUpdate, dataZoom: dzUpdate });
+        suppressDataZoom = false;
+
+        if (zoomDebounceTimer) clearTimeout(zoomDebounceTimer);
+        zoomDebounceTimer = setTimeout(onMultiZoomPan, 200);
     }
 
     // ===== Task 8: URL State =====
