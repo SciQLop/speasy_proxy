@@ -16,8 +16,8 @@ def min_max_indices(values: np.ndarray, n_buckets: int) -> np.ndarray:
 
     for col in range(n_cols):
         for i in range(n_buckets):
-            start = int(np.round(i * n / n_buckets))
-            end = int(np.round((i + 1) * n / n_buckets))
+            start = int(i * n / n_buckets)
+            end = int((i + 1) * n / n_buckets)
             if start >= end:
                 continue
             mn_idx = start
