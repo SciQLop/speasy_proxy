@@ -296,20 +296,23 @@
         @media (max-width: 768px) {
             body {
                 flex-direction: column;
-                height: auto;
-                overflow: auto;
             }
 
             .sidebar {
                 width: 100%;
                 min-width: unset;
                 max-height: 40vh;
+                flex-shrink: 0;
                 border-right: none;
                 border-bottom: 1px solid #1e2640;
             }
 
-            .chart-wrapper {
-                min-height: 50vh;
+            .resize-handle {
+                display: none;
+            }
+
+            .sidebar-collapse-btn {
+                display: none;
             }
         }
         .add-dropdown-item {
