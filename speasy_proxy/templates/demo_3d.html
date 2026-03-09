@@ -176,24 +176,71 @@
 
         .tree-node.loading { opacity: 0.5; }
 
-        /* ---- Controls ---- */
-        .controls {
-            padding: 12px 16px;
-            border-top: 1px solid #1e2640;
+        /* ---- Controls bar (above chart) ---- */
+        .controls-bar {
+            background: #111627;
+            border-bottom: 1px solid #1e2640;
+        }
+
+        .controls-bar-header {
             display: flex;
-            flex-direction: column;
+            align-items: center;
+            padding: 6px 16px;
+            cursor: pointer;
+            user-select: none;
             gap: 8px;
         }
 
-        .controls label {
-            font-size: 0.78rem;
+        .controls-bar-header:hover { background: #1a1f36; }
+
+        .controls-bar-header .toggle-icon {
+            color: #8892b0;
+            font-size: 0.7rem;
+            width: 16px;
+            text-align: center;
+        }
+
+        .controls-bar-header h3 {
+            font-size: 0.85rem;
+            font-weight: 500;
             color: #8892b0;
         }
 
-        .controls select,
-        .controls input[type="datetime-local"] {
-            width: 100%;
-            padding: 6px 8px;
+        .controls-bar-header .controls-summary {
+            margin-left: auto;
+            font-size: 0.75rem;
+            color: #6b7fa0;
+        }
+
+        .controls-body {
+            display: none;
+            padding: 8px 16px 12px;
+            border-top: 1px solid #1e2640;
+        }
+
+        .controls-body.open { display: block; }
+
+        .controls-row {
+            display: flex;
+            gap: 12px;
+            align-items: end;
+            flex-wrap: wrap;
+        }
+
+        .controls-field {
+            display: flex;
+            flex-direction: column;
+            gap: 3px;
+        }
+
+        .controls-field label {
+            font-size: 0.75rem;
+            color: #8892b0;
+        }
+
+        .controls-field select,
+        .controls-field input[type="datetime-local"] {
+            padding: 5px 8px;
             background: #0b0e17;
             border: 1px solid #2a3358;
             border-radius: 4px;
@@ -202,8 +249,8 @@
             outline: none;
         }
 
-        .controls select:focus,
-        .controls input[type="datetime-local"]:focus { border-color: #6b8afd; }
+        .controls-field select:focus,
+        .controls-field input[type="datetime-local"]:focus { border-color: #6b8afd; }
 
         /* ---- Main area ---- */
         .main-area {
@@ -272,11 +319,16 @@
                 height: 18px;
             }
 
-            .controls select,
-            .controls input[type="datetime-local"] {
+            .controls-row { flex-direction: column; gap: 8px; }
+
+            .controls-field select,
+            .controls-field input[type="datetime-local"] {
                 padding: 8px;
                 font-size: 0.9rem;
+                width: 100%;
             }
+
+            .controls-bar-header .controls-summary { display: none; }
 
             .status-bar { font-size: 0.75rem; }
         }
@@ -297,25 +349,40 @@
                 <input type="text" id="searchInput" placeholder="Search satellites...">
             </div>
             <div class="tree-container" id="treeContainer"></div>
-            <div class="controls">
-                <label>Coordinate System</label>
-                <select id="coordSys">
-                    <option value="GSE">GSE</option>
-                    <option value="GSM">GSM</option>
-                    <option value="GEO">GEO</option>
-                    <option value="GM">GM</option>
-                    <option value="SM">SM</option>
-                    <option value="GEITOD">GEITOD</option>
-                    <option value="GEIJ2000">GEIJ2000</option>
-                </select>
-                <label>Start Time</label>
-                <input type="datetime-local" id="startTime">
-                <label>Stop Time</label>
-                <input type="datetime-local" id="stopTime">
-            </div>
         </div>
         <div class="main-area">
             <button class="panel-open-btn" id="openSidebar" title="Open panel">&#9776;</button>
+            <div class="controls-bar">
+                <div class="controls-bar-header" id="controlsToggle">
+                    <span class="toggle-icon" id="controlsToggleIcon">&#9654;</span>
+                    <h3>Controls</h3>
+                    <span class="controls-summary" id="controlsSummary">GSE</span>
+                </div>
+                <div class="controls-body" id="controlsBody">
+                    <div class="controls-row">
+                        <div class="controls-field">
+                            <label>Coordinate System</label>
+                            <select id="coordSys">
+                                <option value="GSE">GSE</option>
+                                <option value="GSM">GSM</option>
+                                <option value="GEO">GEO</option>
+                                <option value="GM">GM</option>
+                                <option value="SM">SM</option>
+                                <option value="GEITOD">GEITOD</option>
+                                <option value="GEIJ2000">GEIJ2000</option>
+                            </select>
+                        </div>
+                        <div class="controls-field">
+                            <label>Start Time</label>
+                            <input type="datetime-local" id="startTime">
+                        </div>
+                        <div class="controls-field">
+                            <label>Stop Time</label>
+                            <input type="datetime-local" id="stopTime">
+                        </div>
+                    </div>
+                </div>
+            </div>
             <div id="chart3d"></div>
         </div>
     </div>
@@ -568,6 +635,7 @@
                         const s = new Date(e.getTime() - 86400000);
                         document.getElementById('startTime').value = toLocalISOString(s);
                         document.getElementById('stopTime').value = toLocalISOString(e);
+                        updateControlsSummary();
                     } else {
                         cb.checked = false;
                         setStatus('Set start and stop times first.');
@@ -688,6 +756,28 @@
                 if (childMatch && childUl) childUl.classList.add('open');
             });
         }
+
+        // ---- Controls bar toggle ----
+        document.getElementById('controlsToggle').addEventListener('click', () => {
+            const body = document.getElementById('controlsBody');
+            const icon = document.getElementById('controlsToggleIcon');
+            const open = body.classList.toggle('open');
+            icon.textContent = open ? '\u25bc' : '\u25b6';
+            setTimeout(() => chart && chart.resize(), 50);
+        });
+
+        function updateControlsSummary() {
+            const cs = document.getElementById('coordSys').value;
+            const s = document.getElementById('startTime').value;
+            const e = document.getElementById('stopTime').value;
+            let summary = cs;
+            if (s && e) summary += '  |  ' + s.replace('T', ' ') + ' \u2192 ' + e.replace('T', ' ');
+            document.getElementById('controlsSummary').textContent = summary;
+        }
+
+        document.getElementById('coordSys').addEventListener('change', updateControlsSummary);
+        document.getElementById('startTime').addEventListener('change', updateControlsSummary);
+        document.getElementById('stopTime').addEventListener('change', updateControlsSummary);
 
         // ---- Sidebar toggle ----
         const sidebar = document.getElementById('sidebar');
