@@ -170,10 +170,14 @@ def _plot_vector(plot, provider_uid, product_uid, data, host_url, request_url):
 
 def _plot_spectrogram(plot, provider_uid, product_uid, data: SpeasyVariable, host_url, request_url):
     import matplotlib.colors as colors
-    import matplotlib.pyplot as plt
+    from matplotlib.figure import Figure
     if len(data) > 0 and not np.isnan(data.values).all():
-        plt.figure()
-        plt.semilogy()
+        # Use the object-oriented Figure rather than pyplot: pyplot keeps every
+        # figure in a global registry (a per-request leak) and its global state
+        # is not thread-safe, but rendering runs in a threadpool (BL-2).
+        fig = Figure()
+        ax = fig.add_subplot()
+        ax.set_yscale('log')
 
         values = data.values
         x = data.time
@@ -183,21 +187,21 @@ def _plot_spectrogram(plot, provider_uid, product_uid, data: SpeasyVariable, hos
         else:
             y = np.arange(values.shape[1]).T
 
-        cm = plt.pcolormesh(x, y.T, values.T,
-                            cmap='plasma',
-                            norm=colors.LogNorm(vmin=np.nanmin(values[np.nonzero(values)]),
-                                                vmax=np.nanmax(values)))
+        cm = ax.pcolormesh(x, y.T, values.T,
+                           cmap='plasma',
+                           norm=colors.LogNorm(vmin=np.nanmin(values[np.nonzero(values)]),
+                                               vmax=np.nanmax(values)))
         flat_cmap = cm.cmap(cm.norm(cm.get_array()))
         image = np.empty((values.shape[1], values.shape[0]), dtype=np.uint32)
         view = image.view(dtype=np.uint8).reshape((image.shape[0], image.shape[1], 4))
 
         view[:] = flat_cmap.reshape(view.shape) * 255
         plot.x_range = DataRange1d(start=x[0], end=x[-1], max_interval=np.timedelta64(7, 'D'))
-        ylim = cm.axes.get_ylim()
+        ylim = ax.get_ylim()
         plot.y_range = DataRange1d(start=ylim[0], end=ylim[1])
         plot.x_range.range_padding = plot.y_range.range_padding = 0
-        plot.image_rgba(image=[image], x=x[0], y=cm.axes.get_ylim()[0],
-                        dw=x[-1] - x[0], dh=cm.axes.get_ylim()[1])
+        plot.image_rgba(image=[image], x=x[0], y=ylim[0],
+                        dw=x[-1] - x[0], dh=ylim[1])
         plot.add_tools(
             HoverTool(tooltips=[("x", "$x{%F %T}"), ("y", f"$y {data.axes[1].unit if len(data.axes) >= 2 else ''}")],
                       formatters={"$x": "datetime"}))
