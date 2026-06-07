@@ -148,32 +148,30 @@ BL-5b (in-process guard) folded in.
 > `If-Modified-Since`. `get_inventory` is now a pure in-memory lookup. Tests in
 > `test_get_inventory.py` (404/400/304/200/bad-header, red→green).
 
-### BL-8 · `IndexEntry` overwrites its value on construction · TODO
-**Severity:** Low · **File:** `index/__init__.py:10-11`
+### BL-8 · `IndexEntry` overwrites its value on construction · DONE
+**Severity:** Low · **File:** `index/__init__.py`
 
-The "persistent KV" always writes `default` at import, so it can never read a
-pre-existing value. Intentional for `up_since`, but the abstraction is a footgun.
-**Fix:** only set the default when the key is absent
-(`setdefault`-style), or rename the class to reflect reset-on-start semantics.
+> Fixed: `__init__` now writes the default only when the key is absent, so a
+> persisted value survives. `up_since` behaviour unchanged (still set to now at
+> startup). Tests in `index/test_index.py` (preserve + default-when-absent).
 
-### BL-9 · Minor cleanups · DONE (del var) / TODO (dup columns)
+### BL-9 · Minor cleanups · DONE
 **Severity:** Trivial
-- ✅ `api/v1/get_data.py` — removed the no-op `del var` before `return` (no behavior
-  change, so no reproducer).
-- ⏳ `backend/bokeh_backend.py:144` — duplicate column names silently overwrite in
-  `ColumnDataSource.add`, merging lines. Deferred: edge case, a reproducer is
-  disproportionate for the value. Make columns unique defensively when revisited.
+- ✅ `api/v1/get_data.py` — removed the no-op `del var` before `return`.
+- ✅ `backend/bokeh_backend.py` — duplicate column names made unique via
+  `_unique_columns` so each line gets its own ColumnDataSource entry. Tested.
 
 ---
 
-### BL-10 · `from speasy_proxy.api.v1 import is_up` returns the endpoint fn, not the module · TODO
-**Severity:** Low (footgun) · **File:** `api/v1/__init__.py` (star-imports)
+### BL-10 · `from speasy_proxy.api.v1 import is_up` returns the endpoint fn, not the module · DONE
+**Severity:** Low (footgun) · **File:** `api/v1/__init__.py`
 
-`api/v1/__init__.py` star-imports every endpoint module, so the `is_up` *function*
-shadows the `is_up` *submodule* at the package level. `from speasy_proxy.api.v1
-import is_up` yields the function; only `importlib.import_module(...)` or
-`from speasy_proxy.api.v1.is_up import ...` reaches the module. Surfaced while
-writing the BL-3 test. Harmless in production (router-based) but a real trap.
+`from .X import *` bound each endpoint *function* into the package namespace,
+shadowing the same-named *submodule*.
+> Fixed: replaced the star-imports with `from . import (chart_roulette, …)`. Same
+> route-registration side-effect, but the submodules are no longer shadowed.
+> Tests in `api/v1/test_package_imports.py` (submodules are modules; router still
+> has the routes). The app smoke test confirms routing still works.
 
 ### BL-11 · Unit tests pay the import-time inventory/provider network · DONE
 **Severity:** Low (test infra) · **Files:** `conftest.py` (new)
