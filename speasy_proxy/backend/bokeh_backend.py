@@ -130,13 +130,28 @@ def _data_type(data: SpeasyVariable):
     return PlotType.NONE
 
 
+def _unique_columns(names):
+    """Make column names unique so each line gets its own ColumnDataSource entry
+    (duplicates would otherwise overwrite each other)."""
+    seen = {}
+    result = []
+    for name in names:
+        if name in seen:
+            seen[name] += 1
+            result.append(f"{name}_{seen[name]}")
+        else:
+            seen[name] = 0
+            result.append(name)
+    return result
+
+
 def _plot_vector(plot, provider_uid, product_uid, data, host_url, request_url):
     if len(data) > 0:
         colors = itertools.cycle(palette)
         if len(data.columns) != data.values.shape[1]:
             columns = [f'component {i}' for i in range(data.values.shape[1])]
         else:
-            columns = data.columns
+            columns = _unique_columns(list(data.columns))
 
         source = ColumnDataSource()
         source.add(data=data.time, name="time")

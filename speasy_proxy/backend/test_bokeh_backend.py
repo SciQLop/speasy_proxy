@@ -19,6 +19,18 @@ def _spectro_var(n=200, n_freq=16):
     return SpeasyVariable(axes=[axis], values=data)
 
 
+def test_unique_columns_dedupes_duplicates():
+    """Regression for BL-9: duplicate component names must be made unique so each
+    line gets its own ColumnDataSource entry instead of overwriting another."""
+    from speasy_proxy.backend.bokeh_backend import _unique_columns
+    assert _unique_columns(["a", "a", "b", "a"]) == ["a", "a_1", "b", "a_2"]
+
+
+def test_unique_columns_preserves_unique():
+    from speasy_proxy.backend.bokeh_backend import _unique_columns
+    assert _unique_columns(["x", "y", "z"]) == ["x", "y", "z"]
+
+
 def test_spectrogram_render_does_not_leak_figures():
     """Regression for BL-2: rendering an html_bokeh spectrogram must not leave
     matplotlib figures registered in pyplot's global manager (a per-request leak
