@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Interactive Plot - Speasy Proxy</title>
-    <script src="https://cdn.jsdelivr.net/npm/echarts@5/dist/echarts.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/echarts@5/dist/echarts.min.js" onerror="document.getElementById('status-bar').textContent='Failed to load ECharts library — check network connection'; console.error('ECharts CDN failed to load');"></script>
     <style>
         *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -129,7 +129,6 @@
             background: #111627;
             border-bottom: 1px solid #1e2640;
             flex-wrap: wrap;
-            overflow: hidden;
             transition: height 0.15s, padding 0.15s;
         }
 
@@ -383,7 +382,7 @@
         <button id="btn-log-y" style="display:none;" title="Toggle log/linear Y axis">Log Y</button>
 
         <div style="position:relative;display:inline-block;">
-            <button id="btn-share">Share</button>
+            <button id="btn-share" disabled>Share</button>
             <div id="share-popover" style="display:none;position:absolute;top:100%;right:0;z-index:100;background:#1a1f36;border:1px solid #2a3358;border-radius:6px;padding:10px;box-shadow:0 4px 12px rgba(0,0,0,0.4);min-width:300px;">
                 <input type="text" id="share-url" readonly style="width:100%;background:#0b0e17;border:1px solid #2a3358;color:#e0e6f0;padding:6px 8px;border-radius:4px;font-size:0.8rem;margin-bottom:6px;">
                 <button id="btn-copy-url" style="width:100%;">Copy URL</button>
@@ -506,6 +505,17 @@
                pad(date.getMinutes()) + ':' + pad(date.getSeconds());
     }
 
+    function fallbackCopy(inputEl, btn) {
+        inputEl.select();
+        try {
+            document.execCommand('copy');
+            btn.textContent = 'Copied!';
+        } catch (_) {
+            btn.textContent = 'Select & copy manually';
+        }
+        setTimeout(() => { btn.textContent = 'Copy URL'; }, 2000);
+    }
+
     function getDisplayName(node, key) {
         return (node && (node.__spz_name__ || node.name)) || key;
     }
@@ -541,14 +551,25 @@
     // ===== Task 4: Inventory Tree =====
 
     async function loadInventory() {
+        const container = document.getElementById('tree-container');
+        container.innerHTML = '<div class="loading-text">Loading inventory...</div>';
         try {
             const resp = await fetch(API_BASE + 'get_inventory?format=json&provider=all');
+            if (!resp.ok) throw new Error('Server returned ' + resp.status);
             inventory = JSON.parse(await resp.text());
             renderTree(inventory);
             setupSearch();
         } catch (e) {
-            document.getElementById('tree-container').innerHTML =
-                '<div class="loading-text">Failed to load inventory.</div>';
+            container.innerHTML = '';
+            const msg = document.createElement('div');
+            msg.className = 'loading-text';
+            msg.textContent = 'Failed to load inventory: ' + e.message;
+            container.appendChild(msg);
+            const retryBtn = document.createElement('button');
+            retryBtn.textContent = 'Retry';
+            retryBtn.style.cssText = 'margin:8px 0;padding:6px 16px;border:none;border-radius:6px;background:#6b8afd;color:#fff;font-size:0.85rem;cursor:pointer;';
+            retryBtn.addEventListener('click', () => loadInventory());
+            container.appendChild(retryBtn);
             console.error('Inventory load error:', e);
         }
     }
@@ -801,6 +822,7 @@
 
         // Share button
         document.getElementById('btn-share').addEventListener('click', () => {
+            if (plotState.plots.length === 0) return;
             const popover = document.getElementById('share-popover');
             if (popover.style.display === 'none') {
                 updateShareURL();
@@ -812,10 +834,17 @@
 
         document.getElementById('btn-copy-url').addEventListener('click', () => {
             const urlInput = document.getElementById('share-url');
-            navigator.clipboard.writeText(urlInput.value).then(() => {
-                document.getElementById('btn-copy-url').textContent = 'Copied!';
-                setTimeout(() => { document.getElementById('btn-copy-url').textContent = 'Copy URL'; }, 1500);
-            });
+            const copyBtn = document.getElementById('btn-copy-url');
+            if (navigator.clipboard && window.isSecureContext) {
+                navigator.clipboard.writeText(urlInput.value).then(() => {
+                    copyBtn.textContent = 'Copied!';
+                    setTimeout(() => { copyBtn.textContent = 'Copy URL'; }, 1500);
+                }).catch(() => {
+                    fallbackCopy(urlInput, copyBtn);
+                });
+            } else {
+                fallbackCopy(urlInput, copyBtn);
+            }
         });
     }
 
@@ -866,6 +895,7 @@
     }
 
     function addProductToPlot(subplotIndex) {
+        if (!chart) { setStatus('Chart not available — check network connection.'); return; }
         const product = document.getElementById('product-path').value;
         const startTime = document.getElementById('start-time').value;
         const stopTime = document.getElementById('stop-time').value;
@@ -914,6 +944,7 @@
         document.getElementById('btn-clear').style.display = 'none';
         document.getElementById('btn-log-scale').style.display = 'none';
         document.getElementById('btn-log-y').style.display = 'none';
+        document.getElementById('btn-share').disabled = true;
         history.replaceState(null, '', window.location.pathname);
         setStatus('Ready');
     }
@@ -983,6 +1014,7 @@
     }
 
     async function doPlot() {
+        if (!chart) { setStatus('Chart not available — check network connection.'); return; }
         const product = document.getElementById('product-path').value;
         const startTime = document.getElementById('start-time').value;
         const stopTime = document.getElementById('stop-time').value;
@@ -1007,7 +1039,7 @@
     async function fetchData(product, startTime, stopTime, signal) {
         const startISO = new Date(startTime).toISOString();
         const stopISO = new Date(stopTime).toISOString();
-        const maxPoints = Math.max(10000, (document.getElementById('chart-container')?.clientWidth || 2000) * (1 + 2 * BUFFER_RATIO));
+        const maxPoints = Math.max(10000, (document.getElementById('chart')?.clientWidth || 2000) * (1 + 2 * BUFFER_RATIO));
         const url = API_BASE + 'get_data?format=json&path=' +
                     encodeURIComponent(product) +
                     '&start_time=' + encodeURIComponent(startISO) +
@@ -1422,6 +1454,7 @@
         document.getElementById('btn-log-scale').style.display = hasHeatmap ? '' : 'none';
         document.getElementById('btn-log-y').style.display = n > 0 ? '' : 'none';
         document.getElementById('btn-clear').style.display = n > 0 ? '' : 'none';
+        document.getElementById('btn-share').disabled = n === 0;
 
         setupMultiZoomHandler();
         updateShareURL();
@@ -2201,13 +2234,18 @@
     // ===== Init =====
 
     document.addEventListener('DOMContentLoaded', () => {
-        initChart();
+        bindControls();
         initResize();
         initSidebarCollapse();
         initControlsCollapse();
         loadInventory();
         loadPresets();
-        bindControls();
+        try {
+            initChart();
+        } catch (e) {
+            console.error('Chart init failed:', e);
+            setStatus('Chart library failed to load — plotting unavailable. Check network connection.');
+        }
         loadFromURLParams();
     });
 </script>
