@@ -4,7 +4,7 @@ from .routes import router
 from .query_parameters import Provider
 from .models import ProviderStatus
 import logging
-from speasy.core.http import is_server_up
+from speasy.core.http import is_server_up as _http_is_server_up
 from speasy.core.cache import CacheCall
 from speasy.data_providers import CdaWebservice, CsaWebservice, SscWebservice, AmdaWebservice
 from speasy.data_providers.uiowa_eph_tool import UiowaEphTool
@@ -38,7 +38,7 @@ def is_server_up(ws_class):
     if hasattr(ws_class, 'is_server_up'):
         return ws_class.is_server_up()
     elif hasattr(ws_class, 'BASE_URL'):
-        return is_server_up(ws_class.BASE_URL)
+        return _http_is_server_up(ws_class.BASE_URL)
     return True
 
 
