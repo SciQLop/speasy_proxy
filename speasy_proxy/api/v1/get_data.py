@@ -122,8 +122,6 @@ async def get_data(request: Request,
     else:
         log.debug(f'{request_id}, duration = {request_duration}ms, Got None')
 
-    del var
-
     return Response(media_type=mime, content=result,
                     headers={'Content-Type': mime})
 
@@ -132,10 +130,17 @@ def encode_output(var, path: str, start_time: str, stop_time: str, format: str, 
                   pickle_proto: int = 3):
     data = None
 
-    if var is None and format == "cdf":
-        # create an empty speasy variable to be able to save it in CDF format
-        var = SpeasyVariable(axes=[VariableTimeAxis(values=np.array([], dtype='datetime64[ns]'), meta={})],
-                             values=DataContainer(values=np.array([]), meta={}, name="Unknown"))
+    if var is None:
+        # Respond in the requested format instead of a pickled None (BL-6).
+        if format == "json":
+            return "null", 'application/json; charset=UTF-8'
+        if format == "html_bokeh":
+            return plot_data(product=path, data=None, start_time=start_time, stop_time=stop_time,
+                             request=request), 'text/html; charset=UTF-8'
+        if format == "cdf":
+            # create an empty speasy variable to be able to save it in CDF format
+            var = SpeasyVariable(axes=[VariableTimeAxis(values=np.array([], dtype='datetime64[ns]'), meta={})],
+                                 values=DataContainer(values=np.array([]), meta={}, name="Unknown"))
     if var is not None:
         output_format = format
         if output_format == "python_dict":
