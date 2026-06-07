@@ -119,3 +119,62 @@ def test_lttb_backends_match(n, n_out):
     np_idx = np_backend.lttb_single_indices(values, n_out)
     nb_idx = nb_backend.lttb_single_indices(values, n_out)
     np.testing.assert_array_equal(np_idx, nb_idx)
+
+
+def test_min_max_backends_match_diverging_case():
+    """Regression for BL-1: numpy used linspace edges, numba integer edges; they
+    must agree. n=60, n_buckets=22 was a known divergence."""
+    if not HAS_NUMBA:
+        pytest.skip("numba not installed")
+    values = np.random.default_rng(0).standard_normal((60, 2))
+    np_idx = np_backend.min_max_indices(values, 22)
+    nb_idx = nb_backend.min_max_indices(values, 22)
+    np.testing.assert_array_equal(np_idx, nb_idx)
+
+
+@pytest.mark.parametrize("seed", range(20))
+def test_min_max_backends_match_randomized(seed):
+    """Property: the two backends must return identical indices for any input,
+    including NaNs, so the served data does not depend on whether numba is
+    installed."""
+    if not HAS_NUMBA:
+        pytest.skip("numba not installed")
+    rng = np.random.default_rng(seed)
+    n = int(rng.integers(20, 5000))
+    n_cols = int(rng.integers(1, 4))
+    n_buckets = int(rng.integers(2, min(n, 300)))
+    values = rng.standard_normal((n, n_cols))
+    nan_mask = rng.random((n, n_cols)) < 0.1
+    values[nan_mask] = np.nan
+    np_idx = np_backend.min_max_indices(values, n_buckets)
+    nb_idx = nb_backend.min_max_indices(values, n_buckets)
+    np.testing.assert_array_equal(np_idx, nb_idx)
+
+
+def test_lttb_numpy_no_empty_slice_warning():
+    """Regression for BL-12: numpy lttb must not emit RuntimeWarning when a
+    next-bucket window is empty/all-NaN (numba returns nan silently). Replays a
+    seed known to trigger it; the warning is promoted to an error."""
+    import warnings
+    rng = np.random.default_rng(6)
+    n = int(rng.integers(20, 5000))
+    n_out = int(rng.integers(10, min(n, 300)))
+    values = rng.standard_normal(n)
+    values[rng.random(n) < 0.1] = np.nan
+    with warnings.catch_warnings():
+        warnings.simplefilter("error", RuntimeWarning)
+        np_backend.lttb_single_indices(values, n_out)
+
+
+@pytest.mark.parametrize("seed", range(20))
+def test_lttb_backends_match_randomized(seed):
+    if not HAS_NUMBA:
+        pytest.skip("numba not installed")
+    rng = np.random.default_rng(seed)
+    n = int(rng.integers(20, 5000))
+    n_out = int(rng.integers(10, min(n, 300)))
+    values = rng.standard_normal(n)
+    values[rng.random(n) < 0.1] = np.nan
+    np_idx = np_backend.lttb_single_indices(values, n_out)
+    nb_idx = nb_backend.lttb_single_indices(values, n_out)
+    np.testing.assert_array_equal(np_idx, nb_idx)

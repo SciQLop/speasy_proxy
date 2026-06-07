@@ -8,11 +8,13 @@ def min_max_indices(values: np.ndarray, n_buckets: int) -> np.ndarray:
     indices.add(0)
     indices.add(n - 1)
 
-    bucket_edges = np.linspace(0, n, n_buckets + 1, dtype=int)
     for col in range(n_cols):
         col_data = values[:, col]
         for i in range(n_buckets):
-            start, end = bucket_edges[i], bucket_edges[i + 1]
+            # Identical integer edges to the numba backend so both return the
+            # same indices regardless of which backend is installed (BL-1).
+            start = int(i * n / n_buckets)
+            end = int((i + 1) * n / n_buckets)
             if start >= end:
                 continue
             bucket = col_data[start:end]
@@ -41,7 +43,10 @@ def lttb_single_indices(values_1d: np.ndarray, n_out: int) -> np.ndarray:
 
         next_bucket_start = int(i * bucket_size) + 1
         next_bucket_end = min(int((i + 1) * bucket_size) + 1, n)
-        next_avg = np.nanmean(values_1d[next_bucket_start:next_bucket_end])
+        next_slice = values_1d[next_bucket_start:next_bucket_end]
+        # Mirror the numba backend (next_count > 0 else nan) and avoid numpy's
+        # "Mean of empty slice" RuntimeWarning on empty/all-NaN buckets (BL-12).
+        next_avg = np.nanmean(next_slice) if next_slice.size and not np.isnan(next_slice).all() else np.nan
 
         if bucket_start >= bucket_end:
             indices[i] = bucket_start
