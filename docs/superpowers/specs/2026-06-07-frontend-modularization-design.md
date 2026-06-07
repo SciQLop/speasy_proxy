@@ -4,6 +4,40 @@
 **Status:** Approved design, ready for implementation plan
 **Scope:** First increment ("foundation slice") of a larger frontend refactor.
 
+> **AMENDMENT (2026-06-07, post-approval):** The build-tooling decision below was
+> reversed after discovering a pre-existing March 10 plan for this same task that
+> used a simpler **no-build** approach. The chosen approach is now **plain ES
+> modules served directly from `speasy_proxy/static/js/`, vanilla JavaScript, no
+> bundler, no TypeScript, no committed build artifacts** — tested with Vitest
+> (dev-only). Rationale: the user is not a web developer and relies on the
+> assistant; a build-and-commit-bundles ritual is an operational footgun (forgotten
+> rebuild → stale deployed site), whereas plain ES modules mean "edit `.js`, refresh
+> browser, done" with zero deploy impact. Deduplication alone fixes the divergence
+> bugs; TypeScript's compiler checks were judged not worth the permanent build chore.
+>
+> What this changes vs. the original sections below:
+> - **No `web/` TS source tree, no Vite, no `tsconfig.json`, no committed bundles.**
+> - Shared + page modules are plain `.js` ES modules under `speasy_proxy/static/js/`.
+> - Shared theme CSS at `speasy_proxy/static/css/theme.css`.
+> - Vitest config + `package.json` (dev-only) at the **repo root**; tests under `tests/js/`.
+> - Templates load a page entry module via
+>   `<script type="module" src="{{ base_url }}/static/js/<page>.js">`, with `base_url`
+>   passed to the module through a `window.SPEASY_BASE_URL` global set in a tiny inline
+>   `<script>`. Inter-module imports use **relative** paths (`./common.js`), so they
+>   need no `base_url`.
+>
+> **Unchanged:** the module decomposition and responsibilities, the codec seam
+> returning a normalized `SpeasyData` (now expressed in JSDoc, not TS types), the
+> "relocate orchestration verbatim, no engine rewrite" scope, the drift-bug fixes
+> (unified `toLocalISOString` with seconds; NaN-safe fetch shared by both pages;
+> shared inventory primitives), pure-logic-first testing, and all non-goals.
+>
+> The authoritative task breakdown is the implementation plan:
+> `docs/superpowers/plans/2026-06-07-frontend-modularization.md` (rewritten for this
+> approach). The build-tooling rows in the "Decisions" table and the "Directory &
+> build architecture" / "Build configuration" subsections below are **superseded** by
+> this amendment.
+
 ## Problem
 
 The two interactive viewers — `speasy_proxy/templates/plot.html` (2254 lines, the
