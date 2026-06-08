@@ -16,7 +16,8 @@ TypeScript**. The FastAPI app serves these `.js` files as static assets under
 | `magnetosphere.js` | 3D physics: `shueParams`, `bowShockParams`, `classifyPoint`, `toReData`, `computeAxisRange` |
 | `plot-core.js` | data merges, interval coalescing, cache eviction, `detectPlotType`, config base64, subplot/cache factories |
 | `spectrogram.js` | viridis LUT, `computeYEdges`, `renderSpectrogramImage` |
-| `api-client.js` | `buildDataUrl`, NaN-safe `decodeJson`, `fetchData`/`jsonCodec` (codec seam), `fetchInventory` |
+| `api-client.js` | `buildDataUrl`, NaN-safe `decodeJson`, `fetchData`/`jsonCodec` (codec seam), `fetchInventory`, `enableCdfCodec` |
+| `cdf-codec.js` | `cdfCodec` — decodes `format=cdf` (application/x-cdf) into `SpeasyData` via CDFpp-WASM (`vendor/cdfpp.js` + `cdfpp.wasm`) |
 
 **Page entry modules** (relocated page orchestration; loaded by the templates):
 
@@ -47,10 +48,32 @@ Each template ends with:
 
 ## The codec seam (`api-client.js`)
 
-`fetchData(opts, codec = jsonCodec)` decodes the proxy response through a swappable
-`codec.decode(resp)`. Today only `jsonCodec` ships (NaN-safe JSON). A future CDF/WASM
-decoder can implement the same interface (reading `resp.arrayBuffer()`), and pages —
-which only ever see the normalized `SpeasyData` shape — would need no changes.
+`fetchData(opts, codec = preferredCodec)` decodes the proxy response through a swappable
+`codec` = `{ format, async decode(resp) }`. `codec.format` selects the server output
+(`get_data?format=...`) and `codec.decode` normalizes it to `SpeasyData`. Pages only ever
+see `SpeasyData`, so they are codec-agnostic.
+
+Two codecs ship:
+
+- **`jsonCodec`** (default) — `format=json`, NaN-safe `JSON.parse`.
+- **`cdfCodec`** (`cdf-codec.js`) — `format=cdf`, decoded in-browser by the **CDFpp
+  WebAssembly** build (`vendor/cdfpp.js` self-locates `vendor/cdfpp.wasm` via
+  `import.meta.url` — no bundler). The proxy resamples *before* encoding, so CDF keeps the
+  bandwidth bound; it decodes ~6–14× faster than `JSON.parse` and preserves real dtypes
+  (int64 epoch, float32/64) with no `NaN`→`null` kludge. Time axes use the WASM
+  `time_values_as_ns_since_1970` (leap-second correct).
+
+**Opt in** by setting `window.SPEASY_USE_CDF = true` *before* `api-client.js` loads (e.g. a
+`<script>` in the template, next to `window.SPEASY_BASE_URL`). It is **off by default**.
+Any CDF-path failure (server, WASM, decode) degrades gracefully: `fetchData` retries the
+request once as JSON.
+
+### Vendored WASM assets (`vendor/`)
+
+`vendor/cdfpp.js` (emscripten ES-module glue) + `vendor/cdfpp.wasm` are built from the
+**CDFpp** repo (`wacdfpp/`, deployed at `sciqlop.github.io/CDFpp/`). To update: rebuild
+there and copy both files over. The mapping is pinned by `tests/js/cdf-codec.test.js`
+against real fixtures in `tests/js/fixtures/` (a line and a spectrogram product).
 
 ## Tests (run from the repo root)
 
