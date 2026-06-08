@@ -5,6 +5,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Interactive Plot - Speasy Proxy</title>
     <script src="https://cdn.jsdelivr.net/npm/echarts@5/dist/echarts.min.js" onerror="document.getElementById('status-bar').textContent='Failed to load ECharts library — check network connection'; console.error('ECharts CDN failed to load');"></script>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr@4/dist/themes/dark.css">
+    <script src="https://cdn.jsdelivr.net/npm/flatpickr@4" onerror="console.error('flatpickr CDN failed to load — date fields stay plain text');"></script>
     <link rel="stylesheet" href="{{ base_url }}/static/css/theme.css">
     <style>
         body {
@@ -39,8 +41,7 @@
             transition: height 0.15s, padding 0.15s;
         }
 
-        .controls-bar input[type="text"],
-        .controls-bar input[type="datetime-local"] {
+        .controls-bar input[type="text"] {
             padding: 6px 10px;
             border: 1px solid #2a3358;
             border-radius: 6px;
@@ -50,13 +51,17 @@
             outline: none;
         }
 
-        .controls-bar input[type="text"] {
+        .controls-bar #product-path {
             flex: 1;
             min-width: 180px;
         }
 
-        .controls-bar input[type="text"]:focus,
-        .controls-bar input[type="datetime-local"]:focus {
+        .controls-bar .dt-input {
+            width: 168px;
+            font-variant-numeric: tabular-nums;
+        }
+
+        .controls-bar input[type="text"]:focus {
             border-color: #6b8afd;
         }
 
@@ -130,6 +135,35 @@
             }
         }
 
+        .range-chips {
+            display: flex;
+            gap: 4px;
+            align-items: center;
+        }
+
+        .range-chips button {
+            padding: 5px 9px;
+            border: 1px solid #2a3358;
+            border-radius: 6px;
+            background: #0b0e17;
+            color: #aeb6d4;
+            font-size: 0.8rem;
+            font-weight: 500;
+            cursor: pointer;
+            transition: background 0.15s, border-color 0.15s, color 0.15s;
+        }
+
+        .range-chips button:hover {
+            background: #1a2138;
+            color: #e0e6f0;
+            border-color: #6b8afd;
+        }
+
+        .range-chips .pan {
+            color: #6b8afd;
+            font-size: 0.7rem;
+        }
+
         .add-dropdown-item {
             padding: 6px 12px;
             cursor: pointer;
@@ -181,10 +215,21 @@
         <input type="text" id="product-path" readonly placeholder="Select a product from the tree">
 
         <label for="start-time">Start</label>
-        <input type="datetime-local" id="start-time">
+        <input type="text" class="dt-input" id="start-time" placeholder="DD-MM-YYYY HH:MM" autocomplete="off" spellcheck="false">
 
         <label for="stop-time">Stop</label>
-        <input type="datetime-local" id="stop-time">
+        <input type="text" class="dt-input" id="stop-time" placeholder="DD-MM-YYYY HH:MM" autocomplete="off" spellcheck="false">
+
+        <div class="range-chips" id="range-chips">
+            <button class="pan" data-pan="-1" title="Pan earlier (←)">&#9664;</button>
+            <button data-ms="3600000" title="Last hour of the window">1h</button>
+            <button data-ms="21600000">6h</button>
+            <button data-ms="86400000">1d</button>
+            <button data-ms="259200000">3d</button>
+            <button data-ms="604800000">7d</button>
+            <button data-ms="2592000000">30d</button>
+            <button class="pan" data-pan="1" title="Pan later (→)">&#9654;</button>
+        </div>
 
         <button id="btn-plot" disabled>Plot</button>
 

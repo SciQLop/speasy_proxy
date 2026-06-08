@@ -136,6 +136,61 @@ export function buildSeriesData(times, values) {
   return data;
 }
 
+// ===== Pan / zoom math (pure, DOM-free) =====
+
+const WHEEL_LINE_PX = 16;   // a "line" of wheel delta ≈ 16px
+const WHEEL_PAGE_PX = 800;  // a "page" of wheel delta ≈ 800px
+const WHEEL_MAX_PX = 120;   // clamp so one big notch can't overshoot
+
+// Normalize a wheel event's deltaY to pixels regardless of device/deltaMode,
+// so mouse notches and trackpad swipes feel consistent. Clamped to ±WHEEL_MAX_PX.
+export function normalizeWheelDelta(deltaY, deltaMode) {
+  let px = deltaY;
+  if (deltaMode === 1) px = deltaY * WHEEL_LINE_PX;
+  else if (deltaMode === 2) px = deltaY * WHEEL_PAGE_PX;
+  return Math.max(-WHEEL_MAX_PX, Math.min(WHEEL_MAX_PX, px));
+}
+
+// Zoom [start,end] around the time under the cursor (cursorFrac in [0,1] across the range).
+// factor < 0 zooms in (shrinks), factor > 0 zooms out (widens). The cursor time stays put.
+export function zoomRange(start, end, cursorFrac, factor) {
+  const center = start + cursorFrac * (end - start);
+  return {
+    start: center - (center - start) * (1 + factor),
+    end: center + (end - center) * (1 + factor),
+  };
+}
+
+// Shift [start,end] by a fraction of its width (positive = later, negative = earlier).
+export function panRange(start, end, fraction) {
+  const shift = (end - start) * fraction;
+  return { start: start + shift, end: end + shift };
+}
+
+// X-axis domain padded symmetrically around the loaded time span by padRatio of the span,
+// giving the dataZoom room to pan beyond the loaded data without hitting a hard wall.
+export function axisExtent(times, padRatio) {
+  if (!times || times.length === 0) return { min: undefined, max: undefined };
+  const lo = times[0];
+  const hi = times[times.length - 1];
+  const pad = (hi - lo) * padRatio;
+  return { min: lo - pad, max: hi + pad };
+}
+
+// A signature of everything that affects the chart's *structure* (component layout), so a
+// data-only update can be merged in place instead of a full teardown+rebuild. Changes when
+// the subplot count, plot type, log flags, products, or per-product column count change.
+export function structureKey(plots) {
+  return plots
+    .map((sp) => {
+      const prods = sp.products
+        .map((p) => p.path + '#' + (sp.productData?.[p.path]?.columnNames?.length || 0))
+        .join('+');
+      return [sp.plotType, sp.y_axis.log ? 1 : 0, sp.logScale ? 1 : 0, prods].join(':');
+    })
+    .join('|');
+}
+
 export function configToBase64(config) {
   return btoa(JSON.stringify(config)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
 }

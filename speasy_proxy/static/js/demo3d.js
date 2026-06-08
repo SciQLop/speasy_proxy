@@ -1,4 +1,4 @@
-import { toLocalISOString, setStatus, showLoading, showFetchBar } from './common.js';
+import { attachDatePicker, setDateInput, parseDateInput, setStatus, showLoading, showFetchBar } from './common.js';
 import {
   shueParams, bowShockParams, classifyPoint,
   toReData as sharedToReData, computeAxisRange,
@@ -332,8 +332,8 @@ const API_BASE = (window.SPEASY_BASE_URL || '').replace(/\/$/, '') + '/';
                 if (minStop !== null) {
                     const stop = new Date(minStop);
                     const start = new Date(minStop - getSelectedDurationMs());
-                    document.getElementById('stopTime').value = toLocalISOString(stop);
-                    document.getElementById('startTime').value = toLocalISOString(start);
+                    setDateInput(document.getElementById('stopTime'), stop);
+                    setDateInput(document.getElementById('startTime'), start);
                 }
             }
             for (const cb of leafCbs) {
@@ -464,8 +464,8 @@ const API_BASE = (window.SPEASY_BASE_URL || '').replace(/\/$/, '') + '/';
                 if (bounds.start) {
                     const e = new Date(bounds.stop || bounds.start);
                     const s = new Date(e.getTime() - getSelectedDurationMs());
-                    document.getElementById('startTime').value = toLocalISOString(s);
-                    document.getElementById('stopTime').value = toLocalISOString(e);
+                    setDateInput(document.getElementById('startTime'), s);
+                    setDateInput(document.getElementById('stopTime'), e);
                 } else {
                     cb.checked = false;
                     setStatus('Set start and stop times first.');
@@ -479,9 +479,16 @@ const API_BASE = (window.SPEASY_BASE_URL || '').replace(/\/$/, '') + '/';
         }
 
         const coordSys = document.getElementById('coordSys').value;
-        const startISO = new Date(document.getElementById('startTime').value).toISOString();
-        const stopISO = new Date(document.getElementById('stopTime').value).toISOString();
-        if (new Date(startISO) >= new Date(stopISO)) {
+        const startDate = parseDateInput(document.getElementById('startTime').value);
+        const stopDate = parseDateInput(document.getElementById('stopTime').value);
+        if (!startDate || !stopDate) {
+            cb.checked = false;
+            setStatus('Please set valid start and stop times (DD-MM-YYYY HH:MM).');
+            return;
+        }
+        const startISO = startDate.toISOString();
+        const stopISO = stopDate.toISOString();
+        if (startDate >= stopDate) {
             cb.checked = false;
             setStatus('Start time must be before stop time.');
             return;
@@ -520,10 +527,10 @@ const reData = toReData(data.values.values);
     async function replotAll() {
         const checked = document.querySelectorAll('.tree-node input[type="checkbox"][data-uid]:checked');
         if (checked.length === 0) return;
-        const startVal = document.getElementById('startTime').value;
-        const stopVal = document.getElementById('stopTime').value;
-        if (!startVal || !stopVal) return;
-        if (new Date(startVal) >= new Date(stopVal)) {
+        const startDate = parseDateInput(document.getElementById('startTime').value);
+        const stopDate = parseDateInput(document.getElementById('stopTime').value);
+        if (!startDate || !stopDate) return;
+        if (startDate >= stopDate) {
             setStatus('Start time must be before stop time.');
             return;
         }
@@ -533,8 +540,8 @@ const reData = toReData(data.values.values);
         trajectories.clear();
 
         const coordSys = document.getElementById('coordSys').value;
-        const startISO = new Date(startVal).toISOString();
-        const stopISO = new Date(stopVal).toISOString();
+        const startISO = startDate.toISOString();
+        const stopISO = stopDate.toISOString();
 
         showLoading(true);
         showFetchBar(true);
@@ -574,11 +581,10 @@ const reData = toReData(data.values.values);
     }
 
     function applyDuration(days) {
-        const stopVal = document.getElementById('stopTime').value;
-        if (!stopVal) return;
-        const stop = new Date(stopVal);
+        const stop = parseDateInput(document.getElementById('stopTime').value);
+        if (!stop) return;
         const start = new Date(stop.getTime() - days * 86400000);
-        document.getElementById('startTime').value = toLocalISOString(start);
+        setDateInput(document.getElementById('startTime'), start);
         replotAll();
     }
 
@@ -607,6 +613,9 @@ const reData = toReData(data.values.values);
         if (btn.dataset.view === 'reset') opts.grid3D.viewControl.distance = 150;
         chart.setOption(opts);
     });
+
+    attachDatePicker(document.getElementById('startTime'));
+    attachDatePicker(document.getElementById('stopTime'));
 
     document.getElementById('startTime').addEventListener('change', replotAll);
     document.getElementById('stopTime').addEventListener('change', () => {

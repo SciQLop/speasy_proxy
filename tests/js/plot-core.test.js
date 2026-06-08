@@ -3,6 +3,7 @@ import {
   mergeSorted, mergeSortedRows, mergeIntervals, evictProductCache, buildSeriesData,
   detectPlotType, configToBase64, base64ToConfig,
   createSubplotData, createProductCache, subplotToConfig, subplotFromConfig,
+  normalizeWheelDelta, zoomRange, panRange, axisExtent, structureKey,
 } from '../../speasy_proxy/static/js/plot-core.js';
 
 describe('merge', () => {
@@ -58,6 +59,103 @@ describe('config base64', () => {
   });
   it('is URL-safe', () => {
     expect(configToBase64({ s: '???>>>' })).not.toMatch(/[+/=]/);
+  });
+});
+
+describe('normalizeWheelDelta', () => {
+  it('passes pixel deltas through (deltaMode 0)', () => {
+    expect(normalizeWheelDelta(40, 0)).toBe(40);
+    expect(normalizeWheelDelta(-40, 0)).toBe(-40);
+  });
+  it('scales line deltas to pixels (deltaMode 1)', () => {
+    expect(normalizeWheelDelta(3, 1)).toBe(48);
+  });
+  it('scales page deltas to pixels (deltaMode 2)', () => {
+    expect(normalizeWheelDelta(0.1, 2)).toBeCloseTo(80); // 0.1 * 800px
+  });
+  it('clamps magnitude so one big notch cannot overshoot', () => {
+    expect(normalizeWheelDelta(5000, 0)).toBe(120);
+    expect(normalizeWheelDelta(-5000, 0)).toBe(-120);
+  });
+});
+
+describe('zoomRange', () => {
+  it('zooms in (factor<0) around cursor, keeping cursor time fixed', () => {
+    // cursor at center, shrink by 20%
+    const r = zoomRange(0, 100, 0.5, -0.2);
+    expect(r.start).toBeCloseTo(10);
+    expect(r.end).toBeCloseTo(90);
+  });
+  it('zooms out (factor>0) around cursor', () => {
+    const r = zoomRange(0, 100, 0.5, 0.2);
+    expect(r.start).toBeCloseTo(-10);
+    expect(r.end).toBeCloseTo(110);
+  });
+  it('keeps the time under the cursor anchored', () => {
+    // cursor at left edge → start stays put when zooming
+    const r = zoomRange(0, 100, 0, -0.3);
+    expect(r.start).toBeCloseTo(0);
+    expect(r.end).toBeCloseTo(70);
+  });
+});
+
+describe('panRange', () => {
+  it('shifts the window right by a fraction of its width', () => {
+    expect(panRange(0, 100, 0.25)).toEqual({ start: 25, end: 125 });
+  });
+  it('shifts left for negative fraction', () => {
+    expect(panRange(100, 200, -0.5)).toEqual({ start: 50, end: 150 });
+  });
+});
+
+describe('axisExtent', () => {
+  it('pads the loaded span symmetrically', () => {
+    expect(axisExtent([10, 20], 0.5)).toEqual({ min: 5, max: 25 });
+  });
+  it('returns undefined bounds for empty data', () => {
+    expect(axisExtent([], 0.5)).toEqual({ min: undefined, max: undefined });
+  });
+});
+
+describe('structureKey', () => {
+  it('is stable when only data changes', () => {
+    const mk = () => {
+      const sp = createSubplotData();
+      sp.products.push({ path: 'amda/b' });
+      sp.productData['amda/b'] = createProductCache('amda/b');
+      sp.productData['amda/b'].columnNames = ['bx', 'by', 'bz'];
+      return [sp];
+    };
+    expect(structureKey(mk())).toBe(structureKey(mk()));
+  });
+  it('changes when plot type changes', () => {
+    const line = createSubplotData();
+    const heat = createSubplotData();
+    heat.plotType = 'heatmap';
+    expect(structureKey([line])).not.toBe(structureKey([heat]));
+  });
+  it('changes when a product is added', () => {
+    const a = createSubplotData();
+    a.products.push({ path: 'amda/b' });
+    const b = createSubplotData();
+    b.products.push({ path: 'amda/b' }, { path: 'amda/v' });
+    expect(structureKey([a])).not.toBe(structureKey([b]));
+  });
+  it('changes when log scale toggles', () => {
+    const a = createSubplotData();
+    const b = createSubplotData();
+    b.y_axis.log = true;
+    expect(structureKey([a])).not.toBe(structureKey([b]));
+  });
+  it('changes when column count changes', () => {
+    const mk = (cols) => {
+      const sp = createSubplotData();
+      sp.products.push({ path: 'amda/b' });
+      sp.productData['amda/b'] = createProductCache('amda/b');
+      sp.productData['amda/b'].columnNames = cols;
+      return [sp];
+    };
+    expect(structureKey(mk(['a']))).not.toBe(structureKey(mk(['a', 'b'])));
   });
 });
 

@@ -6,6 +6,8 @@
     <title>3D Orbit Viewer - Speasy Proxy</title>
     <script src="https://cdn.jsdelivr.net/npm/echarts@5/dist/echarts.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/echarts-gl@2/dist/echarts-gl.min.js"></script>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr@4/dist/themes/dark.css">
+    <script src="https://cdn.jsdelivr.net/npm/flatpickr@4" onerror="console.error('flatpickr CDN failed to load — date fields stay plain text');"></script>
     <link rel="stylesheet" href="{{ base_url }}/static/css/theme.css">
     <style>
         body {
@@ -93,7 +95,7 @@
         }
 
         .controls-bar select,
-        .controls-bar input[type="datetime-local"] {
+        .controls-bar .dt-input {
             padding: 6px 10px;
             border: 1px solid #2a3358;
             border-radius: 6px;
@@ -103,8 +105,13 @@
             outline: none;
         }
 
+        .controls-bar .dt-input {
+            width: 168px;
+            font-variant-numeric: tabular-nums;
+        }
+
         .controls-bar select:focus,
-        .controls-bar input[type="datetime-local"]:focus {
+        .controls-bar .dt-input:focus {
             border-color: #6b8afd;
         }
 
@@ -233,7 +240,7 @@
             }
 
             .controls-bar select,
-            .controls-bar input[type="datetime-local"] {
+            .controls-bar .dt-input {
                 width: 100%;
                 padding: 8px;
                 font-size: 0.9rem;
@@ -274,10 +281,10 @@
         </select>
 
         <label for="startTime">Start</label>
-        <input type="datetime-local" id="startTime">
+        <input type="text" class="dt-input" id="startTime" placeholder="DD-MM-YYYY HH:MM" autocomplete="off" spellcheck="false">
 
         <label for="stopTime">Stop</label>
-        <input type="datetime-local" id="stopTime">
+        <input type="text" class="dt-input" id="stopTime" placeholder="DD-MM-YYYY HH:MM" autocomplete="off" spellcheck="false">
 
         <div class="duration-btns" id="durationBtns">
             <button data-days="1">1d</button>

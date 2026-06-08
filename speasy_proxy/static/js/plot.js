@@ -1,11 +1,13 @@
 import {
-  toLocalISOString, escapeHtml, setStatus, showLoading, showFetchBar, fallbackCopy,
+  attachDatePicker, setDateInput, parseDateInput, escapeHtml,
+  setStatus, showLoading, showFetchBar, fallbackCopy,
 } from './common.js';
 import { getDisplayName, getProductPath, shouldSkipNode, SKIP_KEYS } from './inventory-tree.js';
 import {
   createSubplotData, createProductCache, subplotToConfig, subplotFromConfig,
   detectPlotType, mergeSorted, mergeSortedRows, mergeIntervals, evictProductCache,
   buildSeriesData, configToBase64, base64ToConfig,
+  normalizeWheelDelta, zoomRange, panRange, axisExtent, structureKey,
 } from './plot-core.js';
 import { computeYEdges, renderSpectrogramImage } from './spectrogram.js';
 import { fetchData as apiFetchData, fetchInventory } from './api-client.js';
@@ -36,6 +38,7 @@ import { fetchData as apiFetchData, fetchInventory } from './api-client.js';
 
     let currentView = { start: null, end: null };
     let fetchController = null;
+    let lastStructureKey = null;  // structure of the last full chart build; used to pick merge vs rebuild
 
     // ===== Task 4: Inventory Tree =====
 
@@ -90,6 +93,7 @@ import { fetchData as apiFetchData, fetchInventory } from './api-client.js';
                 if (!div.classList.contains('selected')) div.style.background = '';
             });
             div.addEventListener('click', () => selectProduct(data, div));
+            div.addEventListener('dblclick', () => { selectProduct(data, div); doPlot(); });
             return div;
         }
 
@@ -154,8 +158,8 @@ import { fetchData as apiFetchData, fetchInventory } from './api-client.js';
             stopDate.setMonth(stopDate.getMonth() - 2);
             const startDate = new Date(stopDate);
             startDate.setDate(startDate.getDate() - 1);
-            document.getElementById('stop-time').value = toLocalISOString(stopDate);
-            document.getElementById('start-time').value = toLocalISOString(startDate);
+            setDateInput(document.getElementById('stop-time'), stopDate);
+            setDateInput(document.getElementById('start-time'), startDate);
         }
 
         updateURL();
@@ -237,6 +241,7 @@ import { fetchData as apiFetchData, fetchInventory } from './api-client.js';
                 if (!div.classList.contains('selected')) div.style.background = '';
             });
             div.addEventListener('click', () => selectProduct(leaf.node, div));
+            div.addEventListener('dblclick', () => { selectProduct(leaf.node, div); doPlot(); });
             container.appendChild(div);
         }
 
@@ -260,12 +265,30 @@ import { fetchData as apiFetchData, fetchInventory } from './api-client.js';
     }
 
     function bindControls() {
+        attachDatePicker(document.getElementById('start-time'));
+        attachDatePicker(document.getElementById('stop-time'));
+
         document.getElementById('btn-plot').addEventListener('click', doPlot);
         document.getElementById('start-time').addEventListener('keydown', (e) => {
             if (e.key === 'Enter') doPlot();
         });
         document.getElementById('stop-time').addEventListener('keydown', (e) => {
             if (e.key === 'Enter') doPlot();
+        });
+
+        document.getElementById('range-chips').addEventListener('click', (e) => {
+            const btn = e.target.closest('button');
+            if (!btn) return;
+            if (btn.dataset.pan) panTime(Number(btn.dataset.pan));
+            else if (btn.dataset.ms) applyRelativeRange(Number(btn.dataset.ms));
+        });
+
+        // Arrow keys pan the time window when not typing in a field.
+        document.addEventListener('keydown', (e) => {
+            const tag = (e.target.tagName || '').toLowerCase();
+            if (tag === 'input' || tag === 'textarea' || tag === 'select') return;
+            if (e.key === 'ArrowLeft') { e.preventDefault(); panTime(-1); }
+            else if (e.key === 'ArrowRight') { e.preventDefault(); panTime(1); }
         });
         document.getElementById('btn-log-scale').addEventListener('click', () => {
             const heatmapPlots = plotState.plots.filter(sp => sp.plotType === 'heatmap');
@@ -384,14 +407,14 @@ import { fetchData as apiFetchData, fetchInventory } from './api-client.js';
     function addProductToPlot(subplotIndex) {
         if (!chart) { setStatus('Chart not available — check network connection.'); return; }
         const product = document.getElementById('product-path').value;
-        const startTime = document.getElementById('start-time').value;
-        const stopTime = document.getElementById('stop-time').value;
+        const startDate = parseDateInput(document.getElementById('start-time').value);
+        const stopDate = parseDateInput(document.getElementById('stop-time').value);
 
         if (!product) { setStatus('No product selected.'); return; }
-        if (!startTime || !stopTime) { setStatus('Please set start and stop times.'); return; }
+        if (!startDate || !stopDate) { setStatus('Please set valid start and stop times (DD-MM-YYYY HH:MM).'); return; }
 
-        plotState.time_range.start = new Date(startTime).toISOString();
-        plotState.time_range.stop = new Date(stopTime).toISOString();
+        plotState.time_range.start = startDate.toISOString();
+        plotState.time_range.stop = stopDate.toISOString();
 
         let subplot;
         if (subplotIndex === null) {
@@ -481,18 +504,60 @@ import { fetchData as apiFetchData, fetchInventory } from './api-client.js';
         }
     }
 
+    // ===== Time navigation (quick-range chips + pan) =====
+
+    function currentStopMs() {
+        const d = parseDateInput(document.getElementById('stop-time').value);
+        return d ? d.getTime() : Date.now();
+    }
+
+    function currentStartMs() {
+        const d = parseDateInput(document.getElementById('start-time').value);
+        return d ? d.getTime() : currentStopMs() - 86400000;
+    }
+
+    // Set the window and re-plot fresh. Caches are reset so a new (possibly disjoint)
+    // window fetches clean data instead of merging across a time gap.
+    function replotOverRange(startMs, stopMs) {
+        setDateInput(document.getElementById('start-time'), new Date(startMs));
+        setDateInput(document.getElementById('stop-time'), new Date(stopMs));
+        plotState.time_range.start = new Date(startMs).toISOString();
+        plotState.time_range.stop = new Date(stopMs).toISOString();
+
+        if (plotState.plots.length === 0) {
+            if (document.getElementById('product-path').value) doPlot();
+            return;
+        }
+        for (const sp of plotState.plots) {
+            for (const prod of sp.products) sp.productData[prod.path] = createProductCache(prod.path);
+        }
+        updateURL();
+        fetchAllAndRender();
+    }
+
+    function applyRelativeRange(spanMs) {
+        const stop = currentStopMs();
+        replotOverRange(stop - spanMs, stop);
+    }
+
+    function panTime(dir) {
+        const start = currentStartMs(), stop = currentStopMs();
+        const width = (stop - start) || 86400000;
+        replotOverRange(start + dir * width, stop + dir * width);
+    }
+
     async function doPlot() {
         if (!chart) { setStatus('Chart not available — check network connection.'); return; }
         const product = document.getElementById('product-path').value;
-        const startTime = document.getElementById('start-time').value;
-        const stopTime = document.getElementById('stop-time').value;
+        const startDate = parseDateInput(document.getElementById('start-time').value);
+        const stopDate = parseDateInput(document.getElementById('stop-time').value);
 
         if (!product) { setStatus('No product selected.'); return; }
-        if (!startTime || !stopTime) { setStatus('Please set start and stop times.'); return; }
+        if (!startDate || !stopDate) { setStatus('Please set valid start and stop times (DD-MM-YYYY HH:MM).'); return; }
 
         // Reset: clear all subplots, create one with this product
-        plotState.time_range.start = new Date(startTime).toISOString();
-        plotState.time_range.stop = new Date(stopTime).toISOString();
+        plotState.time_range.start = startDate.toISOString();
+        plotState.time_range.stop = stopDate.toISOString();
         plotState.plots = [];
 
         const subplot = createSubplotData();
@@ -560,7 +625,7 @@ import { fetchData as apiFetchData, fetchInventory } from './api-client.js';
         }
     }
 
-    function renderAllSubplots(preserveView) {
+    function renderAllSubplots(preserveView, dataOnly) {
         const n = plotState.plots.length;
         if (n === 0) return;
 
@@ -596,6 +661,7 @@ import { fetchData as apiFetchData, fetchInventory } from './api-client.js';
 
             const firstCache = subplot.productData[subplot.products[0]?.path];
             const times = firstCache?.times || [];
+            const extent = axisExtent(times, AXIS_PAD_RATIO);
 
             xAxes.push({
                 type: 'time',
@@ -609,8 +675,8 @@ import { fetchData as apiFetchData, fetchInventory } from './api-client.js';
                     lineStyle: { color: '#6b8afd', width: 1, type: 'dashed' },
                     label: { show: i === n - 1, backgroundColor: '#1a1f36', color: '#e0e6f0', borderColor: '#2a3358' }
                 },
-                min: times.length > 0 ? times[0] - (times[times.length-1] - times[0]) * 0.2 : undefined,
-                max: times.length > 0 ? times[times.length-1] + (times[times.length-1] - times[0]) * 0.2 : undefined
+                min: extent.min,
+                max: extent.max
             });
 
             if (subplot.plotType === 'heatmap' && firstCache) {
@@ -791,9 +857,18 @@ import { fetchData as apiFetchData, fetchInventory } from './api-client.js';
             graphic: []
         };
 
+        // Data-only updates (pan/zoom refetch) merge series in place — no teardown, no resize,
+        // so the chart doesn't flash. Structural changes (subplot count, plot type, log axis,
+        // products) fall back to a full rebuild.
+        const canMerge = dataOnly && lastStructureKey === structureKey(plotState.plots);
         suppressDataZoom = true;
-        chart.setOption(option, true);
-        chart.resize();
+        if (canMerge) {
+            chart.setOption(option, { replaceMerge: ['series'], lazyUpdate: true });
+        } else {
+            chart.setOption(option, true);
+            chart.resize();
+            lastStructureKey = structureKey(plotState.plots);
+        }
         suppressDataZoom = false;
 
         if (!preserveView) {
@@ -999,7 +1074,7 @@ import { fetchData as apiFetchData, fetchInventory } from './api-client.js';
                 currentView.start = liveView.start;
                 currentView.end = liveView.end;
             }
-            renderAllSubplots(true);
+            renderAllSubplots(true, true);
         }
 
         if (fetchController === controller) {
@@ -1022,7 +1097,8 @@ import { fetchData as apiFetchData, fetchInventory } from './api-client.js';
     // On every zoom/pan, re-fetch the full visible range + buffer for all products.
     // Server-side resampling (max_points) keeps payloads bounded regardless of time range.
 
-    const BUFFER_RATIO = 1.0; // pre-fetch 1x view width on each side
+    const BUFFER_RATIO = 1.0;     // pre-fetch 1x view width on each side
+    const AXIS_PAD_RATIO = 0.5;   // x-axis domain padding beyond loaded data, so drag-pan has room
 
     function getVisibleRange() {
         // Read the actual axis extent from the chart — most reliable source
@@ -1049,8 +1125,8 @@ import { fetchData as apiFetchData, fetchInventory } from './api-client.js';
         return null;
     }
 
-    const PAN_FACTOR = 0.002;   // pan sensitivity per pixel of wheel delta
-    const ZOOM_FACTOR = 0.001;  // zoom sensitivity per pixel of wheel delta
+    const ZOOM_SENSITIVITY = 0.0015;  // zoom amount per normalized wheel pixel
+    const PAN_SENSITIVITY = 0.0015;   // pan amount (fraction of view) per normalized wheel pixel
 
     function getSubplotAtY(mouseX, mouseY) {
         for (let i = 0; i < plotState.plots.length; i++) {
@@ -1088,6 +1164,8 @@ import { fetchData as apiFetchData, fetchInventory } from './api-client.js';
         renderAllSubplots(true);
     }
 
+    // Wheel = zoom at the cursor (the natural convention); Shift+wheel = pan.
+    // Drag-to-pan is handled natively by the inside dataZoom (moveOnMouseMove).
     function handleWheel(e) {
         e.preventDefault();
         e.stopPropagation();
@@ -1097,56 +1175,50 @@ import { fetchData as apiFetchData, fetchInventory } from './api-client.js';
         const mouseX = e.clientX - domRect.left;
         const mouseY = e.clientY - domRect.top;
         const hit = getSubplotAtY(mouseX, mouseY);
+        const delta = normalizeWheelDelta(e.deltaY, e.deltaMode);
+        const isPan = e.shiftKey;
 
+        // Y-axis gutter: zoom/pan the value axis of that subplot.
         if (hit && hit.onYAxis) {
-            const delta = Math.max(-150, Math.min(150, e.deltaY));
             const range = getYAxisRange(hit.index);
             const span = range.max - range.min;
-            if (e.ctrlKey || e.metaKey) {
-                const factor = ZOOM_FACTOR * delta;
-                const cursorFrac = 1 - (mouseY - hit.rect.y) / hit.rect.height;
-                const center = range.min + cursorFrac * span;
-                const newMin = center - (center - range.min) * (1 + factor);
-                const newMax = center + (range.max - center) * (1 + factor);
-                if (newMax - newMin > span * 0.001) {
-                    setYAxisRange(hit.index, newMin, newMax);
-                }
+            if (isPan) {
+                const shift = span * PAN_SENSITIVITY * delta;
+                setYAxisRange(hit.index, range.min + shift, range.max + shift);
             } else {
-                const panAmount = span * PAN_FACTOR * delta;
-                setYAxisRange(hit.index, range.min + panAmount, range.max + panAmount);
+                const cursorFrac = 1 - (mouseY - hit.rect.y) / hit.rect.height;
+                const z = zoomRange(range.min, range.max, cursorFrac, delta * ZOOM_SENSITIVITY);
+                if (z.end - z.start > span * 0.001) setYAxisRange(hit.index, z.start, z.end);
             }
             return;
         }
 
+        // Plot body: zoom/pan the time axis.
         const view = getVisibleRange();
         if (!view) return;
 
-        const range = view.end - view.start;
-        const delta = Math.max(-150, Math.min(150, e.deltaY));
-
-        let newStart, newEnd;
-        if (e.ctrlKey || e.metaKey) {
-            const zoomAmount = range * ZOOM_FACTOR * delta;
-            newStart = view.start + zoomAmount;
-            newEnd = view.end - zoomAmount;
-            if (newEnd - newStart < 1000) return;
+        let next;
+        if (isPan) {
+            next = panRange(view.start, view.end, PAN_SENSITIVITY * delta);
         } else {
-            const panAmount = range * PAN_FACTOR * delta;
-            newStart = view.start + panAmount;
-            newEnd = view.end + panAmount;
+            const cursorFrac = hit
+                ? Math.max(0, Math.min(1, (mouseX - hit.rect.x) / hit.rect.width))
+                : 0.5;
+            next = zoomRange(view.start, view.end, cursorFrac, delta * ZOOM_SENSITIVITY);
+            if (next.end - next.start < 1000) return;  // floor at 1s
         }
 
-        currentView.start = newStart;
-        currentView.end = newEnd;
+        currentView.start = next.start;
+        currentView.end = next.end;
 
-        const padding = (newEnd - newStart) * 2;
+        const padding = (next.end - next.start) * 2;
         const xAxisUpdate = plotState.plots.map(() => ({
-            min: newStart - padding,
-            max: newEnd + padding
+            min: next.start - padding,
+            max: next.end + padding
         }));
         const dzUpdate = [
-            { startValue: newStart, endValue: newEnd },
-            { startValue: newStart, endValue: newEnd }
+            { startValue: next.start, endValue: next.end },
+            { startValue: next.start, endValue: next.end }
         ];
 
         suppressDataZoom = true;
@@ -1219,10 +1291,10 @@ import { fetchData as apiFetchData, fetchInventory } from './api-client.js';
         plotState.time_range.stop = config.time_range.stop;
 
         if (config.time_range.start) {
-            document.getElementById('start-time').value = toLocalISOString(new Date(config.time_range.start));
+            setDateInput(document.getElementById('start-time'), new Date(config.time_range.start));
         }
         if (config.time_range.stop) {
-            document.getElementById('stop-time').value = toLocalISOString(new Date(config.time_range.stop));
+            setDateInput(document.getElementById('stop-time'), new Date(config.time_range.stop));
         }
 
         plotState.intervals = (config.intervals || []).map(iv => ({
