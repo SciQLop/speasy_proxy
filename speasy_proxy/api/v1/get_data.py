@@ -42,9 +42,17 @@ def _values_as_array(values):
     return values
 
 
+def _json_default(o):
+    # Byte-string label axes (numpy |S dtype, e.g. CDAWeb's `cartesian` component labels)
+    # surface as bytes, which json can't serialize on its own.
+    if isinstance(o, bytes):
+        return o.decode('utf-8', 'replace')
+    raise TypeError(f'Object of type {type(o).__name__} is not JSON serializable')
+
+
 def to_json(var: SpeasyVariable) -> str:
     var = var.replace_fillval_by_nan(convert_to_float=True)
-    return json.dumps(var.to_dictionary(array_to_list=True))
+    return json.dumps(var.to_dictionary(array_to_list=True), default=_json_default)
 
 
 def _get_data(product, start_time, stop_time, extra_http_headers, **extra_params):
