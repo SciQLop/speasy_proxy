@@ -7,7 +7,7 @@ import {
   createSubplotData, createProductCache, subplotToConfig, subplotFromConfig,
   detectPlotType, mergeSorted, mergeSortedRows, mergeIntervals, evictProductCache,
   buildSeriesData, configToBase64, base64ToConfig,
-  normalizeWheelDelta, zoomRange, panRange, axisExtent, structureKey,
+  normalizeWheelDelta, zoomRange, panRange, axisExtent, structureKey, resampleTarget,
 } from './plot-core.js';
 import { computeYEdges, renderSpectrogramImage } from './spectrogram.js';
 import { fetchData as apiFetchData, fetchInventory } from './api-client.js';
@@ -572,10 +572,8 @@ import { fetchData as apiFetchData, fetchInventory } from './api-client.js';
     async function fetchData(product, startTime, stopTime, signal) {
         const startISO = new Date(startTime).toISOString();
         const stopISO = new Date(stopTime).toISOString();
-        const maxPoints = Math.max(
-            10000,
-            (document.getElementById('chart')?.clientWidth || 2000) * (1 + 2 * BUFFER_RATIO),
-        );
+        const chartWidth = document.getElementById('chart')?.clientWidth || 0;
+        const maxPoints = resampleTarget(chartWidth, POINTS_PER_PIXEL, BUFFER_RATIO);
         return apiFetchData({ baseUrl: API_BASE, path: product, startISO, stopISO, maxPoints, signal });
     }
 
@@ -749,7 +747,8 @@ import { fetchData as apiFetchData, fetchInventory } from './api-client.js';
                             lineStyle: { width: 1.2 },
                             color: CHART_COLORS[colorIdx % CHART_COLORS.length],
                             data: buildSeriesData(cache.times, cache.columns[colName]),
-                            sampling: 'lttb',
+                            // No client-side `sampling` — the server already resamples to a
+                            // pixel-appropriate count; ECharts LTTB on top only drops points.
                             large: true,
                             largeThreshold: 50000,
                             xAxisIndex: i,
@@ -1097,8 +1096,9 @@ import { fetchData as apiFetchData, fetchInventory } from './api-client.js';
     // On every zoom/pan, re-fetch the full visible range + buffer for all products.
     // Server-side resampling (max_points) keeps payloads bounded regardless of time range.
 
-    const BUFFER_RATIO = 1.0;     // pre-fetch 1x view width on each side
-    const AXIS_PAD_RATIO = 0.5;   // x-axis domain padding beyond loaded data, so drag-pan has room
+    const BUFFER_RATIO = 1.0;      // pre-fetch 1x view width on each side
+    const POINTS_PER_PIXEL = 2.0;  // target density of the *visible* window (server resample target)
+    const AXIS_PAD_RATIO = 0.5;    // x-axis domain padding beyond loaded data, so drag-pan has room
 
     function getVisibleRange() {
         // Read the actual axis extent from the chart — most reliable source

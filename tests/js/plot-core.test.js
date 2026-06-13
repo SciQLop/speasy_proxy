@@ -3,7 +3,7 @@ import {
   mergeSorted, mergeSortedRows, mergeIntervals, evictProductCache, buildSeriesData,
   detectPlotType, configToBase64, base64ToConfig,
   createSubplotData, createProductCache, subplotToConfig, subplotFromConfig,
-  normalizeWheelDelta, zoomRange, panRange, axisExtent, structureKey,
+  normalizeWheelDelta, zoomRange, panRange, axisExtent, structureKey, resampleTarget,
 } from '../../speasy_proxy/static/js/plot-core.js';
 
 describe('merge', () => {
@@ -114,6 +114,26 @@ describe('axisExtent', () => {
   });
   it('returns undefined bounds for empty data', () => {
     expect(axisExtent([], 0.5)).toEqual({ min: undefined, max: undefined });
+  });
+});
+
+describe('resampleTarget', () => {
+  it('scales the budget by the fetch span so the visible third hits the density', () => {
+    // 1500px wide, 2 pts/px visible, 1x buffer each side (fetch span = 3x visible).
+    // Budget = 1500 * 2 * 3 = 9000; visible third ≈ 3000 over 1500px = 2 pts/px.
+    expect(resampleTarget(1500, 2, 1)).toBe(9000);
+  });
+  it('with no buffer targets the density directly', () => {
+    expect(resampleTarget(1500, 2, 0)).toBe(3000);
+  });
+  it('falls back to a default width when the plot is unsized', () => {
+    expect(resampleTarget(0, 2, 1)).toBe(12000); // 2000 * 2 * 3
+  });
+  it('never drops below the floor', () => {
+    expect(resampleTarget(10, 1, 0)).toBe(2000);
+  });
+  it('rounds up to a whole point count', () => {
+    expect(Number.isInteger(resampleTarget(777, 1.5, 1))).toBe(true);
   });
 });
 

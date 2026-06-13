@@ -167,6 +167,19 @@ export function panRange(start, end, fraction) {
   return { start: start + shift, end: end + shift };
 }
 
+const DEFAULT_PLOT_WIDTH_PX = 2000; // fallback when the chart hasn't been laid out yet
+const MIN_RESAMPLE_POINTS = 2000;   // floor so a tiny/unsized plot still fetches usable detail
+
+// Server-side resample target (max_points) sized so the *visible* window lands near
+// `pointsPerPixel` points per horizontal pixel. We fetch visible + bufferRatio on each
+// side and the server spreads its budget across the whole fetched span, so scale the
+// target by the fetch-span factor (1 + 2*bufferRatio) to keep the visible slice dense.
+export function resampleTarget(widthPx, pointsPerPixel, bufferRatio) {
+  const w = widthPx > 0 ? widthPx : DEFAULT_PLOT_WIDTH_PX;
+  const fetchSpanFactor = 1 + 2 * bufferRatio;
+  return Math.max(MIN_RESAMPLE_POINTS, Math.ceil(w * pointsPerPixel * fetchSpanFactor));
+}
+
 // X-axis domain padded symmetrically around the loaded time span by padRatio of the span,
 // giving the dataZoom room to pan beyond the loaded data without hitting a hard wall.
 export function axisExtent(times, padRatio) {
