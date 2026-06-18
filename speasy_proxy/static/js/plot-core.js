@@ -161,6 +161,15 @@ export function zoomRange(start, end, cursorFrac, factor) {
   };
 }
 
+// Zoom [start,end] around the cursor, refusing to shrink below minSpan (in the same units
+// as start/end — milliseconds for the time axis). Returns the new range, or null when the
+// requested zoom would cross the floor (so the caller leaves the view untouched).
+export function zoomToward(start, end, cursorFrac, factor, minSpan) {
+  const next = zoomRange(start, end, cursorFrac, factor);
+  if (next.end - next.start < minSpan) return null;
+  return next;
+}
+
 // Shift [start,end] by a fraction of its width (positive = later, negative = earlier).
 export function panRange(start, end, fraction) {
   const shift = (end - start) * fraction;

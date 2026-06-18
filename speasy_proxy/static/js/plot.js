@@ -7,7 +7,7 @@ import {
   createSubplotData, createProductCache, subplotToConfig, subplotFromConfig,
   detectPlotType, mergeSorted, mergeSortedRows, mergeIntervals, evictProductCache,
   buildSeriesData, configToBase64, base64ToConfig,
-  normalizeWheelDelta, zoomRange, panRange, axisExtent, structureKey, resampleTarget,
+  normalizeWheelDelta, zoomRange, panRange, zoomToward, axisExtent, structureKey, resampleTarget,
 } from './plot-core.js';
 import { computeYEdges, renderSpectrogramImage } from './spectrogram.js';
 import { fetchData as apiFetchData, fetchInventory } from './api-client.js';
@@ -1099,6 +1099,7 @@ import { fetchData as apiFetchData, fetchInventory } from './api-client.js';
     const BUFFER_RATIO = 1.0;      // pre-fetch 1x view width on each side
     const POINTS_PER_PIXEL = 2.0;  // target density of the *visible* window (server resample target)
     const AXIS_PAD_RATIO = 0.5;    // x-axis domain padding beyond loaded data, so drag-pan has room
+    const MIN_ZOOM_SPAN_MS = 1;    // smallest wheel-zoom window (times are ms; allow down to 1ms)
 
     function getVisibleRange() {
         // Read the actual axis extent from the chart — most reliable source
@@ -1204,8 +1205,8 @@ import { fetchData as apiFetchData, fetchInventory } from './api-client.js';
             const cursorFrac = hit
                 ? Math.max(0, Math.min(1, (mouseX - hit.rect.x) / hit.rect.width))
                 : 0.5;
-            next = zoomRange(view.start, view.end, cursorFrac, delta * ZOOM_SENSITIVITY);
-            if (next.end - next.start < 1000) return;  // floor at 1s
+            next = zoomToward(view.start, view.end, cursorFrac, delta * ZOOM_SENSITIVITY, MIN_ZOOM_SPAN_MS);
+            if (!next) return;
         }
 
         currentView.start = next.start;

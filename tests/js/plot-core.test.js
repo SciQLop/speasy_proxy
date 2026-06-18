@@ -3,7 +3,7 @@ import {
   mergeSorted, mergeSortedRows, mergeIntervals, evictProductCache, buildSeriesData,
   detectPlotType, configToBase64, base64ToConfig,
   createSubplotData, createProductCache, subplotToConfig, subplotFromConfig,
-  normalizeWheelDelta, zoomRange, panRange, axisExtent, structureKey, resampleTarget,
+  normalizeWheelDelta, zoomRange, panRange, zoomToward, axisExtent, structureKey, resampleTarget,
 } from '../../speasy_proxy/static/js/plot-core.js';
 
 describe('merge', () => {
@@ -105,6 +105,25 @@ describe('panRange', () => {
   });
   it('shifts left for negative fraction', () => {
     expect(panRange(100, 200, -0.5)).toEqual({ start: 50, end: 150 });
+  });
+});
+
+describe('zoomToward', () => {
+  it('zooms in toward the cursor when above the floor', () => {
+    // 100ms window, zoom in 50% around the centre → 50ms window, well above a 1ms floor.
+    expect(zoomToward(0, 100, 0.5, -0.5, 1)).toEqual({ start: 25, end: 75 });
+  });
+  it('allows zooming down to millisecond windows (regression: was a hard 1s floor)', () => {
+    // A 2ms window zooming in must NOT be rejected by a 1ms floor.
+    const next = zoomToward(0, 2, 0.5, -0.25, 1);
+    expect(next).not.toBeNull();
+    expect(next.end - next.start).toBeCloseTo(1.5, 9);
+  });
+  it('refuses to shrink below the min span', () => {
+    expect(zoomToward(0, 1, 0.5, -0.5, 1)).toBeNull();
+  });
+  it('always allows zooming out regardless of floor', () => {
+    expect(zoomToward(0, 0.5, 0.5, 1, 1)).toEqual({ start: -0.25, end: 0.75 });
   });
 });
 
