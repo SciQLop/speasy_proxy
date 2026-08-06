@@ -8,6 +8,9 @@ except ImportError:
 
 
 def resample(var: SpeasyVariable, max_points: int, strategy: str = 'min_max') -> SpeasyVariable:
+    # Resampling is for ready-to-plot 1-D/2-D data only; serve higher-dim data as-is.
+    if var.values.ndim != 2:
+        return var
     if len(var) <= max_points:
         return var
     strategies = {'min_max': _min_max, 'lttb': _lttb}
@@ -26,10 +29,6 @@ def _lttb(var: SpeasyVariable, max_points: int) -> SpeasyVariable:
     values = np.asarray(var.values)
     n_out = max(max_points, 3)
 
-    indices = set()
-    for col in range(n_cols):
-        col_indices = lttb_single_indices(values[:, col], n_out)
-        indices.update(col_indices.tolist())
-
-    sorted_indices = np.array(sorted(indices))
+    per_column = [lttb_single_indices(values[:, col], n_out) for col in range(n_cols)]
+    sorted_indices = np.unique(np.concatenate(per_column))
     return var[sorted_indices]

@@ -173,3 +173,39 @@ def test_get_inventory_reads_memory_only(monkeypatch):
     assert mgr.is_current("all", "2030-01-01T00:00:00+00:00") is True
     assert mgr.is_current("all", "2000-01-01T00:00:00+00:00") is False
     assert mgr.is_current("all", "not-a-date") is False
+
+
+def test_eager_build_covers_common_variants_and_zstd():
+    """Only JSON + pickle protocols 3/4 (versions 1..2) are built eagerly, each
+    with a pre-compressed zstd variant; protocols 1, 2 and 5 are left out."""
+    import pyzstd
+    _quiet_tree()
+    mgr = InventoryManager(update_interval_seconds=3600, shared_store=SharedInventoryStore(path=None))
+    built = mgr._build_all_inventories()
+    assert "inventory/all/json" in built
+    for proto in (3, 4):
+        for version in (1, 2):
+            assert f"inventory/all/pickle_proto_{proto}_version_{version}" in built
+            assert f"inventory/all/pickle_proto_{proto}_version_{version}/zstd" in built
+    assert pyzstd.decompress(built["inventory/all/json/zstd"]).decode() == built["inventory/all/json"]
+    for proto in (1, 2, 5):
+        assert f"inventory/all/pickle_proto_{proto}_version_1" not in built
+
+
+def test_non_eager_pickle_protocol_built_lazily_and_memoized():
+    """A valid but non-eager variant (here pickle protocol 5) is built on first
+    request and memoized."""
+    _quiet_tree()
+    mgr = InventoryManager(update_interval_seconds=3600, shared_store=SharedInventoryStore(path=None))
+    mgr._inventories = mgr._build_all_inventories()
+    data = mgr.get_inventory("all", "python_dict", version=2, pickle_proto=5)
+    assert data is not None
+    assert mgr._inventories["inventory/all/pickle_proto_5_version_2"] is data
+
+
+def test_missing_eager_variant_is_not_built_lazily():
+    """An eager variant that is somehow absent stays absent (404, not a lazy
+    rebuild) — lazy building is only for non-eager combinations."""
+    mgr = InventoryManager(update_interval_seconds=3600, shared_store=SharedInventoryStore(path=None))
+    mgr._inventories = {}
+    assert mgr.get_inventory("all", "python_dict", version=2, pickle_proto=3) is None

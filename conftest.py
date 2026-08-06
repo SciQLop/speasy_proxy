@@ -11,7 +11,7 @@ if os.environ.get("SPEASY_PROXY_OFFLINE_TESTS"):
     # be set before speasy is imported.
     os.environ.setdefault(
         "SPEASY_CORE_DISABLED_PROVIDERS",
-        "amda,cda,cdaweb,csa,ssc,sscweb,archive,uiowaephtool",
+        "amda,cda,cdaweb,csa,ssc,sscweb,archive,uiowaephtool,cdpp3dview",
     )
 
     import speasy

@@ -31,6 +31,9 @@ class _BlockingManager:
         time.sleep(0.3)
         return b"inventory-bytes"
 
+    def build_date(self, provider):
+        return None
+
 
 @pytest.mark.anyio
 async def test_get_inventory_does_not_starve_event_loop():
@@ -97,12 +100,53 @@ async def test_present_returns_200():
 
 
 @pytest.mark.anyio
+async def test_zstd_served_from_precompressed_variant():
+    """When a zstd variant was pre-compressed at build time, it is served as-is."""
+    mgr = _manager_with({"inventory/all/json": "X", "inventory/all/json/zstd": b"Z"}, _BUILD_DATES)
+    resp = await m.get_inventory(request=_FakeRequest(), provider="all", format="json",
+                                 zstd_compression=True, inventory_mgr=mgr)
+    assert resp.status_code == 200
+    assert resp.body == b"Z"
+    assert resp.headers["Content-Type"] == "application/x-zstd-compressed"
+
+
+@pytest.mark.anyio
+async def test_zstd_falls_back_to_on_demand_compression():
+    """Without a pre-compressed variant, the response is compressed on demand
+    (in the threadpool, off the event loop)."""
+    import pyzstd
+    mgr = _manager_with({"inventory/all/json": "X"}, _BUILD_DATES)
+    resp = await m.get_inventory(request=_FakeRequest(), provider="all", format="json",
+                                 zstd_compression=True, inventory_mgr=mgr)
+    assert resp.status_code == 200
+    assert pyzstd.decompress(resp.body) == b"X"
+
+
+@pytest.mark.anyio
 async def test_bad_if_modified_since_does_not_500():
     """A malformed If-Modified-Since must never 500 — serve the data instead."""
     mgr = _manager_with({"inventory/all/json": "X"}, _BUILD_DATES)
     resp = await m.get_inventory(request=_FakeRequest({"If-Modified-Since": "not-a-date"}),
                                  provider="all", format="json", inventory_mgr=mgr)
     assert resp.status_code == 200
+
+
+@pytest.mark.anyio
+async def test_200_includes_last_modified():
+    """200 responses advertise the inventory build date so clients can do
+    conditional GETs (If-Modified-Since)."""
+    mgr = _manager_with({"inventory/all/json": "X"}, _BUILD_DATES)
+    resp = await m.get_inventory(request=_FakeRequest(), provider="all", format="json", inventory_mgr=mgr)
+    assert resp.status_code == 200
+    assert resp.headers["Last-Modified"] == "Wed, 01 Jan 2020 00:00:00 GMT"
+
+
+@pytest.mark.anyio
+async def test_200_without_build_date_omits_last_modified():
+    mgr = _manager_with({"inventory/all/json": "X"}, {})
+    resp = await m.get_inventory(request=_FakeRequest(), provider="all", format="json", inventory_mgr=mgr)
+    assert resp.status_code == 200
+    assert "Last-Modified" not in resp.headers
 
 
 @pytest.fixture

@@ -1,6 +1,7 @@
 import time
 from dateutil import parser
 from datetime import UTC
+from email.utils import formatdate
 from fastapi import Response, Request, Depends
 from .routes import router
 from fastapi import status
@@ -29,8 +30,17 @@ def _mime_type(fmt):
     raise ValueError(f"Unknown mime type: {fmt}")
 
 
-def encode_output(inventory_mgr: InventoryManager, provider: str, fmt, pickle_proto, version):
-    return inventory_mgr.get_inventory(provider, fmt=fmt, pickle_proto=pickle_proto, version=version), _mime_type(fmt)
+def encode_output(inventory_mgr: InventoryManager, provider: str, fmt, pickle_proto, version, zstd_compression):
+    mime = _mime_type(fmt)
+    if zstd_compression:
+        # Serve the pre-compressed variant when one was built at inventory build time.
+        data = inventory_mgr.get_inventory(provider, fmt=fmt, pickle_proto=pickle_proto, version=version, zstd=True)
+        if data is not None:
+            return data, "application/x-zstd-compressed"
+    data = inventory_mgr.get_inventory(provider, fmt=fmt, pickle_proto=pickle_proto, version=version)
+    if data is None:
+        return None, mime
+    return compress_if_asked(data, mime, zstd_compression)
 
 
 @router.get('/get_inventory', response_class=Response, description='Get the inventory of a provider or all providers',
@@ -55,16 +65,27 @@ async def get_inventory(request: Request, provider: Provider = "ssc",
         log.debug(f'{request_id}, client inventory is up to date')
         return Response(status_code=status.HTTP_304_NOT_MODIFIED)
 
-    # Offload to a threadpool: the manager lookup may do blocking work (BL-4).
-    data, mime = await run_in_threadpool(encode_output, inventory_mgr, provider, format, pickle_proto, version)
+    # Offload to a threadpool: the manager lookup may do blocking work (BL-4),
+    # and compression must never run on the event loop.
+    data, mime = await run_in_threadpool(encode_output, inventory_mgr, provider, format, pickle_proto, version,
+                                         zstd_compression)
     if data is None:
         log.debug(f'{request_id}, inventory not available for requested format/version')
         return Response(status_code=status.HTTP_404_NOT_FOUND,
                         content="Inventory not available for the requested format/version")
 
-    result, mime = compress_if_asked(data, mime, zstd_compression)
     request_duration = (time.time_ns() - request_start_time) / 1000.
     log.debug(f'{request_id}, duration = {request_duration}us')
 
-    return Response(media_type=mime, content=result,
-                    headers={'Content-Type': mime})
+    headers = {'Content-Type': mime}
+    # Advertise our build date so any client can do conditional GETs
+    # (If-Modified-Since -> 304 above). Best effort: an unparseable or missing
+    # build date just skips the header.
+    build_date = inventory_mgr.build_date(provider)
+    if build_date:
+        try:
+            headers['Last-Modified'] = formatdate(parser.parse(build_date).timestamp(), usegmt=True)
+        except Exception:
+            log.debug(f'{request_id}, could not format build date: {build_date}')
+
+    return Response(media_type=mime, content=data, headers=headers)

@@ -49,6 +49,22 @@ def test_no_resample_when_below_threshold():
     np.testing.assert_array_equal(result.values, var.values)
 
 
+def test_3d_variable_passes_through_unresampled():
+    """3-D+ products are not resampled (ready-to-plot 1-D/2-D only) — the
+    variable must be served as-is instead of crashing the server."""
+    values = np.random.default_rng(42).standard_normal((1000, 2, 3))
+    var = _make_var(1000, values=values)
+    result = resample(var, max_points=100, strategy='min_max')
+    assert result is var
+
+
+def test_2d_variable_still_resamples():
+    var = _make_var(10000, n_cols=2)
+    result = resample(var, max_points=200, strategy='min_max')
+    assert result is not var
+    assert len(result) < len(var)
+
+
 def test_preserves_time_ordering():
     var = _make_var(5000, n_cols=2)
     result = resample(var, max_points=200, strategy='min_max')
