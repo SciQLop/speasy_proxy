@@ -1,15 +1,15 @@
 import {
-  attachDatePicker, setDateInput, parseDateInput, escapeHtml,
+  attachDatePicker, setDateInput, parseDateInput,
   setStatus, showLoading, showFetchBar, fallbackCopy,
 } from './common.js';
 import { getDisplayName, getProductPath, shouldSkipNode, SKIP_KEYS } from './inventory-tree.js';
 import {
   createSubplotData, createProductCache, subplotToConfig, subplotFromConfig,
   detectPlotType, mergeSorted, mergeSortedRows, mergeIntervals, evictProductCache,
-  buildSeriesData, configToBase64, base64ToConfig,
-  normalizeWheelDelta, zoomRange, panRange, zoomToward, axisExtent, structureKey, resampleTarget,
+  buildSeriesData, configToBase64, base64ToConfig, isCovered, resolutionSufficient, rangesOverlap, trimCacheWindow, cacheToCsv,
+  normalizeWheelDelta, zoomRange, panRange, zoomToward, axisExtent, sharedAxisExtent, structureKey, resampleTarget,
 } from './plot-core.js';
-import { computeYEdges, renderSpectrogramImage } from './spectrogram.js';
+import { computeYEdges, renderSpectrogramImage, spectrogramValueAt } from './spectrogram.js';
 import { fetchData as apiFetchData, fetchInventory } from './api-client.js';
 
     const BASE_URL = (window.SPEASY_BASE_URL || '').replace(/\/$/, '');
@@ -38,7 +38,13 @@ import { fetchData as apiFetchData, fetchInventory } from './api-client.js';
 
     let currentView = { start: null, end: null };
     let fetchController = null;
+    let panFetchQueued = false;  // a pan/zoom arrived while a fetch was in flight — rerun once after it
     let lastStructureKey = null;  // structure of the last full chart build; used to pick merge vs rebuild
+    let resizeDebounceTimer = null;
+    let lastRenderedHeight = 0;  // chart height at last full render; resize rebuilds only when it changes
+    let seriesUnits = {};        // seriesName -> unit, rebuilt on each render for the tooltip
+    let wheelRafPending = false; // wheel events coalesce into one chart update per frame
+    let pendingWheelView = null;
 
     // ===== Task 4: Inventory Tree =====
 
@@ -258,10 +264,65 @@ import { fetchData as apiFetchData, fetchInventory } from './api-client.js';
     function initChart() {
         const el = document.getElementById('chart');
         chart = echarts.init(el, 'dark');
+        bindChartGestures();
         new ResizeObserver(() => {
-            chart.resize();
-            if (plotState.plots.length > 0) renderAllSubplots(true);
+            if (resizeDebounceTimer) clearTimeout(resizeDebounceTimer);
+            resizeDebounceTimer = setTimeout(() => {
+                chart.resize();
+                if (plotState.plots.length === 0) return;
+                // Width-only resizes (sidebar drag) keep grids/series valid: just
+                // reposition the heatmap images. Height changes alter the px-based
+                // grid layout, and structural changes always need a full rebuild.
+                const structureSame = lastStructureKey === structureKey(plotState.plots);
+                if (structureSame && chart.getHeight() === lastRenderedHeight) {
+                    repositionAllHeatmaps();
+                } else {
+                    renderAllSubplots(true);
+                }
+            }, 150);
         }).observe(el);
+    }
+
+    // Raw DOM gesture listeners. Bound exactly once from initChart — they read live
+    // state via plotState/chart, so early binding is safe. Re-running renderAllSubplots
+    // must NOT re-add them (that used to stack handlers, compounding Y-pan).
+    let yDrag = null;
+    let cursorPixel = null;  // last zrender mouse position, for the spectrogram tooltip
+
+    function bindChartGestures() {
+        const chartDom = chart.getDom();
+
+        // Y axis drag-to-pan
+        chartDom.addEventListener('mousedown', (e) => {
+            const domRect = chartDom.getBoundingClientRect();
+            const hit = getSubplotAtY(e.clientX - domRect.left, e.clientY - domRect.top);
+            if (hit && hit.onYAxis) {
+                yDrag = { index: hit.index, startY: e.clientY, range: getYAxisRange(hit.index), rect: hit.rect };
+                e.preventDefault();
+            }
+        });
+        window.addEventListener('mousemove', (e) => {
+            if (!yDrag) return;
+            const dy = e.clientY - yDrag.startY;
+            const span = yDrag.range.max - yDrag.range.min;
+            const shift = (dy / yDrag.rect.height) * span;
+            setYAxisRange(yDrag.index, yDrag.range.min + shift, yDrag.range.max + shift);
+        });
+        window.addEventListener('mouseup', () => { yDrag = null; });
+
+        // Y axis double-click to reset
+        chartDom.addEventListener('dblclick', (e) => {
+            const domRect = chartDom.getBoundingClientRect();
+            const hit = getSubplotAtY(e.clientX - domRect.left, e.clientY - domRect.top);
+            if (hit && hit.onYAxis) {
+                resetYAxisRange(hit.index);
+                e.preventDefault();
+            }
+        });
+
+        // Track the cursor for the spectrogram tooltip readout.
+        chart.getZr().on('mousemove', (e) => { cursorPixel = { x: e.offsetX, y: e.offsetY }; });
+        chart.getZr().on('globalout', () => { cursorPixel = null; });
     }
 
     function bindControls() {
@@ -304,6 +365,37 @@ import { fetchData as apiFetchData, fetchInventory } from './api-client.js';
             renderAllSubplots(true);
         });
         document.getElementById('btn-clear').addEventListener('click', clearAllPlots);
+
+        document.getElementById('btn-export-png').addEventListener('click', () => {
+            if (!chart || plotState.plots.length === 0) return;
+            const url = chart.getDataURL({ pixelRatio: 2, backgroundColor: '#0b0e17' });
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'speasy-plot.png';
+            a.click();
+        });
+
+        document.getElementById('btn-export-csv').addEventListener('click', () => {
+            if (plotState.plots.length === 0) return;
+            const startMs = currentView.start != null ? currentView.start : -Infinity;
+            const stopMs = currentView.end != null ? currentView.end : Infinity;
+            const parts = [];
+            for (const sp of plotState.plots) {
+                for (const prod of sp.products) {
+                    const cache = sp.productData[prod.path];
+                    if (!cache || cache.times.length === 0 || cache.columnNames.length === 0) continue;
+                    parts.push(cacheToCsv(cache, startMs, stopMs));
+                }
+            }
+            if (parts.length === 0) { setStatus('No line data to export.'); return; }
+            const blob = new Blob([parts.join('\n\n') + '\n'], { type: 'text/csv' });
+            const a = document.createElement('a');
+            a.href = URL.createObjectURL(blob);
+            a.download = 'speasy-export.csv';
+            a.click();
+            URL.revokeObjectURL(a.href);
+            setStatus('Exported ' + parts.length + ' product(s) to CSV.');
+        });
 
         // Add to plot dropdown
         document.getElementById('btn-add').addEventListener('click', () => {
@@ -441,6 +533,8 @@ import { fetchData as apiFetchData, fetchInventory } from './api-client.js';
         if (plotState.plots.length === 0) {
             chart.clear();
             document.getElementById('btn-clear').style.display = 'none';
+            document.getElementById('btn-export-png').style.display = 'none';
+            document.getElementById('btn-export-csv').style.display = 'none';
             setStatus('Ready');
         } else {
             renderAllSubplots();
@@ -454,6 +548,8 @@ import { fetchData as apiFetchData, fetchInventory } from './api-client.js';
         document.getElementById('btn-clear').style.display = 'none';
         document.getElementById('btn-log-scale').style.display = 'none';
         document.getElementById('btn-log-y').style.display = 'none';
+        document.getElementById('btn-export-png').style.display = 'none';
+        document.getElementById('btn-export-csv').style.display = 'none';
         document.getElementById('btn-share').disabled = true;
         history.replaceState(null, '', window.location.pathname);
         setStatus('Ready');
@@ -590,6 +686,7 @@ import { fetchData as apiFetchData, fetchInventory } from './api-client.js';
             cache.times = newTimes;
             cache.unit = unit;
             cache.intervals = [[fetchStart, fetchStop]];
+            cache.fetchSpan = fetchStop - fetchStart;
             cache.displayType = (json.values.meta || {}).DISPLAY_TYPE || '';
 
             if (isHeatmap) {
@@ -620,6 +717,7 @@ import { fetchData as apiFetchData, fetchInventory } from './api-client.js';
                 cache.columns = merged.columns;
             }
             cache.intervals = mergeIntervals(cache.intervals.concat([[fetchStart, fetchStop]]));
+            cache.fetchSpan = fetchStop - fetchStart;
         }
     }
 
@@ -637,8 +735,12 @@ import { fetchData as apiFetchData, fetchInventory } from './api-client.js';
         const GAP = 20;
 
         const chartHeight = chart.getHeight();
+        lastRenderedHeight = chartHeight;
+        seriesUnits = {};
         const usableHeight = chartHeight - TOP_PAD - BOT_PAD - GAP * (n - 1);
         const subplotHeight = Math.max(80, usableHeight / n);
+        // One shared time domain for all subplots (see sharedAxisExtent).
+        const sharedExtent = sharedAxisExtent(plotState.plots, AXIS_PAD_RATIO);
 
         for (let i = 0; i < n; i++) {
             const subplot = plotState.plots[i];
@@ -658,8 +760,7 @@ import { fetchData as apiFetchData, fetchInventory } from './api-client.js';
             });
 
             const firstCache = subplot.productData[subplot.products[0]?.path];
-            const times = firstCache?.times || [];
-            const extent = axisExtent(times, AXIS_PAD_RATIO);
+            const extent = sharedExtent;
 
             xAxes.push({
                 type: 'time',
@@ -754,6 +855,7 @@ import { fetchData as apiFetchData, fetchInventory } from './api-client.js';
                             xAxisIndex: i,
                             yAxisIndex: i
                         });
+                        seriesUnits[seriesName] = cache.unit || '';
                         colorIdx++;
                     }
                 }
@@ -842,9 +944,13 @@ import { fetchData as apiFetchData, fetchInventory } from './api-client.js';
                     }
                     for (const p of params) {
                         if (p.value != null) {
-                            html += p.marker + ' ' + p.seriesName + ': ' + p.value[1] + '<br/>';
+                            const y = Array.isArray(p.value) ? p.value[1] : p.value;
+                            const ys = typeof y === 'number' ? String(Number(y.toPrecision(4))) : y;
+                            const unit = seriesUnits[p.seriesName] || '';
+                            html += p.marker + ' ' + p.seriesName + ': ' + ys + (unit ? ' ' + unit : '') + '<br/>';
                         }
                     }
+                    html += spectrogramTooltip(t);
                     return html;
                 }
             },
@@ -856,13 +962,16 @@ import { fetchData as apiFetchData, fetchInventory } from './api-client.js';
             graphic: []
         };
 
-        // Data-only updates (pan/zoom refetch) merge series in place — no teardown, no resize,
-        // so the chart doesn't flash. Structural changes (subplot count, plot type, log axis,
-        // products) fall back to a full rebuild.
+        // Data-only updates (pan/zoom refetch) merge series in place — no teardown, no
+        // resize, so the chart doesn't flash. Structural changes (subplot count, plot
+        // type, log toggle, products) fall back to a full rebuild.
+        // NOTE: no lazyUpdate here — the deferred application leaves a frame where
+        // series models exist without data, and a tooltip triggered in that gap
+        // crashes ECharts (getDataParams → getRawIndex of undefined).
         const canMerge = dataOnly && lastStructureKey === structureKey(plotState.plots);
         suppressDataZoom = true;
         if (canMerge) {
-            chart.setOption(option, { replaceMerge: ['series'], lazyUpdate: true });
+            chart.setOption(option, { replaceMerge: ['series'] });
         } else {
             chart.setOption(option, true);
             chart.resize();
@@ -891,6 +1000,8 @@ import { fetchData as apiFetchData, fetchInventory } from './api-client.js';
         document.getElementById('btn-log-scale').style.display = hasHeatmap ? '' : 'none';
         document.getElementById('btn-log-y').style.display = n > 0 ? '' : 'none';
         document.getElementById('btn-clear').style.display = n > 0 ? '' : 'none';
+        document.getElementById('btn-export-png').style.display = n > 0 ? '' : 'none';
+        document.getElementById('btn-export-csv').style.display = n > 0 ? '' : 'none';
         document.getElementById('btn-share').disabled = n === 0;
 
         setupMultiZoomHandler();
@@ -965,6 +1076,34 @@ import { fetchData as apiFetchData, fetchInventory } from './api-client.js';
         }
     }
 
+    // Spectrogram cursor readout for the tooltip: the heatmap is a static image with an
+    // empty (silent) scatter series, so ECharts has nothing to show — look the value up
+    // in the cache from the cursor's time + Y position instead.
+    function spectrogramTooltip(timeMs) {
+        if (!cursorPixel) return '';
+        let html = '';
+        for (let i = 0; i < plotState.plots.length; i++) {
+            const subplot = plotState.plots[i];
+            if (subplot.plotType !== 'heatmap') continue;
+            const cache = subplot.productData[subplot.products[0]?.path];
+            if (!cache || !cache.times || cache.times.length === 0 || !cache.rows || cache.rows.length === 0) continue;
+            try {
+                const rect = chart.getModel().getComponent('grid', i).coordinateSystem.getRect();
+                if (cursorPixel.x < rect.x || cursorPixel.x > rect.x + rect.width ||
+                    cursorPixel.y < rect.y || cursorPixel.y > rect.y + rect.height) continue;
+                const yVal = chart.convertFromPixel({ yAxisIndex: i }, cursorPixel.y);
+                const yBins = Array.isArray(cache.yAxis?.[0]) ? cache.yAxis[0] : (cache.yAxis || []);
+                const v = spectrogramValueAt(cache.times, cache.rows, yBins, timeMs, yVal);
+                if (v == null || isNaN(v)) continue;
+                const axisName = cache.yAxisName || 'value';
+                html += '<span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#91cc75;margin-right:4px;"></span> '
+                    + axisName + ' ' + String(Number(yVal.toPrecision(4))) + (cache.yAxisUnit ? ' ' + cache.yAxisUnit : '')
+                    + ': <b>' + String(Number(v.toPrecision(4))) + '</b>' + (cache.unit ? ' ' + cache.unit : '') + '<br/>';
+            } catch (_) {}
+        }
+        return html;
+    }
+
     function setupMultiZoomHandler() {
         chart.off('datazoom');
         chart.on('datazoom', () => {
@@ -977,35 +1116,6 @@ import { fetchData as apiFetchData, fetchInventory } from './api-client.js';
         chartDom.removeEventListener('wheel', handleWheel, true);
         chartDom.addEventListener('wheel', handleWheel, { passive: false, capture: true });
 
-        // Y axis drag-to-pan
-        let yDrag = null;
-        chartDom.addEventListener('mousedown', (e) => {
-            const domRect = chartDom.getBoundingClientRect();
-            const hit = getSubplotAtY(e.clientX - domRect.left, e.clientY - domRect.top);
-            if (hit && hit.onYAxis) {
-                yDrag = { index: hit.index, startY: e.clientY, range: getYAxisRange(hit.index), rect: hit.rect };
-                e.preventDefault();
-            }
-        });
-        window.addEventListener('mousemove', (e) => {
-            if (!yDrag) return;
-            const dy = e.clientY - yDrag.startY;
-            const span = yDrag.range.max - yDrag.range.min;
-            const shift = (dy / yDrag.rect.height) * span;
-            setYAxisRange(yDrag.index, yDrag.range.min + shift, yDrag.range.max + shift);
-        });
-        window.addEventListener('mouseup', () => { yDrag = null; });
-
-        // Y axis double-click to reset
-        chartDom.addEventListener('dblclick', (e) => {
-            const domRect = chartDom.getBoundingClientRect();
-            const hit = getSubplotAtY(e.clientX - domRect.left, e.clientY - domRect.top);
-            if (hit && hit.onYAxis) {
-                resetYAxisRange(hit.index);
-                e.preventDefault();
-            }
-        });
-
         // Reposition heatmap images on zoom/resize
         chart.off('finished');
         chart.on('finished', () => repositionAllHeatmaps());
@@ -1013,6 +1123,7 @@ import { fetchData as apiFetchData, fetchInventory } from './api-client.js';
 
     async function onMultiZoomPan() {
         if (plotState.plots.length === 0) return;
+        if (pendingWheelView) applyWheelView();  // flush any coalesced wheel zoom first
 
         const view = getVisibleRange();
         if (!view) return;
@@ -1026,65 +1137,118 @@ import { fetchData as apiFetchData, fetchInventory } from './api-client.js';
         const viewRange = view.end - view.start;
         const buffer = viewRange * BUFFER_RATIO;
 
-        if (fetchController) fetchController.abort();
+        // Free panning: products whose cache already covers the visible range + buffer
+        // at sufficient density keep their data — no refetch, no reset. Zooming in past
+        // ZOOM_IN_REFETCH_RATIO still refetches so resolution follows the view.
+        const reqStart = view.start - buffer;
+        const reqStop = view.end + buffer;
+        const toFetch = [];
+        for (const subplot of plotState.plots) {
+            for (const prod of subplot.products) {
+                const cache = subplot.productData[prod.path];
+                if (!cache || cache.times.length === 0) continue;
+                if (isCovered(cache.intervals, reqStart, reqStop) &&
+                    resolutionSufficient(cache.fetchSpan, reqStop - reqStart, ZOOM_IN_REFETCH_RATIO)) continue;
+                toFetch.push({ path: prod.path, cache });
+            }
+        }
+
+        if (toFetch.length === 0) {
+            // Everything is buffered — just re-render from cache (refreshes heatmap
+            // images for the new view without touching line series data).
+            renderAllSubplots(true, true);
+            return;
+        }
+
+        // A pan/zoom fetch is already running. ECharts streams datazoom events faster
+        // than upstream fetches complete; firing a parallel fetch per event produced a
+        // request storm. Queue exactly one rerun with the latest view instead. Abort
+        // the in-flight fetch only when it is mostly useless for the current request:
+        // disjoint ranges are pure waste, and a young fetch with little overlap is
+        // cheap to discard. Otherwise let it finish — aborting useful fetches starves
+        // the cache (nothing ever completes, coverage never grows) and churns the server.
+        if (fetchController) {
+            const r = fetchController._range;
+            const reqSpan = reqStop - reqStart;
+            const overlapMs = r ? Math.max(0, Math.min(r.stop, reqStop) - Math.max(r.start, reqStart)) : 0;
+            const young = performance.now() - (fetchController._t0 || 0) < 700;
+            if (overlapMs === 0 || (young && overlapMs < 0.5 * reqSpan)) fetchController.abort();
+            panFetchQueued = true;
+            return;
+        }
         const controller = new AbortController();
+        controller._range = { start: reqStart, stop: reqStop };
+        controller._t0 = performance.now();
         fetchController = controller;
         showFetchBar(true);
 
         const fetchStart = new Date(view.start - buffer).toISOString();
         const fetchStop = new Date(view.end + buffer).toISOString();
 
-        const fetchJobs = [];
-        for (const subplot of plotState.plots) {
-            for (const prod of subplot.products) {
-                const cache = subplot.productData[prod.path];
-                if (!cache || cache.times.length === 0) continue;
+        const fetchJobs = toFetch.map(({ path, cache }) =>
+            fetchData(path, fetchStart, fetchStop, controller.signal)
+                .then(data => ({ cache, data }))
+                .catch(e => {
+                    if (e.name !== 'AbortError') console.error('Fetch error for', path, e);
+                    return null;
+                })
+        );
 
-                fetchJobs.push(
-                    fetchData(prod.path, fetchStart, fetchStop, controller.signal)
-                        .then(data => ({ cache, data }))
-                        .catch(e => {
-                            if (e.name !== 'AbortError') console.error('Fetch error for', prod.path, e);
-                            return null;
-                        })
-                );
-            }
-        }
+        try {
+            const results = await Promise.all(fetchJobs);
 
-        const results = await Promise.all(fetchJobs);
+            if (!controller.signal.aborted) {
+                const valid = results.filter(r => r && r.data?.axes?.[0]?.values?.length);
+                if (valid.length > 0) {
+                    // Reset only caches disjoint from the new range (never draw a line
+                    // across a time gap). Overlapping caches merge in place, so data
+                    // stays on screen while the refetch is in flight instead of blanking.
+                    for (const r of valid) {
+                        if (!rangesOverlap(r.cache.intervals, view.start - buffer, view.end + buffer)) {
+                            resetProductCache(r.cache);
+                        }
+                    }
+                    for (const r of valid) mergeProductData(r.cache, r.data, view.start - buffer, view.end + buffer);
 
-        if (controller.signal.aborted) return;
-
-        const valid = results.filter(r => r && r.data?.axes?.[0]?.values?.length);
-        if (valid.length > 0) {
-            for (const r of valid) resetProductCache(r.cache);
-            for (const r of valid) mergeProductData(r.cache, r.data, view.start - buffer, view.end + buffer);
-        }
-        const anyFetched = valid.length > 0;
-
-        if (anyFetched) {
-            for (const subplot of plotState.plots) {
-                for (const prod of subplot.products) {
-                    evictProductCache(subplot.productData[prod.path], MAX_CACHE_POINTS);
+                    // Bound every cache to a rolling window around the live view:
+                    // merged data accumulates otherwise, and re-zipping/re-parsing
+                    // 100k+ points per series makes every pan/zoom render stutter.
+                    const liveView = getVisibleRange();
+                    const curStart = liveView ? liveView.start : view.start;
+                    const curEnd = liveView ? liveView.end : view.end;
+                    const keepSpan = (curEnd - curStart) * TRIM_WINDOW_RATIO;
+                    for (const subplot of plotState.plots) {
+                        for (const prod of subplot.products) {
+                            const cache = subplot.productData[prod.path];
+                            trimCacheWindow(cache, curStart - keepSpan, curEnd + keepSpan);
+                            evictProductCache(cache, MAX_CACHE_POINTS);
+                        }
+                    }
+                    if (liveView) {
+                        currentView.start = liveView.start;
+                        currentView.end = liveView.end;
+                    }
+                    renderAllSubplots(true, true);
                 }
             }
-            const liveView = getVisibleRange();
-            if (liveView) {
-                currentView.start = liveView.start;
-                currentView.end = liveView.end;
+        } finally {
+            if (fetchController === controller) {
+                showFetchBar(false);
+                fetchController = null;
             }
-            renderAllSubplots(true, true);
-        }
-
-        if (fetchController === controller) {
-            showFetchBar(false);
-            fetchController = null;
+            if (panFetchQueued) {
+                // At most one queued rerun per fetch; it re-reads the live view,
+                // so a whole gesture stream collapses to the final state.
+                panFetchQueued = false;
+                await onMultiZoomPan();
+            }
         }
     }
 
     function resetProductCache(cache) {
         cache.times = [];
         cache.intervals = [];
+        cache.fetchSpan = 0;
         cache.rows = [];
         for (const cn of cache.columnNames) {
             cache.columns[cn] = [];
@@ -1093,13 +1257,16 @@ import { fetchData as apiFetchData, fetchInventory } from './api-client.js';
 
     // ===== Continuous Pan/Zoom =====
     //
-    // On every zoom/pan, re-fetch the full visible range + buffer for all products.
-    // Server-side resampling (max_points) keeps payloads bounded regardless of time range.
+    // Pan/zoom refetches the visible range + buffer for products whose cache doesn't
+    // already cover it densely enough. Server-side resampling (max_points) keeps
+    // payloads bounded regardless of time range.
 
     const BUFFER_RATIO = 1.0;      // pre-fetch 1x view width on each side
     const POINTS_PER_PIXEL = 2.0;  // target density of the *visible* window (server resample target)
     const AXIS_PAD_RATIO = 0.5;    // x-axis domain padding beyond loaded data, so drag-pan has room
     const MIN_ZOOM_SPAN_MS = 1;    // smallest wheel-zoom window (times are ms; allow down to 1ms)
+    const ZOOM_IN_REFETCH_RATIO = 0.5; // zooming into < half the fetched span triggers a denser refetch
+    const TRIM_WINDOW_RATIO = 2.0;     // keep cached data within view ± 2x view span; older data is dropped
 
     function getVisibleRange() {
         // Read the actual axis extent from the chart — most reliable source
@@ -1194,8 +1361,10 @@ import { fetchData as apiFetchData, fetchInventory } from './api-client.js';
             return;
         }
 
-        // Plot body: zoom/pan the time axis.
-        const view = getVisibleRange();
+        // Plot body: zoom/pan the time axis. If a wheel update is already queued for
+        // this frame, accumulate on top of the pending view instead of reading stale
+        // chart state.
+        const view = pendingWheelView || getVisibleRange();
         if (!view) return;
 
         let next;
@@ -1211,6 +1380,24 @@ import { fetchData as apiFetchData, fetchInventory } from './api-client.js';
 
         currentView.start = next.start;
         currentView.end = next.end;
+        pendingWheelView = next;
+
+        // Coalesce wheel bursts (trackpads/high-res wheels fire every few ms) into a
+        // single setOption per animation frame — one full re-render per notch is jank.
+        if (!wheelRafPending) {
+            wheelRafPending = true;
+            requestAnimationFrame(applyWheelView);
+        }
+
+        if (zoomDebounceTimer) clearTimeout(zoomDebounceTimer);
+        zoomDebounceTimer = setTimeout(onMultiZoomPan, 200);
+    }
+
+    function applyWheelView() {
+        wheelRafPending = false;
+        const next = pendingWheelView;
+        pendingWheelView = null;
+        if (!next || !chart) return;
 
         const padding = (next.end - next.start) * 2;
         const xAxisUpdate = plotState.plots.map(() => ({
@@ -1225,9 +1412,6 @@ import { fetchData as apiFetchData, fetchInventory } from './api-client.js';
         suppressDataZoom = true;
         chart.setOption({ xAxis: xAxisUpdate, dataZoom: dzUpdate });
         suppressDataZoom = false;
-
-        if (zoomDebounceTimer) clearTimeout(zoomDebounceTimer);
-        zoomDebounceTimer = setTimeout(onMultiZoomPan, 200);
     }
 
     // ===== Task 8: URL State =====
@@ -1313,10 +1497,13 @@ import { fetchData as apiFetchData, fetchInventory } from './api-client.js';
             document.getElementById('btn-plot').disabled = false;
         }
 
-        setTimeout(() => fetchAllAndRender(), 100);
+        // initChart() runs synchronously earlier in the DOMContentLoaded handler, so
+        // the chart already exists here — no need to defer the first fetch.
+        fetchAllAndRender();
     }
 
     async function fetchAllAndRender() {
+        if (!chart) { setStatus('Chart not available — check network connection.'); return; }
         showLoading(true);
         setStatus('Fetching data...');
 
@@ -1343,16 +1530,23 @@ import { fetchData as apiFetchData, fetchInventory } from './api-client.js';
 
         const results = await Promise.all(fetchPromises);
 
+        const errors = [];
+        let loadedCount = 0;
         for (const result of results) {
             if (result.error) {
                 console.error('Fetch error for', result.path, result.error);
+                errors.push(result.path + ' (' + result.error.message + ')');
                 continue;
             }
             const { subplot, path, data } = result;
-            if (!data || !data.values || !data.axes || data.axes.length === 0) continue;
+            if (!data || !data.values || !data.axes || data.axes.length === 0) {
+                errors.push(path + ' (no data returned)');
+                continue;
+            }
 
             const cache = subplot.productData[path];
             mergeProductData(cache, data, fetchStartMs, fetchStopMs);
+            loadedCount++;
 
             // Detect plot type from first product
             if (subplot.products[0].path === path) {
@@ -1364,7 +1558,9 @@ import { fetchData as apiFetchData, fetchInventory } from './api-client.js';
         renderAllSubplots();
 
         const totalProducts = plotState.plots.reduce((n, sp) => n + sp.products.length, 0);
-        setStatus('Loaded ' + totalProducts + ' product(s) across ' + plotState.plots.length + ' subplot(s)');
+        let msg = 'Loaded ' + loadedCount + '/' + totalProducts + ' product(s) across ' + plotState.plots.length + ' subplot(s)';
+        if (errors.length > 0) msg += '. Errors: ' + errors.join('; ');
+        setStatus(msg);
         showLoading(false);
     }
 
@@ -1374,6 +1570,7 @@ import { fetchData as apiFetchData, fetchInventory } from './api-client.js';
         const handle = document.getElementById('resize-handle');
         const sidebar = document.querySelector('.sidebar');
         let startX, startWidth;
+        let resizeRaf = 0;
 
         handle.addEventListener('mousedown', (e) => {
             e.preventDefault();
@@ -1386,7 +1583,14 @@ import { fetchData as apiFetchData, fetchInventory } from './api-client.js';
             function onMouseMove(e) {
                 const newWidth = Math.max(160, Math.min(startWidth + e.clientX - startX, window.innerWidth - 200));
                 sidebar.style.width = newWidth + 'px';
-                if (chart) chart.resize();
+                // Throttle the resize to one per animation frame; the debounced
+                // ResizeObserver in initChart handles heatmap repositioning.
+                if (!resizeRaf) {
+                    resizeRaf = requestAnimationFrame(() => {
+                        resizeRaf = 0;
+                        if (chart) chart.resize();
+                    });
+                }
             }
 
             function onMouseUp() {

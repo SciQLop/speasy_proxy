@@ -5,7 +5,7 @@ import {
   EARTH_RADIUS_KM, MAX_DISTANCE_RE,
 } from './magnetosphere.js';
 import { fetchData as apiFetchData, fetchInventory } from './api-client.js';
-import { isSpzMetaKey } from './inventory-tree.js';
+import { isSpzMetaKey, hasVisibleChildren } from './inventory-tree.js';
 
 const API_BASE = (window.SPEASY_BASE_URL || '').replace(/\/$/, '') + '/';
     const COLORS = ['#5470c6','#91cc75','#fac858','#ee6666','#73c0de','#3ba272','#fc8452','#9a60b4','#ea7ccc'];
@@ -233,13 +233,12 @@ const API_BASE = (window.SPEASY_BASE_URL || '').replace(/\/$/, '') + '/';
   return isSpzMetaKey(key) || METADATA_KEYS.has(key);
 }
 
-    function hasVisibleChildren(node) {
-        if (typeof node !== 'object' || node === null) return false;
-        return Object.keys(node).some(k => !isMetadataKey(k));
+    function nodeHasVisibleChildren(node) {
+        return hasVisibleChildren(node, isMetadataKey);
     }
 
     function isLeaf(node) {
-        return node && typeof node === 'object' && '__spz_uid__' in node && !hasVisibleChildren(node);
+        return node && typeof node === 'object' && '__spz_uid__' in node && !nodeHasVisibleChildren(node);
     }
 
     function findTimeBounds(node) {
@@ -425,7 +424,7 @@ const API_BASE = (window.SPEASY_BASE_URL || '').replace(/\/$/, '') + '/';
 
             if (isLeaf(val)) {
                 ul.appendChild(makeLeafNode(val, key, parentNode));
-            } else if (hasVisibleChildren(val)) {
+            } else if (nodeHasVisibleChildren(val)) {
                 const displayName = val.__spz_name__ || key;
                 const childKeys = Object.keys(val).filter(k => !isMetadataKey(k) && typeof val[k] === 'object' && val[k] !== null);
                 const allChildrenLeaves = childKeys.length > 0 && childKeys.every(k => isLeaf(val[k]));
@@ -453,6 +452,7 @@ const API_BASE = (window.SPEASY_BASE_URL || '').replace(/\/$/, '') + '/';
             swatch.style.display = 'none';
             updateChartOption();
             setStatus(`Removed ${uid.split('/').pop()}.`);
+            updateURL();
             return;
         }
 
@@ -514,6 +514,7 @@ const reData = toReData(data.values.values);
             span.classList.add('plotted');
             updateChartOption();
             setStatus(`Plotted ${name} (${reData.length} points).`);
+            updateURL();
         } catch (err) {
             cb.checked = false;
             setStatus('Error: ' + err.message);
@@ -573,6 +574,7 @@ const reData = toReData(data.values.values);
         showFetchBar(false);
         const msg = `Refreshed ${trajectories.size} trajectory(ies).`;
         setStatus(errors.length ? msg + ' Errors: ' + errors.join('; ') : msg);
+        updateURL();
     }
 
     function getSelectedDurationMs() {
@@ -585,7 +587,7 @@ const reData = toReData(data.values.values);
         if (!stop) return;
         const start = new Date(stop.getTime() - days * 86400000);
         setDateInput(document.getElementById('startTime'), start);
-        replotAll();
+        debouncedReplotAll();
     }
 
     document.getElementById('durationBtns').addEventListener('click', (e) => {
@@ -617,7 +619,15 @@ const reData = toReData(data.values.values);
     attachDatePicker(document.getElementById('startTime'));
     attachDatePicker(document.getElementById('stopTime'));
 
-    document.getElementById('startTime').addEventListener('change', replotAll);
+    // Route start/stop edits through a short debounce so changing both fields
+    // (or a flatpickr pick firing 'change' twice) triggers a single replot.
+    let replotTimer = null;
+    function debouncedReplotAll() {
+        if (replotTimer) clearTimeout(replotTimer);
+        replotTimer = setTimeout(replotAll, 250);
+    }
+
+    document.getElementById('startTime').addEventListener('change', debouncedReplotAll);
     document.getElementById('stopTime').addEventListener('change', () => {
         applyDuration(getSelectedDurationMs() / 86400000);
     });
@@ -627,10 +637,12 @@ const reData = toReData(data.values.values);
     document.getElementById('showMagnetopause').addEventListener('change', () => {
         reclassifyAllTrajectories();
         updateChartOption();
+        updateURL();
     });
     document.getElementById('showBowShock').addEventListener('change', () => {
         reclassifyAllTrajectories();
         updateChartOption();
+        updateURL();
     });
 
 
@@ -640,6 +652,7 @@ const reData = toReData(data.values.values);
         magnetoTimer = setTimeout(() => {
             reclassifyAllTrajectories();
             updateChartOption();
+            updateURL();
         }, 500);
     }
 
@@ -731,6 +744,71 @@ const reData = toReData(data.values.values);
         new ResizeObserver(updateBtnPosition).observe(sidebar);
     })();
 
+    // ---- Shareable URL state ----
+    // Flat, readable query params (no base64 config here): coordSys, start/stop,
+    // checked uids, Dp/Bz, boundary toggles. Restored on load; checked uids are
+    // re-applied once the inventory tree exists.
+
+    let pendingUids = null;  // uids from the URL waiting for the tree to build
+
+    function updateURL() {
+        const params = new URLSearchParams();
+        const startDate = parseDateInput(document.getElementById('startTime').value);
+        const stopDate = parseDateInput(document.getElementById('stopTime').value);
+        if (startDate) params.set('start', startDate.toISOString());
+        if (stopDate) params.set('stop', stopDate.toISOString());
+        params.set('coordSys', document.getElementById('coordSys').value);
+        const uids = Array.from(document.querySelectorAll('.tree-node input[type="checkbox"][data-uid]:checked'))
+            .map(cb => cb.dataset.uid);
+        if (uids.length > 0) params.set('uids', uids.join(','));
+        const dp = document.getElementById('dpSlider').value;
+        const bz = document.getElementById('bzSlider').value;
+        if (dp !== '2') params.set('dp', dp);
+        if (bz !== '0') params.set('bz', bz);
+        if (document.getElementById('showMagnetopause').checked) params.set('mp', '1');
+        if (document.getElementById('showBowShock').checked) params.set('bs', '1');
+        const qs = params.toString();
+        history.replaceState(null, '', window.location.pathname + (qs ? '?' + qs : ''));
+    }
+
+    function restoreFromURL() {
+        const params = new URLSearchParams(window.location.search);
+        if ([...params.keys()].length === 0) return;
+
+        const coordSys = params.get('coordSys');
+        if (coordSys) document.getElementById('coordSys').value = coordSys;
+        const start = params.get('start');
+        const stop = params.get('stop');
+        if (start && !isNaN(new Date(start))) setDateInput(document.getElementById('startTime'), new Date(start));
+        if (stop && !isNaN(new Date(stop))) setDateInput(document.getElementById('stopTime'), new Date(stop));
+        const dp = params.get('dp');
+        if (dp !== null && !isNaN(parseFloat(dp))) {
+            document.getElementById('dpSlider').value = dp;
+            document.getElementById('dpValue').textContent = parseFloat(dp).toFixed(1) + ' nPa';
+        }
+        const bz = params.get('bz');
+        if (bz !== null && !isNaN(parseFloat(bz))) {
+            document.getElementById('bzSlider').value = bz;
+            document.getElementById('bzValue').textContent = parseFloat(bz).toFixed(1) + ' nT';
+        }
+        document.getElementById('showMagnetopause').checked = params.get('mp') === '1';
+        document.getElementById('showBowShock').checked = params.get('bs') === '1';
+        const uids = params.get('uids');
+        pendingUids = uids ? uids.split(',') : null;
+    }
+
+    function applyPendingUids() {
+        if (!pendingUids) return;
+        const wanted = pendingUids;
+        pendingUids = null;
+        for (const cb of document.querySelectorAll('.tree-node input[type="checkbox"][data-uid]')) {
+            if (wanted.includes(cb.dataset.uid)) {
+                cb.checked = true;
+                cb.dispatchEvent(new Event('change'));
+            }
+        }
+    }
+
     // ---- Init ----
     async function loadInventory() {
         showLoading(true);
@@ -740,8 +818,17 @@ const reData = toReData(data.values.values);
             const inv = await fetchInventory(API_BASE, 'ssc');
             buildTree(inv, document.getElementById('treeContainer'), inv);
             setStatus('Ready — check satellites to plot their orbits.');
+            applyPendingUids();
         } catch (err) {
             setStatus('Failed to load inventory: ' + err.message);
+            const container = document.getElementById('treeContainer');
+            container.innerHTML = '';
+            const retryBtn = document.createElement('button');
+            retryBtn.textContent = 'Retry';
+            retryBtn.style.cssText = 'margin:8px;padding:6px 16px;border:none;border-radius:6px;background:#6b8afd;color:#fff;font-size:0.85rem;cursor:pointer;';
+            retryBtn.addEventListener('click', () => loadInventory());
+            container.appendChild(retryBtn);
+            console.error('Inventory load error:', err);
         } finally {
             showLoading(false);
             showFetchBar(false);
@@ -749,7 +836,14 @@ const reData = toReData(data.values.values);
     }
 
     (async () => {
-        await loadEarthTexture();
-        initChart();
+        restoreFromURL();
+        try {
+            await loadEarthTexture();
+            initChart();
+        } catch (e) {
+            console.error('3D chart init failed:', e);
+            setStatus('Chart library failed to load — 3D view unavailable. Check network connection.');
+        }
+        // Inventory loads even if the chart didn't, so the tree stays usable.
         loadInventory();
     })();

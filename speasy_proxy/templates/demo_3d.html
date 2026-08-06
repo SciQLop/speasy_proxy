@@ -4,8 +4,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>3D Orbit Viewer - Speasy Proxy</title>
-    <script src="https://cdn.jsdelivr.net/npm/echarts@5/dist/echarts.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/echarts-gl@2/dist/echarts-gl.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/echarts@5/dist/echarts.min.js" onerror="window.addEventListener('DOMContentLoaded',function(){var s=document.getElementById('statusBar');if(s)s.textContent='Failed to load ECharts library — check network connection';});console.error('ECharts CDN failed to load');"></script>
+    <script src="https://cdn.jsdelivr.net/npm/echarts-gl@2/dist/echarts-gl.min.js" onerror="window.addEventListener('DOMContentLoaded',function(){var s=document.getElementById('statusBar');if(s)s.textContent='Failed to load echarts-gl library — 3D view unavailable';});console.error('echarts-gl CDN failed to load');"></script>
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr@4/dist/themes/dark.css">
     <script src="https://cdn.jsdelivr.net/npm/flatpickr@4" onerror="console.error('flatpickr CDN failed to load — date fields stay plain text');"></script>
     <link rel="stylesheet" href="{{ base_url }}/static/css/theme.css">

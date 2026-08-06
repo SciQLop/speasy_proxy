@@ -31,6 +31,38 @@ export function computeYEdges(yBinsFlat) {
   return yEdges;
 }
 
+// Value lookup for cursor readout: nearest time column, then the y bin whose edges
+// (from computeYEdges) contain yValue. Returns the cell value, or null when the
+// position is outside the data or the cell is missing/NaN.
+export function spectrogramValueAt(times, rows, yBinsFlat, timeMs, yValue) {
+  if (!times || times.length === 0 || !rows || rows.length === 0) return null;
+  if (!yBinsFlat || yBinsFlat.length === 0) return null;
+  if (typeof timeMs !== 'number' || typeof yValue !== 'number' || isNaN(timeMs) || isNaN(yValue)) return null;
+
+  // Nearest time index (times are sorted ascending).
+  let lo = 0, hi = times.length - 1;
+  while (lo < hi) {
+    const mid = (lo + hi) >> 1;
+    if (times[mid] < timeMs) lo = mid + 1; else hi = mid;
+  }
+  let ti = lo;
+  if (lo > 0 && timeMs - times[lo - 1] <= times[lo] - timeMs) ti = lo - 1;
+
+  // Y bin containing yValue.
+  const edges = computeYEdges(yBinsFlat);
+  if (yValue < edges[0] || yValue > edges[edges.length - 1]) return null;
+  let a = 0, b = edges.length - 1;
+  while (a < b - 1) {
+    const mid = (a + b) >> 1;
+    if (edges[mid] <= yValue) a = mid; else b = mid;
+  }
+
+  const row = rows[ti];
+  if (!row || a >= row.length) return null;
+  const v = row[a];
+  return (v == null || isNaN(v)) ? null : v;
+}
+
 // view: { start, end } in ms (nullable); returns { canvas, tStart, tEnd, yMin, yMax } or null
 export function renderSpectrogramImage(times, rows, yBinsFlat, vMin, vMax, logScaleParam, view) {
   const v = (view && view.start != null && view.end != null)

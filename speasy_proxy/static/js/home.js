@@ -1,5 +1,6 @@
 import { formatBytes, formatNumber, formatDuration, formatDateTime } from './format.js';
 import { configToBase64 } from './plot-core.js';
+import { escapeHtml } from './common.js';
 
 const BASE_URL = (window.SPEASY_BASE_URL || '').replace(/\/$/, '');
 
@@ -46,8 +47,8 @@ const BASE_URL = (window.SPEASY_BASE_URL || '').replace(/\/$/, '');
                 card.href = plotUrl;
                 card.className = 'preset-card';
                 card.innerHTML =
-                    '<div class="preset-name">' + preset.name + '</div>' +
-                    (preset.description ? '<div class="preset-desc">' + preset.description + '</div>' : '');
+                    '<div class="preset-name">' + escapeHtml(preset.name) + '</div>' +
+                    (preset.description ? '<div class="preset-desc">' + escapeHtml(preset.description) + '</div>' : '');
                 grid.appendChild(card);
             }
             document.getElementById('presets-section').style.display = '';
@@ -57,5 +58,8 @@ const BASE_URL = (window.SPEASY_BASE_URL || '').replace(/\/$/, '');
     }
 
     updateStatus();
-    setInterval(updateStatus, 10000);
+    // Skip polling while the tab is hidden — the next visible tick refreshes anyway.
+    setInterval(() => {
+        if (document.visibilityState !== 'hidden') updateStatus();
+    }, 10000);
     loadPresets();

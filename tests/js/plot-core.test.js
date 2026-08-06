@@ -1,9 +1,9 @@
 import { describe, it, expect } from 'vitest';
 import {
   mergeSorted, mergeSortedRows, mergeIntervals, evictProductCache, buildSeriesData,
-  detectPlotType, configToBase64, base64ToConfig,
+  detectPlotType, configToBase64, base64ToConfig, isCovered, resolutionSufficient, rangesOverlap, trimCacheWindow, cacheToCsv,
   createSubplotData, createProductCache, subplotToConfig, subplotFromConfig,
-  normalizeWheelDelta, zoomRange, panRange, zoomToward, axisExtent, structureKey, resampleTarget,
+  normalizeWheelDelta, zoomRange, panRange, zoomToward, axisExtent, sharedAxisExtent, structureKey, resampleTarget,
 } from '../../speasy_proxy/static/js/plot-core.js';
 
 describe('merge', () => {
@@ -23,6 +23,147 @@ describe('merge', () => {
   });
   it('buildSeriesData zips into [t,v] pairs', () => {
     expect(buildSeriesData([1, 2], [10, 20])).toEqual([[1, 10], [2, 20]]);
+  });
+});
+
+describe('isCovered', () => {
+  it('is false for an empty or missing interval list', () => {
+    expect(isCovered([], 0, 10)).toBe(false);
+    expect(isCovered(null, 0, 10)).toBe(false);
+  });
+  it('is true when a single interval contains the range', () => {
+    expect(isCovered([[0, 100]], 10, 90)).toBe(true);
+  });
+  it('is true on exact boundaries (inclusive)', () => {
+    expect(isCovered([[0, 100]], 0, 100)).toBe(true);
+  });
+  it('is true when adjacent/overlapping intervals merge to cover the range', () => {
+    expect(isCovered([[50, 100], [0, 60]], 10, 90)).toBe(true);
+  });
+  it('is false when a gap sits inside the range', () => {
+    expect(isCovered([[0, 40], [60, 100]], 10, 90)).toBe(false);
+  });
+  it('is false when the range sticks out on either side', () => {
+    expect(isCovered([[10, 90]], 0, 50)).toBe(false);
+    expect(isCovered([[10, 90]], 50, 100)).toBe(false);
+  });
+  it('does not mutate the caller’s intervals', () => {
+    const ivs = [[50, 100], [0, 60]];
+    isCovered(ivs, 10, 90);
+    expect(ivs).toEqual([[50, 100], [0, 60]]);
+  });
+});
+
+describe('resolutionSufficient', () => {
+  it('is false when no fetch span is recorded (safe default: refetch)', () => {
+    expect(resolutionSufficient(0, 100)).toBe(false);
+  });
+  it('is true when the request span is close to the fetched span (pan)', () => {
+    expect(resolutionSufficient(1000, 900, 0.5)).toBe(true);
+    expect(resolutionSufficient(1000, 1000, 0.5)).toBe(true);
+  });
+  it('is true on the exact ratio boundary', () => {
+    expect(resolutionSufficient(1000, 500, 0.5)).toBe(true);
+  });
+  it('is false once zoomed in below the ratio (needs denser data)', () => {
+    expect(resolutionSufficient(1000, 499, 0.5)).toBe(false);
+    expect(resolutionSufficient(1000, 10, 0.5)).toBe(false);
+  });
+  it('defaults to a 0.5 ratio', () => {
+    expect(resolutionSufficient(1000, 600)).toBe(true);
+    expect(resolutionSufficient(1000, 400)).toBe(false);
+  });
+});
+
+describe('rangesOverlap', () => {
+  it('is false for an empty or missing interval list', () => {
+    expect(rangesOverlap([], 0, 10)).toBe(false);
+    expect(rangesOverlap(null, 0, 10)).toBe(false);
+  });
+  it('is true on any overlap, including touching bounds', () => {
+    expect(rangesOverlap([[0, 50]], 25, 75)).toBe(true);
+    expect(rangesOverlap([[0, 50]], 50, 75)).toBe(true);
+    expect(rangesOverlap([[50, 75]], 0, 50)).toBe(true);
+    expect(rangesOverlap([[0, 10], [40, 60]], 20, 45)).toBe(true);
+  });
+  it('is false when fully disjoint', () => {
+    expect(rangesOverlap([[0, 10]], 20, 30)).toBe(false);
+    expect(rangesOverlap([[40, 60]], 0, 30)).toBe(false);
+  });
+});
+
+describe('trimCacheWindow', () => {
+  const mkCache = () => ({
+    times: [0, 10, 20, 30, 40, 50],
+    columns: { a: [0, 1, 2, 3, 4, 5] },
+    columnNames: ['a'],
+    rows: [[0], [1], [2], [3], [4], [5]],
+    intervals: [[0, 50]],
+  });
+  it('slices times, columns and rows to the window and clips intervals', () => {
+    const c = mkCache();
+    trimCacheWindow(c, 15, 35);
+    expect(c.times).toEqual([20, 30]);
+    expect(c.columns.a).toEqual([2, 3]);
+    expect(c.rows).toEqual([[2], [3]]);
+    expect(c.intervals).toEqual([[15, 35]]);
+  });
+  it('keeps boundary points (inclusive window)', () => {
+    const c = mkCache();
+    trimCacheWindow(c, 10, 30);
+    expect(c.times).toEqual([10, 20, 30]);
+  });
+  it('is a no-op when everything is inside the window', () => {
+    const c = mkCache();
+    trimCacheWindow(c, -100, 100);
+    expect(c.times).toEqual([0, 10, 20, 30, 40, 50]);
+    expect(c.intervals).toEqual([[0, 50]]);
+  });
+  it('empties the cache when the window is fully outside', () => {
+    const c = mkCache();
+    trimCacheWindow(c, 1000, 2000);
+    expect(c.times).toEqual([]);
+    expect(c.intervals).toEqual([]);
+  });
+  it('tolerates an empty cache', () => {
+    const c = { times: [], columns: {}, columnNames: [], rows: [], intervals: [] };
+    expect(() => trimCacheWindow(c, 0, 10)).not.toThrow();
+  });
+});
+
+describe('cacheToCsv', () => {
+  const mkCache = () => {
+    const cache = createProductCache('amda/imf');
+    cache.times = [Date.UTC(2024, 0, 1, 0, 0, 0), Date.UTC(2024, 0, 1, 1, 0, 0), Date.UTC(2024, 0, 1, 2, 0, 0)];
+    cache.columnNames = ['bx', 'by'];
+    cache.columns = { bx: [1, 2, 3], by: [4, null, 6] };
+    cache.unit = 'nT';
+    return cache;
+  };
+  it('writes a header with path, column names and units, then ISO rows', () => {
+    const csv = cacheToCsv(mkCache(), -Infinity, Infinity);
+    const lines = csv.split('\n');
+    expect(lines[0]).toBe('time,"amda/imf bx (nT)","amda/imf by (nT)"');
+    expect(lines[1]).toBe('2024-01-01T00:00:00.000Z,1,4');
+    expect(lines).toHaveLength(4);
+  });
+  it('serializes nulls as empty cells', () => {
+    const csv = cacheToCsv(mkCache(), -Infinity, Infinity);
+    expect(csv.split('\n')[2]).toBe('2024-01-01T01:00:00.000Z,2,');
+  });
+  it('restricts rows to [startMs, stopMs] inclusively', () => {
+    const cache = mkCache();
+    const csv = cacheToCsv(cache, cache.times[1], cache.times[2]);
+    const lines = csv.split('\n');
+    expect(lines).toHaveLength(3); // header + 2 rows
+    expect(lines[1].startsWith('2024-01-01T01:00:00.000Z')).toBe(true);
+  });
+  it('escapes quotes in header fields', () => {
+    const cache = mkCache();
+    cache.columnNames = ['we"ird'];
+    cache.columns = { 'we"ird': [1, 2, 3] };
+    const csv = cacheToCsv(cache, -Infinity, Infinity);
+    expect(csv.split('\n')[0]).toBe('time,"amda/imf we""ird (nT)"');
   });
 });
 
@@ -133,6 +274,26 @@ describe('axisExtent', () => {
   });
   it('returns undefined bounds for empty data', () => {
     expect(axisExtent([], 0.5)).toEqual({ min: undefined, max: undefined });
+  });
+});
+
+describe('sharedAxisExtent', () => {
+  const mkSubplot = (spans) => ({
+    products: spans.map((_, i) => ({ path: 'p' + i })),
+    productData: Object.fromEntries(spans.map(([lo, hi], i) => ['p' + i, { times: hi > lo ? [lo, hi] : [] }])),
+  });
+  it('unions times across subplots and products, then pads', () => {
+    const plots = [mkSubplot([[10, 50]]), mkSubplot([[20, 90], [0, 30]])];
+    // union is [0, 90], pad 0.5 × 90 = 45 on each side
+    expect(sharedAxisExtent(plots, 0.5)).toEqual({ min: -45, max: 135 });
+  });
+  it('ignores empty caches', () => {
+    const plots = [mkSubplot([[0, 0], [10, 20]])];
+    expect(sharedAxisExtent(plots, 0.5)).toEqual({ min: 5, max: 25 });
+  });
+  it('returns undefined bounds when nothing has data', () => {
+    expect(sharedAxisExtent([mkSubplot([[0, 0]])], 0.5)).toEqual({ min: undefined, max: undefined });
+    expect(sharedAxisExtent([], 0.5)).toEqual({ min: undefined, max: undefined });
   });
 });
 
