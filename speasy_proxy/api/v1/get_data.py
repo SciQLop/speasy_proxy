@@ -134,42 +134,41 @@ async def get_data(request: Request,
                     headers={'Content-Type': mime})
 
 
-def encode_output(var, path: str, start_time: str, stop_time: str, format: str, request: Request,
+def encode_output(var, path: str, start_time: str, stop_time: str, fmt: str, request: Request,
                   pickle_proto: int = 3):
     data = None
 
     if var is None:
         # Respond in the requested format instead of a pickled None (BL-6).
-        if format == "json":
+        if fmt == "json":
             return "null", 'application/json; charset=UTF-8'
-        if format == "html_bokeh":
+        if fmt == "html_bokeh":
             return plot_data(product=path, data=None, start_time=start_time, stop_time=stop_time,
                              request=request), 'text/html; charset=UTF-8'
-        if format == "cdf":
+        if fmt == "cdf":
             # create an empty speasy variable to be able to save it in CDF format
             var = SpeasyVariable(axes=[VariableTimeAxis(values=np.array([], dtype='datetime64[ns]'), meta={})],
                                  values=DataContainer(values=np.array([]), meta={}, name="Unknown"))
     if var is not None:
-        output_format = format
-        if output_format == "python_dict":
+        if fmt == "python_dict":
             data = to_dictionary(var)
-        elif output_format == "cdf":
+        elif fmt == "cdf":
             data = get_codec('application/x-cdf').save_variables([var])
             return bytes(data), "application/x-cdf"
-        elif output_format == 'speasy_variable':
+        elif fmt == 'speasy_variable':
             data = var
-        elif output_format == 'html_bokeh':
+        elif fmt == 'html_bokeh':
             return plot_data(product=path, data=var,
                              start_time=start_time, stop_time=stop_time,
                              request=request), 'text/html; charset=UTF-8'
-        elif output_format == 'json':
+        elif fmt == 'json':
             return to_json(var), 'application/json; charset=UTF-8'
 
     return pickle_data(data, pickle_proto), "application/python-pickle"
 
 
 
-def _compress_and_encode_output(var, path, start_time, stop_time, format, request, pickle_proto,
+def _compress_and_encode_output(var, path, start_time, stop_time, fmt, request, pickle_proto,
                                       zstd_compression: bool = False):
-    return compress_if_asked(*encode_output(var, path, start_time, stop_time, format, request, pickle_proto),
+    return compress_if_asked(*encode_output(var, path, start_time, stop_time, fmt, request, pickle_proto),
                              zstd_compression=zstd_compression)

@@ -36,11 +36,20 @@ def get_product_random_range(product, request):
             if len(data) > 10000:
                 data = data[:10000]
             return product, data.replace_fillval_by_nan(inplace=True, convert_to_float=True), start, stop
-    return product, None, start, stop
+    # No usable range to report when every attempt failed (BL-22)
+    return product, None, None, None
 
 
 @router.get('/chart_roulette', response_class=HTMLResponse, description='Get a random plot page')
 def chart_roulette(request: Request, user_agent: Annotated[str | None, Header()] = None):
     log.debug(f'Client asking for random plot page from {user_agent}')
-    return HTMLResponse(
-        content=plot_data(*get_product_random_range(random_pick_product(), request), request) or "Oops try again")
+    # A random walk over live providers hits edge cases (empty inventories,
+    # products without a known range, ranges shorter than the 24h window...);
+    # never let one turn the fun endpoint into a 500 (BL-32).
+    try:
+        product, data, start, stop = get_product_random_range(random_pick_product(), request)
+        content = plot_data(product, data, start, stop, request)
+    except Exception:
+        log.exception('chart_roulette failed to produce a plot')
+        content = "Oops, try again"
+    return HTMLResponse(content=content)

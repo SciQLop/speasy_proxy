@@ -39,8 +39,10 @@ TEMPLATE = Template('''
 <!DOCTYPE html>
 <html>
     <head>
-        <script src="https://code.jquery.com/jquery-3.6.1.min.js"></script>
-        <script src="https://unpkg.com/json5@2/dist/index.min.js"></script>
+        <!-- Vendored (BL-23): no third-party CDN dependency. Relative URLs so
+             the page also works behind a root_path prefix. -->
+        <script src="static/js/vendor/jquery-3.6.1.min.js"></script>
+        <script src="static/js/vendor/json5-2.2.3.min.js"></script>
         <script type="text/javascript">
             var last_range = [-1, -1];
             function transpose(array)
@@ -227,7 +229,10 @@ def plot_data(product, data: SpeasyVariable, start_time, stop_time, request: Req
     try:
         if data is not None and len(data):
             plot_type = _data_type(data)
-            data.replace_fillval_by_nan(inplace=True)
+            # Non-inplace + float conversion, like the json path (BL-14/BL-31):
+            # never mutate the caller's variable, and integer data with FILLVAL
+            # needs the float conversion or the NaN assignment raises.
+            data = data.replace_fillval_by_nan(convert_to_float=True)
             y_axis_type = SCALES_LUT.get(data.meta.get('SCALETYP', 'linear').lower(), 'linear')
             plot = figure(min_width=900, min_height=500, x_axis_type="datetime", sizing_mode='stretch_both',
                           height_policy="max",

@@ -201,3 +201,67 @@ Run unit tests with: `SPEASY_PROXY_OFFLINE_TESTS=1 uv run pytest <unit test file
 - CLAUDE.md is known-stale (claims no tests exist; omits resampling, presets, the
   ECharts `/plot` & `/demo_3d` frontends, `chart_roulette`). Worth refreshing
   alongside this work.
+
+---
+
+# 2026-08-06 review round (BL-13..BL-33)
+
+Full report + per-finding verdicts: `REVIEW-2026-08-06.md`. Every accepted item was
+fixed test-first (reproducer red → fix → green). Offline suite 97 → 122 tests.
+
+### BL-13 · `chart_roulette` blocking the event loop · REJECTED (false positive)
+> Sync `def` endpoint — FastAPI already runs it via `run_in_threadpool`
+> (verified in fastapi 0.136.3). No change.
+
+### BL-14 · `plot_data` inplace mutation · DONE (via BL-31)
+> `test_plot_data_does_not_mutate_input_variable` red→green.
+
+### BL-15 · Bokeh `max_interval` units · REJECTED (false positive)
+> bokeh 3.9.1 serializes `np.timedelta64(7,'D')` to `604800000.0` ms — verified. No change.
+
+### BL-16 · `format` shadows builtin in `get_data.encode_output` · DONE
+> Renamed to `fmt` (+ dropped the `output_format` alias). `get_inventory.encode_output`
+> already used `fmt` (half the finding was wrong).
+
+### BL-17 · triplicated `set(PROVIDERS).intersection(...)` · DONE
+> `_available_providers()` helper in `inventory_updater.py` (sites were :93/:122/:131).
+
+### BL-20 · `_lttb` set+sorted → `np.unique(np.concatenate(...))` · DONE
+> Resample + backend-equivalence tests green.
+
+### BL-22 · leaked range on all-None retries · DONE
+> `get_product_random_range` returns `(product, None, None, None)`;
+> `test_all_retries_empty_returns_no_range` red→green.
+
+### BL-23 · CDN scripts without SRI · DONE
+> Vendored `jquery-3.6.1.min.js` + `json5-2.2.3.min.js` (pinned) in `static/js/vendor/`,
+> relative URLs (root_path friendly). `test_bokeh_page_scripts_are_vendored` red→green.
+
+### BL-24 · ws singleton on `app.state` · WONTFIX
+> One app per process, nothing to inject; the real issue was BL-33.
+
+### BL-26 / BL-27 · stale `docker-devel/`, placeholder `CHANGES.txt` · DONE
+> Both removed (unreferenced).
+
+### BL-29 · missing test coverage · DONE
+> New offline tests: `backend/test_presets.py` (5), `backend/test_status.py` (2),
+> `api/v1/test_get_presets.py` (2), `api/v1/test_get_server_status.py` (1),
+> `api/v1/test_get_cache_entries.py` (1), `frontend/test_home.py` (5),
+> `api/v1/test_chart_roulette.py` (5).
+
+### BL-31 · NEW · `plot_data` drops int+FILLVAL data · DONE
+> `replace_fillval_by_nan` without `convert_to_float=True` raises on integer data and
+> the blanket except turned it into "Oops, unable to plot". Fixed with
+> `data = data.replace_fillval_by_nan(convert_to_float=True)` (same as the json path).
+> `test_line_plot_with_integer_fillval_data_renders` red→green.
+
+### BL-32 · NEW · `chart_roulette` 500s on edge products · DONE
+> Endpoint wraps pick+fetch in try/except → friendly fallback; dead `or "Oops try again"`
+> removed. Three red→green reproducers (empty inventory, None range, sub-24h range).
+
+### BL-33 · NEW · ws lazy-init serves unstarted server · DONE
+> Global was published before `started.wait()` completed; double-checked locking with an
+> `asyncio.Lock`. `test_concurrent_first_connections_share_one_started_server` red→green.
+
+### Accepted as-is (no change)
+BL-18, BL-19, BL-21, BL-25 (observations) · BL-28 (deferred) · BL-30 (desktop-only policy).
