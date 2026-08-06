@@ -17,6 +17,9 @@ ENV SPEASY_CACHE_PATH=/data \
     SPEASY_PROXY_LOG_CONFIG_FILE="/home/speasy/speasy_proxy/logging.yaml"\
     SPEASY_PROXY_CORE_INVENTORY_UPDATE_INTERVAL="7200"\
     SPEASY_CORE_HTTP_REWRITE_RULES="{'https://cdaweb.gsfc.nasa.gov/pub/': 'http://sciqlop.lpp.polytechnique.fr/cdaweb-data/pub/'}"
+# speasy 1.8.0 migrates its cache from diskcache to pysciqlop-cache on first
+# import; move instead of copy, the proxy never needs the legacy backup.
+ENV SPEASY_CACHE_MIGRATE_BY_MOVING=True
 
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /usr/local/bin/
 

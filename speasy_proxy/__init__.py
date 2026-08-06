@@ -5,6 +5,7 @@ __version__ = '0.13.5'
 import asyncio
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.staticfiles import StaticFiles
 import os
 from datetime import datetime, UTC
@@ -54,6 +55,7 @@ def get_application(lifespan=None) -> FastAPI:
         allow_methods=["*"],
         allow_headers=["*"],
     )
+    _app.add_middleware(GZipMiddleware)
 
     return _app
 
