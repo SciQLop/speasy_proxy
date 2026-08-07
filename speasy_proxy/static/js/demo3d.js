@@ -1,4 +1,4 @@
-import { attachDatePicker, setDateInput, parseDateInput, setStatus, showLoading, showFetchBar, installErrorBoundary } from './common.js';
+import { attachDatePicker, setDateInput, parseDateInput, setStatus, showLoading, showFetchBar, installErrorBoundary, runWithConcurrency } from './common.js';
 import {
   shueParams, bowShockParams, classifyPoint,
   toReData as sharedToReData, computeAxisRange,
@@ -548,11 +548,13 @@ const API_BASE = (window.SPEASY_BASE_URL || '').replace(/\/$/, '') + '/';
             swatch.style.display = 'none';
             updateChartOption();
             updateActionButtons();
+            renderLegend();
             setStatus(`Removed ${uid.split('/').pop()}.`);
             updateURL();
             return;
         }
 
+        // Validate time window; auto-fill from inventory bounds if unset.
         const startVal = document.getElementById('startTime').value;
         const stopVal = document.getElementById('stopTime').value;
         if (!startVal || !stopVal) {
@@ -591,40 +593,48 @@ const API_BASE = (window.SPEASY_BASE_URL || '').replace(/\/$/, '') + '/';
             return;
         }
 
+        await fetchSatellite(uid, cb, span, swatch, coordSys, startISO, stopISO);
+    }
+
+    // Fetch one satellite's trajectory data and add it to the chart. Returns a
+    // promise so callers (applyPendingUids) can bound concurrency.
+    function fetchSatellite(uid, cb, span, swatch, coordSys, startISO, stopISO) {
         span.classList.add('loading');
         loadingUids.add(uid);
         showLoading(true);
         showFetchBar(true);
         renderLegend();
         setStatus(`Fetching ${uid.split('/').pop()}...`);
-        try {
-            const data = await apiFetchData({
-  baseUrl: API_BASE, path: uid, startISO, stopISO,
-  maxPoints: 10000, coordinateSystem: coordSys,
-});
-const reData = toReData(data.values.values);
-
-            const color = COLORS[colorIndex % COLORS.length];
-            colorIndex++;
-            const name = uid.split('/').pop();
-            trajectories.set(uid, { name, color, data: reData, uid });
-            swatch.style.background = color;
-            swatch.style.display = 'inline-block';
-            span.classList.add('plotted');
-            updateChartOption();
-            updateActionButtons();
-            setStatus(`Plotted ${name} (${reData.length} points).`);
-            updateURL();
-        } catch (err) {
-            cb.checked = false;
-            setStatus('Error: ' + err.message);
-        } finally {
-            span.classList.remove('loading');
-            loadingUids.delete(uid);
-            showLoading(false);
-            showFetchBar(false);
-            renderLegend();
-        }
+        return apiFetchData({
+            baseUrl: API_BASE, path: uid, startISO, stopISO,
+            maxPoints: 10000, coordinateSystem: coordSys,
+        })
+            .then(data => {
+                const reData = toReData(data.values.values);
+                const color = COLORS[colorIndex % COLORS.length];
+                colorIndex++;
+                const name = uid.split('/').pop();
+                trajectories.set(uid, { name, color, data: reData, uid });
+                swatch.style.background = color;
+                swatch.style.display = 'inline-block';
+                span.classList.add('plotted');
+                updateChartOption();
+                updateActionButtons();
+                renderLegend();
+                setStatus(`Plotted ${name} (${reData.length} points).`);
+                updateURL();
+            })
+            .catch(err => {
+                cb.checked = false;
+                setStatus('Error: ' + err.message);
+            })
+            .finally(() => {
+                span.classList.remove('loading');
+                loadingUids.delete(uid);
+                showLoading(false);
+                showFetchBar(false);
+                renderLegend();
+            });
     }
 
     async function replotAll() {
@@ -653,28 +663,31 @@ const reData = toReData(data.values.values);
         renderLegend();
         setStatus('Refreshing all trajectories...');
         const errors = [];
-        const fetches = Array.from(checked).map(async (cb) => {
+        const tasks = Array.from(checked).map((cb) => () => {
             const uid = cb.dataset.uid;
             const span = cb.closest('.tree-node');
             const swatch = span.querySelector('.color-swatch');
             span.classList.add('loading');
-            try {
-                const data = await apiFetchData({
-  baseUrl: API_BASE, path: uid, startISO, stopISO,
-  maxPoints: 10000, coordinateSystem: coordSys,
-});
-const reData = toReData(data.values.values);
-                const color = existingColors.get(uid) || COLORS[colorIndex++ % COLORS.length];
-                trajectories.set(uid, { name: uid.split('/').pop(), color, data: reData, uid });
-                swatch.style.background = color;
-            } catch (err) {
-                errors.push(uid.split('/').pop() + ': ' + err.message);
-            } finally {
-                span.classList.remove('loading');
-                loadingUids.delete(uid);
-            }
+            return apiFetchData({
+                baseUrl: API_BASE, path: uid, startISO, stopISO,
+                maxPoints: 10000, coordinateSystem: coordSys,
+            })
+                .then(data => {
+                    const reData = toReData(data.values.values);
+                    const color = existingColors.get(uid) || COLORS[colorIndex++ % COLORS.length];
+                    trajectories.set(uid, { name: uid.split('/').pop(), color, data: reData, uid });
+                    swatch.style.background = color;
+                })
+                .catch(err => {
+                    errors.push(uid.split('/').pop() + ': ' + err.message);
+                })
+                .finally(() => {
+                    span.classList.remove('loading');
+                    loadingUids.delete(uid);
+                    renderLegend();
+                });
         });
-        await Promise.all(fetches);
+        await runWithConcurrency(tasks, 3);
         updateChartOption();
         updateActionButtons();
         renderLegend();
@@ -937,12 +950,43 @@ const reData = toReData(data.values.values);
         if (!pendingUids) return;
         const wanted = pendingUids;
         pendingUids = null;
-        for (const cb of document.querySelectorAll('.tree-node input[type="checkbox"][data-uid]')) {
-            if (wanted.includes(cb.dataset.uid)) {
-                cb.checked = true;
-                cb.dispatchEvent(new Event('change'));
+        const cbs = [...document.querySelectorAll('.tree-node input[type="checkbox"][data-uid]')]
+            .filter(cb => wanted.includes(cb.dataset.uid));
+        if (cbs.length === 0) return;
+
+        // Validate times before fetching. Use the first satellite's inventory
+        // bounds to auto-fill if unset.
+        const startVal = document.getElementById('startTime').value;
+        const stopVal = document.getElementById('stopTime').value;
+        if (!startVal || !stopVal) {
+            for (const cb of cbs) {
+                try {
+                    const bounds = JSON.parse(cb.dataset.timeBoundsJson || '{}');
+                    if (bounds.start) {
+                        const e = new Date(bounds.stop || bounds.start);
+                        const s = new Date(e.getTime() - getSelectedDurationMs());
+                        setDateInput(document.getElementById('startTime'), s);
+                        setDateInput(document.getElementById('stopTime'), e);
+                        break;
+                    }
+                } catch (_) {}
             }
         }
+
+        const coordSys = document.getElementById('coordSys').value;
+        const startDate = parseDateInput(document.getElementById('startTime').value);
+        const stopDate = parseDateInput(document.getElementById('stopTime').value);
+        if (!startDate || !stopDate || startDate >= stopDate) return;
+
+        const startISO = startDate.toISOString();
+        const stopISO = stopDate.toISOString();
+        const tasks = cbs.map(cb => () => {
+            const span = cb.closest('.tree-node');
+            const swatch = span.querySelector('.color-swatch');
+            cb.checked = true;
+            return fetchSatellite(cb.dataset.uid, cb, span, swatch, coordSys, startISO, stopISO);
+        });
+        runWithConcurrency(tasks, 3);
     }
 
     // ---- Init ----

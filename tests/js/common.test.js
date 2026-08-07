@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import {
   toLocalISOString, escapeHtml, formatDateInput, parseDateInput,
-  installErrorBoundary,
+  installErrorBoundary, runWithConcurrency,
 } from '../../speasy_proxy/static/js/common.js';
 
 describe('toLocalISOString', () => {
@@ -96,5 +96,32 @@ describe('installErrorBoundary', () => {
     ev.message = 'after-cleanup';
     window.dispatchEvent(ev);
     expect(document.getElementById('s').textContent).not.toContain('after-cleanup');
+  });
+});
+
+describe('runWithConcurrency', () => {
+  it('runs all tasks and returns results in order', async () => {
+    const results = await runWithConcurrency([
+      () => Promise.resolve(1),
+      () => Promise.resolve(2),
+      () => Promise.resolve(3),
+    ], 2);
+    expect(results).toEqual([1, 2, 3]);
+  });
+
+  it('respects the concurrency limit', async () => {
+    let active = 0;
+    let maxActive = 0;
+    const makeTask = (ms) => () => new Promise(resolve => {
+        active++;
+        maxActive = Math.max(maxActive, active);
+        setTimeout(() => { active--; resolve(ms); }, ms);
+    });
+    await runWithConcurrency([makeTask(10), makeTask(10), makeTask(10), makeTask(10)], 2);
+    expect(maxActive).toBeLessThanOrEqual(2);
+  });
+
+  it('handles an empty task list', async () => {
+    expect(await runWithConcurrency([], 3)).toEqual([]);
   });
 });

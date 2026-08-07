@@ -766,6 +766,7 @@ import { fetchData as apiFetchData, fetchInventory } from './api-client.js';
                 }
                 cache.rows = newValues;
                 cache.columnNames = columns;
+                cache.valueRange = computeValueRange(newValues);
             } else {
                 cache.columnNames = columns.length > 0 ? columns :
                     (newValues[0] ? newValues[0].map((_, i) => 'col_' + i) : ['value']);
@@ -778,6 +779,7 @@ import { fetchData as apiFetchData, fetchInventory } from './api-client.js';
                 const merged = mergeSortedRows(cache.times, newTimes, cache.rows, newValues);
                 cache.times = merged.times;
                 cache.rows = merged.rows;
+                cache.valueRange = computeValueRange(cache.rows);
             } else {
                 const merged = mergeSorted(cache.times, newTimes, cache.columns, newValues, cache.columnNames);
                 cache.times = merged.times;
@@ -1075,14 +1077,12 @@ import { fetchData as apiFetchData, fetchInventory } from './api-client.js';
         updateShareURL();
     }
 
-    function buildSubplotHeatmap(subplot) {
-        const cache = subplot.productData[subplot.products[0]?.path];
-        if (!cache || !cache.yAxis || cache.rows.length === 0) return null;
-
-        const yBinsFlat = Array.isArray(cache.yAxis[0]) ? cache.yAxis[0] : cache.yAxis;
-
+    // Min/max of all positive values in a spectrogram's rows. Used for the color
+    // scale; computed once on data load/merge (see mergeProductData) and cached on
+    // the cache object so per-render heatmap builds don't re-scan the whole dataset.
+    function computeValueRange(rows) {
         let vMin = Infinity, vMax = -Infinity;
-        for (const row of cache.rows) {
+        for (const row of rows) {
             if (!row) continue;
             for (const val of row) {
                 if (val != null && !isNaN(val) && val > 0) {
@@ -1094,6 +1094,16 @@ import { fetchData as apiFetchData, fetchInventory } from './api-client.js';
         if (vMin === Infinity) vMin = 1e-30;
         if (vMax === -Infinity) vMax = 1;
         if (vMin === vMax) vMax = vMin * 10;
+        return { vMin, vMax };
+    }
+
+    function buildSubplotHeatmap(subplot) {
+        const cache = subplot.productData[subplot.products[0]?.path];
+        if (!cache || !cache.yAxis || cache.rows.length === 0) return null;
+
+        const yBinsFlat = Array.isArray(cache.yAxis[0]) ? cache.yAxis[0] : cache.yAxis;
+
+        const { vMin, vMax } = cache.valueRange || computeValueRange(cache.rows);
 
         const img = renderSpectrogramImage(cache.times, cache.rows, yBinsFlat, vMin, vMax, subplot.logScale, currentView);
         if (!img) return null;

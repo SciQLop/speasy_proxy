@@ -25,6 +25,7 @@ export function createProductCache(path) {
     yAxisUnit: '',
     rows: [],
     displayType: '',
+    valueRange: null, // { vMin, vMax } for heatmap color scale; set on data load
   };
 }
 

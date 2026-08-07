@@ -90,6 +90,24 @@ export function fallbackCopy(inputEl, btn) {
     setTimeout(() => { btn.textContent = 'Copy URL'; }, 2000);
 }
 
+// Run an array of async tasks with bounded concurrency. Useful for fetches:
+// without a limit, restoring a URL with N satellites fires N simultaneous requests,
+// which overwhelms the browser and server. Yields (awaits) between starting tasks
+// once `limit` are in flight.
+export async function runWithConcurrency(tasks, limit = 3) {
+    const results = [];
+    let idx = 0;
+    async function worker() {
+        while (idx < tasks.length) {
+            const i = idx++;
+            results[i] = await tasks[i]();
+        }
+    }
+    const workers = Array.from({ length: Math.min(limit, tasks.length) }, () => worker());
+    await Promise.all(workers);
+    return results;
+}
+
 // Install a top-level error handler that surfaces uncaught exceptions in the
 // status bar instead of failing silently. Returns a cleanup function.
 export function installErrorBoundary(statusBarId) {
