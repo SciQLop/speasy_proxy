@@ -594,6 +594,7 @@ import { fetchData as apiFetchData, fetchInventory } from './api-client.js';
 
     function removeProductFromSubplot(subplotIndex, productPath) {
         const subplot = plotState.plots[subplotIndex];
+        if (!subplot) return;
         subplot.products = subplot.products.filter(p => p.path !== productPath);
         delete subplot.productData[productPath];
         if (subplot.products.length === 0) {
@@ -781,14 +782,26 @@ import { fetchData as apiFetchData, fetchInventory } from './api-client.js';
                 const merged = mergeSortedRows(cache.times, newTimes, cache.rows, newValues);
                 cache.times = merged.times;
                 cache.rows = merged.rows;
-                cache.valueRange = computeValueRange(cache.rows);
+                // Incremental: only scan the new slice, then union with the
+                // existing range. Re-scanning all merged rows would be O(total)
+                // on every pan/zoom refetch.
+                const newRange = computeValueRange(newValues);
+                const oldRange = cache.valueRange;
+                cache.valueRange = oldRange ? {
+                    vMin: Math.min(oldRange.vMin, newRange.vMin),
+                    vMax: Math.max(oldRange.vMax, newRange.vMax),
+                } : newRange;
             } else {
                 const merged = mergeSorted(cache.times, newTimes, cache.columns, newValues, cache.columnNames);
                 cache.times = merged.times;
                 cache.columns = merged.columns;
             }
             cache.intervals = mergeIntervals(cache.intervals.concat([[fetchStart, fetchStop]]));
-            cache.fetchSpan = fetchStop - fetchStart;
+            // Track the widest fetched span — max_points is spread across it, so it
+            // governs resolution. Using Math.max prevents a small recent fetch from
+            // masking that earlier data may be sparse (which would block zoom-in
+            // refetches via resolutionSufficient).
+            cache.fetchSpan = Math.max(cache.fetchSpan || 0, fetchStop - fetchStart);
         }
     }
 
@@ -1034,6 +1047,14 @@ import { fetchData as apiFetchData, fetchInventory } from './api-client.js';
             graphic: []
         };
 
+        // Render heatmap images after chart is set up
+        for (const subplot of plotState.plots) {
+            if (subplot.plotType === 'heatmap') {
+                const graphic = buildSubplotHeatmap(subplot);
+                if (graphic) option.graphic.push(graphic);
+            }
+        }
+
         // Data-only updates (pan/zoom refetch) merge series in place — no teardown, no
         // resize, so the chart doesn't flash. Structural changes (subplot count, plot
         // type, log toggle, products) fall back to a full rebuild.
@@ -1056,18 +1077,6 @@ import { fetchData as apiFetchData, fetchInventory } from './api-client.js';
         if (!preserveView) {
             currentView.start = dzStart;
             currentView.end = dzEnd;
-        }
-
-        // Render heatmap images after chart is set up
-        const heatmapGraphics = [];
-        for (const subplot of plotState.plots) {
-            if (subplot.plotType === 'heatmap') {
-                const graphic = buildSubplotHeatmap(subplot);
-                if (graphic) heatmapGraphics.push(graphic);
-            }
-        }
-        if (heatmapGraphics.length > 0) {
-            chart.setOption({ graphic: heatmapGraphics });
         }
 
         const hasHeatmap = plotState.plots.some(sp => sp.plotType === 'heatmap');

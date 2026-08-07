@@ -157,15 +157,19 @@ export function trimCacheWindow(cache, startMs, stopMs) {
   b = t.length;
   while (a < b) { const m = (a + b) >> 1; if (t[m] <= stopMs) a = m + 1; else b = m; }
   const hi = a;
-  if (lo === 0 && hi === t.length) return;  // nothing to trim
-  cache.times = t.slice(lo, hi);
-  for (const cn of cache.columnNames || []) {
-    if (cache.columns[cn]) cache.columns[cn] = cache.columns[cn].slice(lo, hi);
-  }
-  if (cache.rows && cache.rows.length) cache.rows = cache.rows.slice(lo, hi);
-  cache.intervals = (cache.intervals || [])
-    .map((iv) => [Math.max(iv[0], startMs), Math.min(iv[1], stopMs)])
-    .filter((iv) => iv[0] <= iv[1]);
+   if (lo === 0 && hi === t.length) return;  // nothing to trim
+   cache.times = t.slice(lo, hi);
+   for (const cn of cache.columnNames || []) {
+      if (cache.columns[cn]) cache.columns[cn] = cache.columns[cn].slice(lo, hi);
+   }
+   if (cache.rows && cache.rows.length) cache.rows = cache.rows.slice(lo, hi);
+   cache.intervals = (cache.intervals || [])
+      .map((iv) => [Math.max(iv[0], startMs), Math.min(iv[1], stopMs)])
+      .filter((iv) => iv[0] <= iv[1]);
+   // Trimmed data may have a different value distribution; let the next render
+   // recompute the color scale from the visible rows instead of using the
+   // stale full-cache range.
+   cache.valueRange = null;
 }
 
 export function evictProductCache(cache, maxPoints) {

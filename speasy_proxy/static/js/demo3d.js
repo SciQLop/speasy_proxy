@@ -2,7 +2,6 @@ import { attachDatePicker, setDateInput, parseDateInput, setStatus, showLoading,
 import {
   shueParams, bowShockParams, classifyPoint,
   toReData as sharedToReData, computeAxisRange,
-  EARTH_RADIUS_KM, MAX_DISTANCE_RE,
 } from './magnetosphere.js';
 import { fetchData as apiFetchData, fetchInventory } from './api-client.js';
 import { isSpzMetaKey, hasVisibleChildren, SKIP_KEYS } from './inventory-tree.js';
@@ -260,7 +259,13 @@ const API_BASE = (window.SPEASY_BASE_URL || '').replace(/\/$/, '') + '/';
             lineStyle: { width: 2, color: showBoundaries ? REGION_COLORS[0] : t.color },
             silent: true,
         }));
+        // Also update axis ranges so enlarging Dp/Bz doesn't clip the surfaces
+        // mid-drag (the full updateChartOption on 'change' will refine them).
+        const range = computeAxisRange([...trajectories.values()].map((t) => t.data));
         chart.setOption({
+            xAxis3D: { min: range.min, max: range.max },
+            yAxis3D: { min: range.min, max: range.max },
+            zAxis3D: { min: range.min, max: range.max },
             series: [earthSeries(), ...magnetosphereSeries(Dp, Bz), ...trajSeries],
         }, { replaceMerge: ['series'] });
     }
@@ -769,7 +774,14 @@ const API_BASE = (window.SPEASY_BASE_URL || '').replace(/\/$/, '') + '/';
         const view = VIEW_ANGLES[btn.dataset.view];
         if (!view) return;
         const opts = { grid3D: { viewControl: { alpha: view.alpha, beta: view.beta } } };
-        if (btn.dataset.view === 'reset') opts.grid3D.viewControl.distance = 150;
+        if (btn.dataset.view === 'reset') {
+            opts.grid3D.viewControl.distance = 150;
+            // Reset axis range to fit the current trajectories.
+            const range = computeAxisRange([...trajectories.values()].map((t) => t.data));
+            opts.xAxis3D = { min: range.min, max: range.max };
+            opts.yAxis3D = { min: range.min, max: range.max };
+            opts.zAxis3D = { min: range.min, max: range.max };
+        }
         chart.setOption(opts);
     });
 
@@ -993,7 +1005,10 @@ const API_BASE = (window.SPEASY_BASE_URL || '').replace(/\/$/, '') + '/';
         const coordSys = document.getElementById('coordSys').value;
         const startDate = parseDateInput(document.getElementById('startTime').value);
         const stopDate = parseDateInput(document.getElementById('stopTime').value);
-        if (!startDate || !stopDate || startDate >= stopDate) return;
+        if (!startDate || !stopDate || startDate >= stopDate) {
+            setStatus('Set start and stop times first.');
+            return;
+        }
 
         const startISO = startDate.toISOString();
         const stopISO = stopDate.toISOString();
