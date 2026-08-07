@@ -1044,10 +1044,12 @@ import { fetchData as apiFetchData, fetchInventory } from './api-client.js';
         // NOTE: no lazyUpdate here — the deferred application leaves a frame where
         // series models exist without data, and a tooltip triggered in that gap
         // crashes ECharts (getDataParams → getRawIndex of undefined).
-        const canMerge = dataOnly && lastStructureKey === structureKey(plotState.plots);
+        const structureSame = dataOnly && lastStructureKey === structureKey(plotState.plots);
         suppressDataZoom = true;
-        if (canMerge) {
-            chart.setOption(option, { replaceMerge: ['series'] });
+        if (structureSame) {
+            // Structure unchanged — skip rebuilding grids/axes/titles and only push
+            // the updated series data. This is the hot path during pan/zoom refetch.
+            chart.setOption({ series: series }, { replaceMerge: ['series'] });
         } else {
             chart.setOption(option, true);
             chart.resize();
