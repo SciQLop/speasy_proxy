@@ -1,6 +1,7 @@
 import {
   attachDatePicker, setDateInput, parseDateInput,
   setStatus, showLoading, showFetchBar, fallbackCopy,
+  installErrorBoundary,
 } from './common.js';
 import { getDisplayName, getProductPath, shouldSkipNode, SKIP_KEYS } from './inventory-tree.js';
 import {
@@ -332,6 +333,16 @@ import { fetchData as apiFetchData, fetchInventory } from './api-client.js';
         });
         document.getElementById('stop-time').addEventListener('keydown', (e) => {
             if (e.key === 'Enter') doPlot();
+        });
+        // Shift+Enter adds to plot instead of replacing, when a product is selected.
+        document.addEventListener('keydown', (e) => {
+            if (e.key !== 'Enter' || !e.shiftKey) return;
+            const tag = (e.target.tagName || '').toLowerCase();
+            if (tag !== 'input' && tag !== 'textarea') return;
+            if (!document.getElementById('btn-add').disabled) {
+                e.preventDefault();
+                document.getElementById('btn-add').click();
+            }
         });
 
         document.getElementById('range-chips').addEventListener('click', (e) => {
@@ -1455,7 +1466,7 @@ import { fetchData as apiFetchData, fetchInventory } from './api-client.js';
         pendingWheelView = null;
         if (!next || !chart) return;
 
-        const padding = (next.end - next.start) * 2;
+        const padding = (next.end - next.start) * AXIS_PAD_RATIO;
         const xAxisUpdate = plotState.plots.map(() => ({
             min: next.start - padding,
             max: next.end + padding
@@ -1801,6 +1812,7 @@ import { fetchData as apiFetchData, fetchInventory } from './api-client.js';
     // ===== Init =====
 
     document.addEventListener('DOMContentLoaded', () => {
+        installErrorBoundary('status-bar');
         bindControls();
         initResize();
         initSidebarCollapse();

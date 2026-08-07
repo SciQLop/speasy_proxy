@@ -1,6 +1,7 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi, afterEach } from 'vitest';
 import {
   toLocalISOString, escapeHtml, formatDateInput, parseDateInput,
+  installErrorBoundary,
 } from '../../speasy_proxy/static/js/common.js';
 
 describe('toLocalISOString', () => {
@@ -48,5 +49,52 @@ describe('escapeHtml', () => {
   });
   it('passes through safe text', () => {
     expect(escapeHtml('hello')).toBe('hello');
+  });
+});
+
+describe('installErrorBoundary', () => {
+  // Minimal window + document mocks for the Node test environment.
+  function installDomMock() {
+    const elements = {};
+    const listeners = {};
+    globalThis.document = {
+      getElementById: (id) => elements[id] || (elements[id] = { textContent: '' }),
+    };
+    globalThis.window = {
+      addEventListener: (type, h) => { (listeners[type] ||= []).push(h); },
+      removeEventListener: (type, h) => {
+        listeners[type] = (listeners[type] || []).filter(x => x !== h);
+      },
+      dispatchEvent: (event) => {
+        (listeners[event.type] || []).forEach(h => h(event));
+        return true;
+      },
+    };
+  }
+
+  it('writes the error message to the status bar on window error', () => {
+    installDomMock();
+    installErrorBoundary('s');
+    const ev = new Event('error');
+    ev.message = 'boom';
+    window.dispatchEvent(ev);
+    expect(document.getElementById('s').textContent).toContain('boom');
+  });
+
+  it('falls back to the message string when error has no .message', () => {
+    installDomMock();
+    installErrorBoundary('s');
+    window.dispatchEvent(new Event('unhandledrejection'));
+    expect(document.getElementById('s').textContent).toContain('Unknown error');
+  });
+
+  it('returns a cleanup function that removes the handlers', () => {
+    installDomMock();
+    const cleanup = installErrorBoundary('s');
+    cleanup();
+    const ev = new Event('error');
+    ev.message = 'after-cleanup';
+    window.dispatchEvent(ev);
+    expect(document.getElementById('s').textContent).not.toContain('after-cleanup');
   });
 });

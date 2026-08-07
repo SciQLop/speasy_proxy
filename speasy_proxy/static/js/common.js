@@ -80,12 +80,29 @@ export function showFetchBar(active) {
 }
 
 export function fallbackCopy(inputEl, btn) {
-  inputEl.select();
-  try {
-    document.execCommand('copy');
-    btn.textContent = 'Copied!';
-  } catch (_) {
-    btn.textContent = 'Select & copy manually';
-  }
-  setTimeout(() => { btn.textContent = 'Copy URL'; }, 2000);
+    inputEl.select();
+    try {
+        document.execCommand('copy');
+        btn.textContent = 'Copied!';
+    } catch (_) {
+        btn.textContent = 'Select & copy manually';
+    }
+    setTimeout(() => { btn.textContent = 'Copy URL'; }, 2000);
+}
+
+// Install a top-level error handler that surfaces uncaught exceptions in the
+// status bar instead of failing silently. Returns a cleanup function.
+export function installErrorBoundary(statusBarId) {
+    const handler = (event) => {
+        const msg = (event.error && event.error.message) || event.message || 'Unknown error';
+        console.error('Uncaught error:', event.error || event.message);
+        const el = document.getElementById(statusBarId);
+        if (el) el.textContent = 'Error: ' + msg + ' — reload the page.';
+    };
+    window.addEventListener('error', handler);
+    window.addEventListener('unhandledrejection', handler);
+    return () => {
+        window.removeEventListener('error', handler);
+        window.removeEventListener('unhandledrejection', handler);
+    };
 }

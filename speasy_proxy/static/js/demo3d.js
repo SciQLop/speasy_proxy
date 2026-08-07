@@ -1,4 +1,4 @@
-import { attachDatePicker, setDateInput, parseDateInput, setStatus, showLoading, showFetchBar } from './common.js';
+import { attachDatePicker, setDateInput, parseDateInput, setStatus, showLoading, showFetchBar, installErrorBoundary } from './common.js';
 import {
   shueParams, bowShockParams, classifyPoint,
   toReData as sharedToReData, computeAxisRange,
@@ -971,6 +971,7 @@ const reData = toReData(data.values.values);
         }
     }
 
+    installErrorBoundary('statusBar');
     (async () => {
         restoreFromURL();
         try {
