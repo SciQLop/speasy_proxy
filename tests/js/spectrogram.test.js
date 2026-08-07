@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { VIRIDIS_LUT, computeYEdges, spectrogramValueAt } from '../../speasy_proxy/static/js/spectrogram.js';
+import { VIRIDIS_LUT, computeYEdges, spectrogramValueAt, renderSpectrogramImage } from '../../speasy_proxy/static/js/spectrogram.js';
 
 describe('spectrogram', () => {
   it('builds a 256-entry RGB viridis LUT with correct endpoints', () => {
@@ -49,6 +49,77 @@ describe('spectrogram', () => {
     it('returns null for empty inputs', () => {
       expect(spectrogramValueAt([], [], [], 0, 0)).toBeNull();
       expect(spectrogramValueAt(times, rows, yBins, NaN, 20)).toBeNull();
+    });
+  });
+
+  describe('renderSpectrogramImage', () => {
+    // Minimal canvas mock for the Node test environment (no real DOM).
+    function installCanvasMock() {
+      const origCreate = globalThis.document?.createElement;
+      globalThis.document = globalThis.document || {};
+      globalThis.document.createElement = (tag) => {
+        if (tag !== 'canvas') return origCreate ? origCreate(tag) : {};
+        const canvas = { width: 0, height: 0 };
+        canvas.getContext = () => ({
+          createImageData: (w, h) => ({ data: new Uint8ClampedArray(w * h * 4), width: w, height: h }),
+          putImageData: () => {},
+        });
+        return canvas;
+      };
+    }
+
+    installCanvasMock();
+
+    function makeData(nTime, nY) {
+      const times = [];
+      for (let t = 0; t < nTime; t++) times.push(t * 1000);
+      const rows = [];
+      for (let t = 0; t < nTime; t++) {
+        const row = [];
+        for (let y = 0; y < nY; y++) row.push((t + 1) * (y + 1));
+        rows.push(row);
+      }
+      const yBins = [];
+      for (let y = 0; y < nY; y++) yBins.push(y + 1);
+      return { times, rows, yBins };
+    }
+
+    it('renders at full width when under the cap', () => {
+      const { times, rows, yBins } = makeData(100, 5);
+      const result = renderSpectrogramImage(times, rows, yBins, 1, 500, false, null);
+      expect(result).not.toBeNull();
+      expect(result.canvas.width).toBe(100);
+      expect(result.canvas.height).toBe(5);
+    });
+
+    it('caps canvas width and decimates columns when over the cap', () => {
+      const { times, rows, yBins } = makeData(10000, 10);
+      const result = renderSpectrogramImage(times, rows, yBins, 1, 100000, false, null);
+      expect(result).not.toBeNull();
+      expect(result.canvas.width).toBeLessThanOrEqual(4096);
+      expect(result.canvas.height).toBe(10);
+    });
+
+    it('preserves tStart/tEnd/yMin/yMax regardless of capping', () => {
+      const { times, rows, yBins } = makeData(10000, 10);
+      const result = renderSpectrogramImage(times, rows, yBins, 1, 100000, false, null);
+      expect(result.tStart).toBe(times[0]);
+      expect(result.tEnd).toBe(times[times.length - 1]);
+      expect(result.yMin).toBe(yBins[0]);
+      expect(result.yMax).toBe(yBins[yBins.length - 1]);
+    });
+
+    it('returns null for empty data', () => {
+      expect(renderSpectrogramImage([], [], [], 1, 10, false, null)).toBeNull();
+    });
+
+    it('respects the view window to render only the visible slice', () => {
+      const { times, rows, yBins } = makeData(500, 5);
+      const view = { start: 100000, end: 200000 };
+      const result = renderSpectrogramImage(times, rows, yBins, 1, 500, false, view);
+      expect(result).not.toBeNull();
+      // view range 100000ms ± 50% → 200000ms render window → indices 50..250 inclusive = 201 points
+      expect(result.canvas.width).toBe(201);
     });
   });
 });

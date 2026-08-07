@@ -63,6 +63,12 @@ export function spectrogramValueAt(times, rows, yBinsFlat, timeMs, yValue) {
   return (v == null || isNaN(v)) ? null : v;
 }
 
+// Browser canvas dimensions are bounded (typically 16384–32768 px); a spectrogram
+// with more time samples than that either fails to render or stutters. Cap the canvas
+// width and decimate columns when the slice exceeds it — the ECharts graphic element
+// still stretches the image to the full grid width, so visual fidelity is preserved.
+const MAX_SPECTROGRAM_CANVAS_WIDTH = 4096;
+
 // view: { start, end } in ms (nullable); returns { canvas, tStart, tEnd, yMin, yMax } or null
 export function renderSpectrogramImage(times, rows, yBinsFlat, vMin, vMax, logScaleParam, view) {
   const v = (view && view.start != null && view.end != null)
@@ -84,18 +90,22 @@ export function renderSpectrogramImage(times, rows, yBinsFlat, vMin, vMax, logSc
   const nY = yBinsFlat.length;
   if (nTime <= 0 || nY <= 0) return null;
 
+  const outWidth = Math.min(nTime, MAX_SPECTROGRAM_CANVAS_WIDTH);
+  const step = nTime / outWidth;
+
   const canvas = document.createElement('canvas');
-  canvas.width = nTime;
+  canvas.width = outWidth;
   canvas.height = nY;
   const ctx = canvas.getContext('2d');
-  const imgData = ctx.createImageData(nTime, nY);
+  const imgData = ctx.createImageData(outWidth, nY);
   const pixels = imgData.data;
 
   const logVMin = Math.log10(Math.max(vMin, 1e-30));
   const logVMax = Math.log10(vMax);
 
-  for (let t = 0; t < nTime; t++) {
-    const row = rows[iStart + t];
+  for (let t = 0; t < outWidth; t++) {
+    const srcIdx = iStart + Math.floor(t * step);
+    const row = rows[srcIdx];
     if (!row) continue;
     for (let y = 0; y < nY; y++) {
       const val = row[y];
@@ -105,7 +115,7 @@ export function renderSpectrogramImage(times, rows, yBinsFlat, vMin, vMax, logSc
         : (val - vMin) / (vMax - vMin);
       const li = Math.max(0, Math.min(255, Math.round(norm * 255))) * 3;
       const py = (nY - 1 - y);
-      const idx = (py * nTime + t) * 4;
+      const idx = (py * outWidth + t) * 4;
       pixels[idx] = VIRIDIS_LUT[li];
       pixels[idx + 1] = VIRIDIS_LUT[li + 1];
       pixels[idx + 2] = VIRIDIS_LUT[li + 2];

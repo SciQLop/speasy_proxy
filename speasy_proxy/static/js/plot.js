@@ -559,7 +559,7 @@ import { fetchData as apiFetchData, fetchInventory } from './api-client.js';
         if (plotState.plots.length === 0) return;
         const config = stateToConfig();
         const encoded = configToBase64(config);
-        const fullUrl = window.location.origin + window.location.pathname + '?config=' + encoded;
+        const fullUrl = BASE_URL + window.location.pathname + '?config=' + encoded;
         document.getElementById('share-url').value = fullUrl;
     }
 

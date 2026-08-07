@@ -44,9 +44,11 @@ const API_BASE = (window.SPEASY_BASE_URL || '').replace(/\/$/, '') + '/';
     let chart = null;
 
     // ---- Earth texture ----
-    let earthPixels = null;
-    let earthTexW = 0;
-    let earthTexH = 0;
+    // Pre-computed color lookup table indexed by parametric UV. The parametric surface
+    // callback fires per-vertex on every frame (64k vertices) — pre-computing the color
+    // grid once at load time and doing a fast array lookup per frame is orders of
+    // magnitude cheaper than sampling the texture per-vertex.
+    let earthColorLUT = null;  // { lut: string[], cols: number, rows: number } | null
 
     function loadEarthTexture() {
         return new Promise(resolve => {
@@ -58,9 +60,8 @@ const API_BASE = (window.SPEASY_BASE_URL || '').replace(/\/$/, '') + '/';
                 c.width = w; c.height = h;
                 const ctx = c.getContext('2d');
                 ctx.drawImage(img, 0, 0, w, h);
-                earthPixels = ctx.getImageData(0, 0, w, h).data;
-                earthTexW = w;
-                earthTexH = h;
+                const pixels = ctx.getImageData(0, 0, w, h).data;
+                earthColorLUT = buildEarthColorLUT(pixels, w, h);
                 resolve(true);
             };
             img.onerror = () => resolve(false);
@@ -68,15 +69,37 @@ const API_BASE = (window.SPEASY_BASE_URL || '').replace(/\/$/, '') + '/';
         });
     }
 
+    function buildEarthColorLUT(pixels, w, h) {
+        // Grid resolution: fine enough that adjacent vertices land in the same cell
+        // (the surface steps at PI/180, so 360 x 180 covers it with margin).
+        const cols = 360;
+        const rows = 180;
+        const lut = new Array(cols * rows);
+        for (let ry = 0; ry < rows; ry++) {
+            // Map row to latitude: ry=0 → north pole (lat=PI/2), ry=rows-1 → south pole
+            const lat = (Math.PI / 2) * (1 - ry / (rows - 1));
+            const py = Math.floor(((Math.PI / 2 - lat) / Math.PI) * (h - 1));
+            for (let cx = 0; cx < cols; cx++) {
+                // Map column to longitude: cx=0 → -PI, cx=cols-1 → +PI
+                const lon = Math.PI * (2 * cx / cols - 1);
+                const px = Math.floor(((lon + Math.PI) / (2 * Math.PI)) * (w - 1));
+                const i = (py * w + px) * 4;
+                lut[ry * cols + cx] = `rgb(${pixels[i]},${pixels[i + 1]},${pixels[i + 2]})`;
+            }
+        }
+        return { lut, cols, rows };
+    }
+
     function sampleEarthColor(x, y, z) {
-        if (!earthPixels) return '#2255aa';
+        if (!earthColorLUT) return '#2255aa';
         const r = Math.sqrt(x * x + y * y + z * z) || 1;
         const lat = Math.asin(Math.max(-1, Math.min(1, z / r)));
         const lon = Math.atan2(y, x);
-        const px = Math.floor(((lon + Math.PI) / (2 * Math.PI)) * (earthTexW - 1));
-        const py = Math.floor(((Math.PI / 2 - lat) / Math.PI) * (earthTexH - 1));
-        const i = (py * earthTexW + px) * 4;
-        return `rgb(${earthPixels[i]},${earthPixels[i + 1]},${earthPixels[i + 2]})`;
+        const cx = Math.floor(((lon + Math.PI) / (2 * Math.PI)) * earthColorLUT.cols);
+        const ry = Math.floor(((Math.PI / 2 - lat) / Math.PI) * earthColorLUT.rows);
+        const clampedCx = Math.max(0, Math.min(earthColorLUT.cols - 1, cx));
+        const clampedRy = Math.max(0, Math.min(earthColorLUT.rows - 1, ry));
+        return earthColorLUT.lut[clampedRy * earthColorLUT.cols + clampedCx];
     }
 
     // ---- Chart ----
@@ -91,8 +114,8 @@ const API_BASE = (window.SPEASY_BASE_URL || '').replace(/\/$/, '') + '/';
             type: 'surface',
             parametric: true,
             wireframe: { show: false },
-            shading: earthPixels ? 'lambert' : 'color',
-            itemStyle: earthPixels
+            shading: earthColorLUT ? 'lambert' : 'color',
+            itemStyle: earthColorLUT
                 ? { color: params => sampleEarthColor(params.value[0], params.value[1], params.value[2]) }
                 : { color: '#2255aa', opacity: 0.6 },
             parametricEquation: {
@@ -226,6 +249,37 @@ const API_BASE = (window.SPEASY_BASE_URL || '').replace(/\/$/, '') + '/';
             opts.visualMap = [];
         }
         chart.setOption(opts, { replaceMerge: ['series', 'visualMap'] });
+    }
+
+    function updateActionButtons() {
+        const hasTrajectories = trajectories.size > 0;
+        document.getElementById('btn-clear').style.display = hasTrajectories ? '' : 'none';
+        document.getElementById('btn-export-png').style.display = hasTrajectories ? '' : 'none';
+    }
+
+    function clearAllTrajectories() {
+        trajectories.clear();
+        colorIndex = 0;
+        for (const cb of document.querySelectorAll('.tree-node input[type="checkbox"][data-uid]')) {
+            cb.checked = false;
+            const span = cb.closest('.tree-node');
+            span.classList.remove('plotted');
+            const swatch = span.querySelector('.color-swatch');
+            if (swatch) swatch.style.display = 'none';
+        }
+        updateChartOption();
+        updateActionButtons();
+        setStatus('Cleared all trajectories.');
+        updateURL();
+    }
+
+    function exportPng() {
+        if (!chart || trajectories.size === 0) return;
+        const url = chart.getDataURL({ pixelRatio: 2, backgroundColor: '#0b0e17' });
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = 'speasy-orbit.png';
+        a.click();
     }
 
     // ---- Inventory tree ----
@@ -451,6 +505,7 @@ const API_BASE = (window.SPEASY_BASE_URL || '').replace(/\/$/, '') + '/';
             span.classList.remove('plotted');
             swatch.style.display = 'none';
             updateChartOption();
+            updateActionButtons();
             setStatus(`Removed ${uid.split('/').pop()}.`);
             updateURL();
             return;
@@ -513,6 +568,7 @@ const reData = toReData(data.values.values);
             swatch.style.display = 'inline-block';
             span.classList.add('plotted');
             updateChartOption();
+            updateActionButtons();
             setStatus(`Plotted ${name} (${reData.length} points).`);
             updateURL();
         } catch (err) {
@@ -570,6 +626,7 @@ const reData = toReData(data.values.values);
         });
         await Promise.all(fetches);
         updateChartOption();
+        updateActionButtons();
         showLoading(false);
         showFetchBar(false);
         const msg = `Refreshed ${trajectories.size} trajectory(ies).`;
@@ -615,6 +672,9 @@ const reData = toReData(data.values.values);
         if (btn.dataset.view === 'reset') opts.grid3D.viewControl.distance = 150;
         chart.setOption(opts);
     });
+
+    document.getElementById('btn-clear').addEventListener('click', clearAllTrajectories);
+    document.getElementById('btn-export-png').addEventListener('click', exportPng);
 
     attachDatePicker(document.getElementById('startTime'));
     attachDatePicker(document.getElementById('stopTime'));
