@@ -41,6 +41,7 @@ import { fetchData as apiFetchData, fetchInventory } from './api-client.js';
     let fetchController = null;
     let panFetchQueued = false;  // a pan/zoom arrived while a fetch was in flight — rerun once after it
     let lastStructureKey = null;  // structure of the last full chart build; used to pick merge vs rebuild
+    const loadingSubplots = new Set();  // subplot indices currently fetching data (for the spinner)
     let resizeDebounceTimer = null;
     let lastRenderedHeight = 0;  // chart height at last full render; resize rebuilds only when it changes
     let seriesUnits = {};        // seriesName -> unit, rebuilt on each render for the tooltip
@@ -159,12 +160,16 @@ import { fetchData as apiFetchData, fetchInventory } from './api-client.js';
         document.getElementById('btn-plot').disabled = false;
         document.getElementById('btn-add').disabled = false;
 
-        // Pre-fill date inputs: a 7-day window ending at the product's stop_date
-        // (or now if unavailable). A week is a useful default for inspection.
-        const stopDate = node.stop_date ? new Date(node.stop_date) : new Date();
-        const startDate = new Date(stopDate.getTime() - 7 * 86400000);
-        setDateInput(document.getElementById('stop-time'), stopDate);
-        setDateInput(document.getElementById('start-time'), startDate);
+        // Pre-fill date inputs only if they're empty — clicking a product to
+        // inspect it shouldn't clobber a time window the user already set.
+        const stopEl = document.getElementById('stop-time');
+        const startEl = document.getElementById('start-time');
+        if (!stopEl.value && !startEl.value && node.stop_date) {
+            const stopDate = new Date(node.stop_date);
+            const startDate = new Date(stopDate.getTime() - 7 * 86400000);
+            setDateInput(stopEl, stopDate);
+            setDateInput(startEl, startDate);
+        }
 
         updateURL();
     }
@@ -488,7 +493,6 @@ import { fetchData as apiFetchData, fetchInventory } from './api-client.js';
             header.className = 'add-dropdown-item';
             header.style.cssText = 'display:flex;justify-content:space-between;align-items:center;font-weight:600;color:#8892b0;';
 
-            const label = sp.products.length > 0 ? sp.products[0].path.split('/').pop() : 'empty';
             const textSpan = document.createElement('span');
             textSpan.textContent = 'Subplot ' + (i + 1);
             textSpan.style.cssText = 'flex:1;overflow:hidden;text-overflow:ellipsis;';
@@ -632,6 +636,7 @@ import { fetchData as apiFetchData, fetchInventory } from './api-client.js';
 
     async function fetchProductAndRender(subplotIndex, productPath) {
         showLoading(true);
+        loadingSubplots.add(subplotIndex);
         setStatus('Fetching ' + productPath + '...');
 
         const startTime = plotState.time_range.start;
@@ -644,8 +649,8 @@ import { fetchData as apiFetchData, fetchInventory } from './api-client.js';
         try {
             const data = await fetchData(productPath, startISO, stopISO);
             if (!data || !data.values || !data.axes || data.axes.length === 0) {
+                loadingSubplots.delete(subplotIndex);
                 setStatus('No data returned for ' + productPath);
-                showLoading(false);
                 return;
             }
 
@@ -664,6 +669,7 @@ import { fetchData as apiFetchData, fetchInventory } from './api-client.js';
             console.error(e);
         } finally {
             showLoading(false);
+            loadingSubplots.delete(subplotIndex);
         }
     }
 
@@ -821,8 +827,9 @@ import { fetchData as apiFetchData, fetchInventory } from './api-client.js';
             });
 
             const subplotTitle = subplot.products.map(p => p.label || p.path.split('/').pop()).join(', ');
+            const titleText = loadingSubplots.has(i) ? subplotTitle + ' ●' : subplotTitle;
             titles.push({
-                text: subplotTitle,
+                text: titleText,
                 left: 85,
                 top: topPx,
                 textStyle: { color: '#8892b0', fontSize: 11, fontWeight: 'normal' }
@@ -1327,6 +1334,7 @@ import { fetchData as apiFetchData, fetchInventory } from './api-client.js';
         cache.intervals = [];
         cache.fetchSpan = 0;
         cache.rows = [];
+        cache.valueRange = null;
         for (const cn of cache.columnNames) {
             cache.columns[cn] = [];
         }

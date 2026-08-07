@@ -251,6 +251,30 @@ const API_BASE = (window.SPEASY_BASE_URL || '').replace(/\/$/, '') + '/';
         chart.setOption(opts, { replaceMerge: ['series', 'visualMap'] });
     }
 
+    // Lightweight slider feedback: update only the magnetopause/bow shock surfaces
+    // (series indices 1..N) without rebuilding trajectories or the whole option.
+    // The surfaces are cheap (parametric ~40x40 grids), so this stays at 60fps
+    // during a drag; reclassifying trajectories would be far more expensive.
+    // NOTE: trajectories must be included in the series array — replaceMerge would
+    // drop any series not listed here, making them flicker out during the drag.
+    function updateMagnetoSurfaces() {
+        if (!chart) return;
+        const Dp = parseFloat(document.getElementById('dpSlider').value);
+        const Bz = parseFloat(document.getElementById('bzSlider').value);
+        const showBoundaries = document.getElementById('showMagnetopause').checked
+                            || document.getElementById('showBowShock').checked;
+        const trajSeries = Array.from(trajectories.values()).map((t) => ({
+            type: 'line3D',
+            name: t.name,
+            data: t.data,
+            lineStyle: { width: 2, color: showBoundaries ? REGION_COLORS[0] : t.color },
+            silent: true,
+        }));
+        chart.setOption({
+            series: [earthSeries(), ...magnetosphereSeries(Dp, Bz), ...trajSeries],
+        }, { replaceMerge: ['series'] });
+    }
+
     // uid -> true for satellites currently being fetched (for the legend spinner)
     const loadingUids = new Set();
 
@@ -794,24 +818,27 @@ const API_BASE = (window.SPEASY_BASE_URL || '').replace(/\/$/, '') + '/';
         updateURL();
     });
 
-
-    let magnetoTimer = null;
-    function debouncedMagnetoUpdate() {
-        if (magnetoTimer) clearTimeout(magnetoTimer);
-        magnetoTimer = setTimeout(() => {
-            reclassifyAllTrajectories();
-            updateChartOption();
-            updateURL();
-        }, 500);
-    }
-
+    // Slider drags: update only the magnetopause/bow shock surfaces for smooth
+    // real-time feedback. Reclassifying trajectories is deferred to the 'change'
+    // event (fires on release), which triggers a full updateChartOption.
     document.getElementById('dpSlider').addEventListener('input', function() {
         document.getElementById('dpValue').textContent = parseFloat(this.value).toFixed(1) + ' nPa';
-        debouncedMagnetoUpdate();
+        updateMagnetoSurfaces();
     });
     document.getElementById('bzSlider').addEventListener('input', function() {
         document.getElementById('bzValue').textContent = parseFloat(this.value).toFixed(1) + ' nT';
-        debouncedMagnetoUpdate();
+        updateMagnetoSurfaces();
+    });
+    // On slider release, reclassify trajectories with the final Dp/Bz.
+    document.getElementById('dpSlider').addEventListener('change', () => {
+        reclassifyAllTrajectories();
+        updateChartOption();
+        updateURL();
+    });
+    document.getElementById('bzSlider').addEventListener('change', () => {
+        reclassifyAllTrajectories();
+        updateChartOption();
+        updateURL();
     });
 
     // ---- Search / filter ----
@@ -946,7 +973,7 @@ const API_BASE = (window.SPEASY_BASE_URL || '').replace(/\/$/, '') + '/';
         pendingUids = uids ? uids.split(',') : null;
     }
 
-    function applyPendingUids() {
+    async function applyPendingUids() {
         if (!pendingUids) return;
         const wanted = pendingUids;
         pendingUids = null;
@@ -986,7 +1013,7 @@ const API_BASE = (window.SPEASY_BASE_URL || '').replace(/\/$/, '') + '/';
             cb.checked = true;
             return fetchSatellite(cb.dataset.uid, cb, span, swatch, coordSys, startISO, stopISO);
         });
-        runWithConcurrency(tasks, 3);
+        await runWithConcurrency(tasks, 3);
     }
 
     // ---- Init ----
