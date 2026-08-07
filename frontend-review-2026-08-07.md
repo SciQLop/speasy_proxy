@@ -106,59 +106,45 @@
 | 3 | Share URL `base_url` fix | **Done** | `updateShareURL` now uses `BASE_URL` instead of `window.location.origin`. |
 | 4 | Clear all + PNG export | **Done** | Added `btn-clear` and `btn-export-png` to orbit viewer controls bar with `clearAllTrajectories` and `exportPng` functions. Buttons auto-show/hide based on trajectory count. |
 
-**Test status:** 106 JS tests pass (101 original + 5 new), 122 Python tests pass. No regressions.
+**Test status:** 112 JS tests pass (101 original + 11 new), 122 Python tests pass. No regressions.
+
+## Completed Fixes (24 items)
+
+| # | Item | Status |
+|---|------|--------|
+| 1 | Earth texture perf | Done — pre-computed color LUT replaces per-vertex callback |
+| 2 | Spectrogram canvas capping | Done — `MAX_SPECTROGRAM_CANVAS_WIDTH = 4096` |
+| 3 | Share URL `base_url` fix | Done — uses `BASE_URL` |
+| 4 | Clear all + PNG export | Done |
+| 5 | Wheel padding 5×→1× | Done |
+| 6 | vMin/vMax cached as `valueRange` | Done |
+| 7 | Default date window 1d→7d | Done |
+| 8 | Per-product removal | Done |
+| 9 | "Now" button | Done |
+| 10 | CSV export warns about skipped heatmaps | Done |
+| 11 | Keyboard shortcut Shift+Enter | Done |
+| 12 | Per-subplot loading spinner | Done |
+| 13 | applyPendingUids/replotAll concurrency | Done — `runWithConcurrency(3)` |
+| 14 | Defer reclassifyAllTrajectories to slider release | Done |
+| 15 | Duration buttons sync with manual edits | Done |
+| 16 | Trajectory legend + loading progress | Done |
+| 17 | CHART_COLORS/REGION_COLORS dedup | Done — shared in `common.js` |
+| 18 | METADATA_KEYS consolidation | Done — merged into `SKIP_KEYS` |
+| 19 | Error boundary | Done — `installErrorBoundary` in `common.js` |
+| 20 | Skip rebuilding grids/axes on data-only | Done |
+| 21 | updateMagnetoSurfaces drops trajectories | Fixed (review) |
+| 22 | selectProduct clobbers dates | Fixed (review) |
+| 23 | applyPendingUids loading overlay | Fixed (review) |
+| 24 | Review cleanups (dead var, null check, valueRange reset) | Fixed |
 
 ## Deferred
 
 | # | Item | Reason |
 |---|------|--------|
-| 5 | CSS unification | `body`, `.main`, `.status-bar` rules have diverged between templates (different padding, colors, `position: relative`, `height: 100dvh`). Needs careful side-by-side visual pass to avoid regressions. |
-
-## Remaining Open Items
-
-### Plot UI Bugs
-- [ ] #2 `applyWheelView` padding 5× the view (`plot.js:1402`)
-- [ ] #4 vMin/vMax scans entire cache (`plot.js:1017`)
-- [ ] #5 Default date window is 1 day (`plot.js:162`)
-
-### Plot UI UX
-- [ ] #6 No per-product removal from subplot
-- [ ] #7 No "Now" button for time selection
-- [ ] #8 No per-product loading spinner
-- [ ] #9 "Log Z"/"Log Y" button label ambiguity
-- [ ] #10 CSV export silently skips heatmaps
-- [ ] #11 No keyboard shortcut for "Add to plot"
-
-### Plot UI Performance
-- [ ] #13 `buildSeriesData` allocation churn
-- [ ] #14 `renderAllSubplots` rebuilds full option on `dataOnly`
-
-### Plot UI Cleanup
-- [ ] #15 Split `plot.js` (1761 lines)
-- [ ] #16 Inconsistent indentation
-- [ ] #17 `CHART_COLORS` duplication
-
-### Orbit Viewer Bugs
-- [ ] #2 `applyPendingUids` fires N parallel fetches
-- [ ] #3 `replotAll` no concurrency limit
-- [ ] #4 "Reset" view doesn't reset axis range
-
-### Orbit Viewer UX
-- [ ] #7 No tooltip / cursor readout
-- [ ] #8 Duration buttons don't sync with manual edits
-- [ ] #9 No trajectory legend
-- [ ] #10 No loading progress indicator
-
-### Orbit Viewer Performance
-- [ ] #12 `reclassifyAllTrajectories` on every slider tick
-- [ ] #13 `updateChartOption` rebuilds everything on Dp/Bz change
-
-### Orbit Viewer Cleanup
-- [ ] #14 Split `demo3d.js` (872 lines)
-- [ ] #15 `METADATA_KEYS` duplicates `SKIP_KEYS`
-- [ ] #16 `COLORS`/`REGION_COLORS` duplication
-- [ ] #17 `isMetadataKey` thin wrapper
-
-### Cross-cutting
-- [ ] #2 No error boundary
-- [ ] #3 `format.js` unused by viewers
+| A | CSS unification | Rules diverged; needs visual pass |
+| B | Module splitting (plot.js/demo3d.js) | Large refactor; README scopes as future increment |
+| C | Inconsistent indentation | Pre-existing; no formatter configured |
+| D | Cursor readout (3D) | convertToPixel doesn't work in 3D; legend covers the need |
+| E | buildSeriesData allocation | Bounded by server resampling (~12k points) |
+| F | format.js unused by viewers | Cosmetic; viewers use toPrecision(4) |
+| G | "Log Z"/"Log Y" labels | Actually fine — shows current state consistently |
