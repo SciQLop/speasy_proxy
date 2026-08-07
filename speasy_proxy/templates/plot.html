@@ -175,6 +175,10 @@
         .add-dropdown-item:hover {
             background: #2a3358;
         }
+
+        .range-chips #btn-now {
+            font-size: 0.78rem;
+        }
     </style>
 </head>
 <body>
@@ -229,6 +233,7 @@
             <button data-ms="604800000">7d</button>
             <button data-ms="2592000000">30d</button>
             <button class="pan" data-pan="1" title="Pan later (→)">&#9654;</button>
+            <button id="btn-now" title="Set stop to now, keep window width">Now</button>
         </div>
 
         <button id="btn-plot" disabled>Plot</button>

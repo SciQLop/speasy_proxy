@@ -251,6 +251,46 @@ const API_BASE = (window.SPEASY_BASE_URL || '').replace(/\/$/, '') + '/';
         chart.setOption(opts, { replaceMerge: ['series', 'visualMap'] });
     }
 
+    // uid -> true for satellites currently being fetched (for the legend spinner)
+    const loadingUids = new Set();
+
+    function renderLegend() {
+        const el = document.getElementById('trajectory-legend');
+        if (trajectories.size === 0 && loadingUids.size === 0) {
+            el.style.display = 'none';
+            return;
+        }
+        el.innerHTML = '';
+        el.style.display = 'block';
+        for (const [uid, t] of trajectories) {
+            const item = document.createElement('div');
+            item.className = 'legend-item';
+            const swatch = document.createElement('span');
+            swatch.className = 'legend-swatch';
+            swatch.style.background = t.color;
+            const name = document.createElement('span');
+            name.className = 'legend-name';
+            name.textContent = t.name;
+            name.title = t.name;
+            item.appendChild(swatch);
+            item.appendChild(name);
+            el.appendChild(item);
+        }
+        for (const uid of loadingUids) {
+            const item = document.createElement('div');
+            item.className = 'legend-item';
+            const swatch = document.createElement('span');
+            swatch.className = 'legend-swatch';
+            swatch.style.background = '#555e7e';
+            const name = document.createElement('span');
+            name.className = 'legend-name legend-loading';
+            name.textContent = uid.split('/').pop() + '…';
+            item.appendChild(swatch);
+            item.appendChild(name);
+            el.appendChild(item);
+        }
+    }
+
     function updateActionButtons() {
         const hasTrajectories = trajectories.size > 0;
         document.getElementById('btn-clear').style.display = hasTrajectories ? '' : 'none';
@@ -259,6 +299,7 @@ const API_BASE = (window.SPEASY_BASE_URL || '').replace(/\/$/, '') + '/';
 
     function clearAllTrajectories() {
         trajectories.clear();
+        loadingUids.clear();
         colorIndex = 0;
         for (const cb of document.querySelectorAll('.tree-node input[type="checkbox"][data-uid]')) {
             cb.checked = false;
@@ -269,6 +310,7 @@ const API_BASE = (window.SPEASY_BASE_URL || '').replace(/\/$/, '') + '/';
         }
         updateChartOption();
         updateActionButtons();
+        renderLegend();
         setStatus('Cleared all trajectories.');
         updateURL();
     }
@@ -550,8 +592,10 @@ const API_BASE = (window.SPEASY_BASE_URL || '').replace(/\/$/, '') + '/';
         }
 
         span.classList.add('loading');
+        loadingUids.add(uid);
         showLoading(true);
         showFetchBar(true);
+        renderLegend();
         setStatus(`Fetching ${uid.split('/').pop()}...`);
         try {
             const data = await apiFetchData({
@@ -576,8 +620,10 @@ const reData = toReData(data.values.values);
             setStatus('Error: ' + err.message);
         } finally {
             span.classList.remove('loading');
+            loadingUids.delete(uid);
             showLoading(false);
             showFetchBar(false);
+            renderLegend();
         }
     }
 
@@ -602,6 +648,9 @@ const reData = toReData(data.values.values);
 
         showLoading(true);
         showFetchBar(true);
+        loadingUids.clear();
+        for (const cb of checked) loadingUids.add(cb.dataset.uid);
+        renderLegend();
         setStatus('Refreshing all trajectories...');
         const errors = [];
         const fetches = Array.from(checked).map(async (cb) => {
@@ -622,11 +671,13 @@ const reData = toReData(data.values.values);
                 errors.push(uid.split('/').pop() + ': ' + err.message);
             } finally {
                 span.classList.remove('loading');
+                loadingUids.delete(uid);
             }
         });
         await Promise.all(fetches);
         updateChartOption();
         updateActionButtons();
+        renderLegend();
         showLoading(false);
         showFetchBar(false);
         const msg = `Refreshed ${trajectories.size} trajectory(ies).`;
@@ -639,11 +690,33 @@ const reData = toReData(data.values.values);
         return (active ? parseInt(active.dataset.days) : 7) * 86400000;
     }
 
+    // Highlight the duration button matching the current start/stop span, or clear
+    // all buttons if the span doesn't match any preset. Keeps the UI in sync when
+    // the user edits the date fields directly.
+    function syncDurationButton() {
+        const start = parseDateInput(document.getElementById('startTime').value);
+        const stop = parseDateInput(document.getElementById('stopTime').value);
+        const buttons = document.querySelectorAll('#durationBtns button[data-days]');
+        if (!start || !stop) {
+            buttons.forEach(b => b.classList.remove('active'));
+            return;
+        }
+        const spanDays = Math.round((stop.getTime() - start.getTime()) / 86400000);
+        let matched = false;
+        for (const b of buttons) {
+            const isMatch = parseInt(b.dataset.days) === spanDays;
+            b.classList.toggle('active', isMatch);
+            if (isMatch) matched = true;
+        }
+        if (!matched) buttons.forEach(b => b.classList.remove('active'));
+    }
+
     function applyDuration(days) {
         const stop = parseDateInput(document.getElementById('stopTime').value);
         if (!stop) return;
         const start = new Date(stop.getTime() - days * 86400000);
         setDateInput(document.getElementById('startTime'), start);
+        syncDurationButton();
         debouncedReplotAll();
     }
 
@@ -687,7 +760,10 @@ const reData = toReData(data.values.values);
         replotTimer = setTimeout(replotAll, 250);
     }
 
-    document.getElementById('startTime').addEventListener('change', debouncedReplotAll);
+    document.getElementById('startTime').addEventListener('change', () => {
+        syncDurationButton();
+        debouncedReplotAll();
+    });
     document.getElementById('stopTime').addEventListener('change', () => {
         applyDuration(getSelectedDurationMs() / 86400000);
     });

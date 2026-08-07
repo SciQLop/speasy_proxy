@@ -177,6 +177,48 @@
             color: #8892b0;
         }
 
+        .trajectory-legend {
+            position: absolute;
+            top: 8px;
+            right: 8px;
+            z-index: 5;
+            background: rgba(17, 22, 39, 0.85);
+            border: 1px solid #2a3358;
+            border-radius: 6px;
+            padding: 6px 10px;
+            font-size: 0.78rem;
+            color: #e0e6f0;
+            max-width: 200px;
+            max-height: 50%;
+            overflow-y: auto;
+            display: none;
+        }
+
+        .trajectory-legend .legend-item {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            padding: 2px 0;
+            white-space: nowrap;
+        }
+
+        .trajectory-legend .legend-swatch {
+            width: 10px;
+            height: 10px;
+            border-radius: 2px;
+            flex-shrink: 0;
+        }
+
+        .trajectory-legend .legend-name {
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .trajectory-legend .legend-loading {
+            color: #8892b0;
+            font-style: italic;
+        }
+
         ::-webkit-scrollbar { width: 6px; }
 
         ::-webkit-scrollbar-track { background: transparent; }
@@ -330,6 +372,7 @@
         <div class="chart-loading-overlay" id="loading-overlay">
             <div class="spinner"></div>
         </div>
+        <div class="trajectory-legend" id="trajectory-legend"></div>
     </div>
 
     <div class="status-bar" id="statusBar">Ready</div>

@@ -158,15 +158,12 @@ import { fetchData as apiFetchData, fetchInventory } from './api-client.js';
         document.getElementById('btn-plot').disabled = false;
         document.getElementById('btn-add').disabled = false;
 
-        // Pre-fill date inputs
-        if (node.stop_date) {
-            const stopDate = new Date(node.stop_date);
-            stopDate.setMonth(stopDate.getMonth() - 2);
-            const startDate = new Date(stopDate);
-            startDate.setDate(startDate.getDate() - 1);
-            setDateInput(document.getElementById('stop-time'), stopDate);
-            setDateInput(document.getElementById('start-time'), startDate);
-        }
+        // Pre-fill date inputs: a 7-day window ending at the product's stop_date
+        // (or now if unavailable). A week is a useful default for inspection.
+        const stopDate = node.stop_date ? new Date(node.stop_date) : new Date();
+        const startDate = new Date(stopDate.getTime() - 7 * 86400000);
+        setDateInput(document.getElementById('stop-time'), stopDate);
+        setDateInput(document.getElementById('start-time'), startDate);
 
         updateURL();
     }
@@ -343,6 +340,12 @@ import { fetchData as apiFetchData, fetchInventory } from './api-client.js';
             if (btn.dataset.pan) panTime(Number(btn.dataset.pan));
             else if (btn.dataset.ms) applyRelativeRange(Number(btn.dataset.ms));
         });
+        document.getElementById('btn-now').addEventListener('click', () => {
+            const start = parseDateInput(document.getElementById('start-time').value);
+            const width = (currentStopMs() - currentStartMs()) || 86400000;
+            const now = Date.now();
+            replotOverRange(now - width, now);
+        });
 
         // Arrow keys pan the time window when not typing in a field.
         document.addEventListener('keydown', (e) => {
@@ -380,10 +383,12 @@ import { fetchData as apiFetchData, fetchInventory } from './api-client.js';
             const startMs = currentView.start != null ? currentView.start : -Infinity;
             const stopMs = currentView.end != null ? currentView.end : Infinity;
             const parts = [];
+            let heatmapCount = 0;
             for (const sp of plotState.plots) {
                 for (const prod of sp.products) {
                     const cache = sp.productData[prod.path];
-                    if (!cache || cache.times.length === 0 || cache.columnNames.length === 0) continue;
+                    if (!cache || cache.times.length === 0) continue;
+                    if (cache.columnNames.length === 0) { heatmapCount++; continue; }
                     parts.push(cacheToCsv(cache, startMs, stopMs));
                 }
             }
@@ -394,7 +399,9 @@ import { fetchData as apiFetchData, fetchInventory } from './api-client.js';
             a.download = 'speasy-export.csv';
             a.click();
             URL.revokeObjectURL(a.href);
-            setStatus('Exported ' + parts.length + ' product(s) to CSV.');
+            let msg = 'Exported ' + parts.length + ' product(s) to CSV.';
+            if (heatmapCount > 0) msg += ' (' + heatmapCount + ' spectrogram(s) skipped — CSV is for line data.)';
+            setStatus(msg);
         });
 
         // Add to plot dropdown
@@ -465,16 +472,16 @@ import { fetchData as apiFetchData, fetchInventory } from './api-client.js';
 
         for (let i = 0; i < plotState.plots.length; i++) {
             const sp = plotState.plots[i];
+
+            const header = document.createElement('div');
+            header.className = 'add-dropdown-item';
+            header.style.cssText = 'display:flex;justify-content:space-between;align-items:center;font-weight:600;color:#8892b0;';
+
             const label = sp.products.length > 0 ? sp.products[0].path.split('/').pop() : 'empty';
-
-            const item = document.createElement('div');
-            item.className = 'add-dropdown-item';
-            item.style.cssText = 'display:flex;justify-content:space-between;align-items:center;';
-
             const textSpan = document.createElement('span');
-            textSpan.textContent = 'Subplot ' + (i + 1) + ': ' + label;
+            textSpan.textContent = 'Subplot ' + (i + 1);
             textSpan.style.cssText = 'flex:1;overflow:hidden;text-overflow:ellipsis;';
-            item.appendChild(textSpan);
+            header.appendChild(textSpan);
 
             const removeBtn = document.createElement('span');
             removeBtn.textContent = '✕';
@@ -486,13 +493,42 @@ import { fetchData as apiFetchData, fetchInventory } from './api-client.js';
                 removeSubplot(idx);
                 dropdown.style.display = 'none';
             });
-            item.appendChild(removeBtn);
+            header.appendChild(removeBtn);
 
-            item.addEventListener('click', () => {
+            header.addEventListener('click', () => {
                 addProductToPlot(idx);
                 dropdown.style.display = 'none';
             });
-            dropdown.appendChild(item);
+            dropdown.appendChild(header);
+
+            for (const prod of sp.products) {
+                const prodItem = document.createElement('div');
+                prodItem.className = 'add-dropdown-item';
+                prodItem.style.cssText = 'display:flex;justify-content:space-between;align-items:center;padding-left:16px;';
+
+                const prodLabel = document.createElement('span');
+                prodLabel.textContent = '  ' + (prod.label || prod.path.split('/').pop());
+                prodLabel.style.cssText = 'flex:1;overflow:hidden;text-overflow:ellipsis;';
+                prodItem.appendChild(prodLabel);
+
+                const prodRemove = document.createElement('span');
+                prodRemove.textContent = '✕';
+                prodRemove.title = 'Remove product';
+                prodRemove.style.cssText = 'margin-left:8px;color:#ee6666;cursor:pointer;padding:0 4px;';
+                const prodPath = prod.path;
+                prodRemove.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    removeProductFromSubplot(idx, prodPath);
+                    dropdown.style.display = 'none';
+                });
+                prodItem.appendChild(prodRemove);
+
+                prodItem.addEventListener('click', () => {
+                    addProductToPlot(idx);
+                    dropdown.style.display = 'none';
+                });
+                dropdown.appendChild(prodItem);
+            }
         }
     }
 
@@ -535,11 +571,31 @@ import { fetchData as apiFetchData, fetchInventory } from './api-client.js';
             document.getElementById('btn-clear').style.display = 'none';
             document.getElementById('btn-export-png').style.display = 'none';
             document.getElementById('btn-export-csv').style.display = 'none';
+            document.getElementById('btn-log-scale').style.display = 'none';
+            document.getElementById('btn-log-y').style.display = 'none';
+            document.getElementById('btn-share').disabled = true;
             setStatus('Ready');
         } else {
             renderAllSubplots();
         }
         updateURL();
+    }
+
+    function removeProductFromSubplot(subplotIndex, productPath) {
+        const subplot = plotState.plots[subplotIndex];
+        subplot.products = subplot.products.filter(p => p.path !== productPath);
+        delete subplot.productData[productPath];
+        if (subplot.products.length === 0) {
+            removeSubplot(subplotIndex);
+        } else {
+            // First product drives plot type — re-detect if we removed it
+            if (subplot.products[0]) {
+                const cache = subplot.productData[subplot.products[0].path];
+                subplot.plotType = cache && cache.displayType ? 'heatmap' : 'line';
+            }
+            renderAllSubplots();
+            updateURL();
+        }
     }
 
     function clearAllPlots() {
