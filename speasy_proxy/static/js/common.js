@@ -108,6 +108,15 @@ export async function runWithConcurrency(tasks, limit = 3) {
     return results;
 }
 
+// Shared palette for series/trajectory colors across viewers.
+export const CHART_COLORS = [
+    '#5470c6', '#91cc75', '#fac858', '#ee6666', '#73c0de',
+    '#3ba272', '#fc8452', '#9a60b4', '#ea7ccc',
+];
+
+// Magnetopause region colors: magnetosphere, magnetosheath, solar wind.
+export const REGION_COLORS = ['#91cc75', '#fac858', '#ee6666'];
+
 // Install a top-level error handler that surfaces uncaught exceptions in the
 // status bar instead of failing silently. Returns a cleanup function.
 export function installErrorBoundary(statusBarId) {

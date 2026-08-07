@@ -1,21 +1,13 @@
-import { attachDatePicker, setDateInput, parseDateInput, setStatus, showLoading, showFetchBar, installErrorBoundary, runWithConcurrency } from './common.js';
+import { attachDatePicker, setDateInput, parseDateInput, setStatus, showLoading, showFetchBar, installErrorBoundary, runWithConcurrency, CHART_COLORS, REGION_COLORS } from './common.js';
 import {
   shueParams, bowShockParams, classifyPoint,
   toReData as sharedToReData, computeAxisRange,
   EARTH_RADIUS_KM, MAX_DISTANCE_RE,
 } from './magnetosphere.js';
 import { fetchData as apiFetchData, fetchInventory } from './api-client.js';
-import { isSpzMetaKey, hasVisibleChildren } from './inventory-tree.js';
+import { isSpzMetaKey, hasVisibleChildren, SKIP_KEYS } from './inventory-tree.js';
 
 const API_BASE = (window.SPEASY_BASE_URL || '').replace(/\/$/, '') + '/';
-    const COLORS = ['#5470c6','#91cc75','#fac858','#ee6666','#73c0de','#3ba272','#fc8452','#9a60b4','#ea7ccc'];
-    const METADATA_KEYS = new Set([
-        'UNITS','FILLVAL','SCALETYP','COORDINATE_SYSTEM','FIELDNAM',
-        'CATDESC','DEPEND_0','DEPEND_1','LABL_PTR_1',
-        'start_date','stop_date','maxDate','minDate',
-        'build_date','Id','Resolution','Geometry','TrajectoryGeometry','ResourceId','GroupId'
-    ]);
-
     function currentBoundaryParams() {
   const Dp = parseFloat(document.getElementById('dpSlider').value);
   const Bz = parseFloat(document.getElementById('bzSlider').value);
@@ -199,8 +191,6 @@ const API_BASE = (window.SPEASY_BASE_URL || '').replace(/\/$/, '') + '/';
         });
     }
 
-    const REGION_COLORS = ['#91cc75', '#fac858', '#ee6666']; // magnetosphere, magnetosheath, solar wind
-
     function updateChartOption() {
         const Dp = parseFloat(document.getElementById('dpSlider').value);
         const Bz = parseFloat(document.getElementById('bzSlider').value);
@@ -350,7 +340,7 @@ const API_BASE = (window.SPEASY_BASE_URL || '').replace(/\/$/, '') + '/';
 
     // ---- Inventory tree ----
     function isMetadataKey(key) {
-  return isSpzMetaKey(key) || METADATA_KEYS.has(key);
+  return isSpzMetaKey(key) || SKIP_KEYS.has(key);
 }
 
     function nodeHasVisibleChildren(node) {
@@ -635,7 +625,7 @@ const API_BASE = (window.SPEASY_BASE_URL || '').replace(/\/$/, '') + '/';
         })
             .then(data => {
                 const reData = toReData(data.values.values);
-                const color = COLORS[colorIndex % COLORS.length];
+                const color = CHART_COLORS[colorIndex % CHART_COLORS.length];
                 colorIndex++;
                 const name = uid.split('/').pop();
                 trajectories.set(uid, { name, color, data: reData, uid });
@@ -698,7 +688,7 @@ const API_BASE = (window.SPEASY_BASE_URL || '').replace(/\/$/, '') + '/';
             })
                 .then(data => {
                     const reData = toReData(data.values.values);
-                    const color = existingColors.get(uid) || COLORS[colorIndex++ % COLORS.length];
+                    const color = existingColors.get(uid) || CHART_COLORS[colorIndex++ % CHART_COLORS.length];
                     trajectories.set(uid, { name: uid.split('/').pop(), color, data: reData, uid });
                     swatch.style.background = color;
                 })

@@ -1,7 +1,7 @@
 import {
   attachDatePicker, setDateInput, parseDateInput,
   setStatus, showLoading, showFetchBar, fallbackCopy,
-  installErrorBoundary,
+  installErrorBoundary, CHART_COLORS,
 } from './common.js';
 import { getDisplayName, getProductPath, shouldSkipNode, SKIP_KEYS } from './inventory-tree.js';
 import {
@@ -16,10 +16,6 @@ import { fetchData as apiFetchData, fetchInventory } from './api-client.js';
     const BASE_URL = (window.SPEASY_BASE_URL || '').replace(/\/$/, '');
     const API_BASE = BASE_URL + '/';
     const MAX_CACHE_POINTS = 500000;
-    const CHART_COLORS = [
-        '#5470c6','#91cc75','#fac858','#ee6666','#73c0de',
-        '#3ba272','#fc8452','#9a60b4','#ea7ccc'
-    ];
 
     // State
     let chart = null;
