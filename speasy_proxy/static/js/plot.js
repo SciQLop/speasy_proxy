@@ -8,7 +8,7 @@ import {
   createSubplotData, createProductCache, subplotToConfig, subplotFromConfig,
   detectPlotType, mergeSorted, mergeSortedRows, mergeIntervals, evictProductCache,
   buildSeriesData, configToBase64, base64ToConfig, isCovered, resolutionSufficient, rangesOverlap, trimCacheWindow, cacheToCsv,
-  normalizeWheelDelta, zoomRange, panRange, zoomToward, axisExtent, sharedAxisExtent, structureKey, resampleTarget,
+  normalizeWheelDelta, zoomRange, panRange, zoomToward, axisExtent, sharedAxisExtent, structureKey, resampleTarget, axisNeedsExpansion, dataOnlyOption,
 } from './plot-core.js';
 import { computeYEdges, renderSpectrogramImage, spectrogramValueAt } from './spectrogram.js';
 import { fetchData as apiFetchData, fetchInventory } from './api-client.js';
@@ -400,7 +400,7 @@ import { fetchData as apiFetchData, fetchInventory } from './api-client.js';
                 for (const prod of sp.products) {
                     const cache = sp.productData[prod.path];
                     if (!cache || cache.times.length === 0) continue;
-                    if (cache.columnNames.length === 0) { heatmapCount++; continue; }
+                    if (Object.keys(cache.columns || {}).length === 0) { heatmapCount++; continue; }
                     parts.push(cacheToCsv(cache, startMs, stopMs));
                 }
             }
@@ -1064,9 +1064,7 @@ import { fetchData as apiFetchData, fetchInventory } from './api-client.js';
         const structureSame = dataOnly && lastStructureKey === structureKey(plotState.plots);
         suppressDataZoom = true;
         if (structureSame) {
-            // Structure unchanged — skip rebuilding grids/axes/titles and only push
-            // the updated series data. This is the hot path during pan/zoom refetch.
-            chart.setOption({ series: series }, { replaceMerge: ['series'] });
+            chart.setOption(dataOnlyOption(series), { replaceMerge: ['series'] });
         } else {
             chart.setOption(option, true);
             chart.resize();
@@ -1199,6 +1197,33 @@ import { fetchData as apiFetchData, fetchInventory } from './api-client.js';
         chart.off('datazoom');
         chart.on('datazoom', () => {
             if (suppressDataZoom) return;
+
+            const view = getVisibleRange();
+            const option = chart.getOption();
+            if (view && option?.xAxis?.[0]) {
+                const axisMin = option.xAxis[0].min;
+                const axisMax = option.xAxis[0].max;
+                const expansion = axisNeedsExpansion(view.start, view.end, axisMin, axisMax);
+                if (expansion) {
+                    // Recompute dataZoom percentages from the NEW axis so the
+                    // absolute window width stays constant — computing from the
+                    // old axis and applying to the wider new one widens the window
+                    // (zoom-out).
+                    const newRange = expansion.max - expansion.min || 1;
+                    const startPct = ((view.start - expansion.min) / newRange) * 100;
+                    const endPct = ((view.end - expansion.min) / newRange) * 100;
+                    suppressDataZoom = true;
+                    chart.setOption({
+                        xAxis: plotState.plots.map(() => ({ min: expansion.min, max: expansion.max })),
+                        dataZoom: [
+                            { start: startPct, end: endPct },
+                            { start: startPct, end: endPct },
+                        ],
+                    });
+                    suppressDataZoom = false;
+                }
+            }
+
             if (zoomDebounceTimer) clearTimeout(zoomDebounceTimer);
             zoomDebounceTimer = setTimeout(onMultiZoomPan, 200);
         });

@@ -121,8 +121,8 @@ export const REGION_COLORS = ['#91cc75', '#fac858', '#ee6666'];
 // status bar instead of failing silently. Returns a cleanup function.
 export function installErrorBoundary(statusBarId) {
     const handler = (event) => {
-        const msg = (event.error && event.error.message) || event.message || 'Unknown error';
-        console.error('Uncaught error:', event.error || event.message);
+        const msg = (event.error && event.error.message) || (event.reason && event.reason.message) || event.message || 'Unknown error';
+        console.error('Uncaught error:', event.error || event.reason || event.message);
         const el = document.getElementById(statusBarId);
         if (el) el.textContent = 'Error: ' + msg + ' — reload the page.';
     };

@@ -615,8 +615,14 @@ const API_BASE = (window.SPEASY_BASE_URL || '').replace(/\/$/, '') + '/';
         await fetchSatellite(uid, cb, span, swatch, coordSys, startISO, stopISO);
     }
 
-    // Fetch one satellite's trajectory data and add it to the chart. Returns a
-    // promise so callers (applyPendingUids) can bound concurrency.
+    async function fetchTrajectoryData(uid, coordSys, startISO, stopISO) {
+        const data = await apiFetchData({
+            baseUrl: API_BASE, path: uid, startISO, stopISO,
+            maxPoints: 10000, coordinateSystem: coordSys,
+        });
+        return { reData: toReData(data.values.values) };
+    }
+
     function fetchSatellite(uid, cb, span, swatch, coordSys, startISO, stopISO) {
         span.classList.add('loading');
         loadingUids.add(uid);
@@ -624,12 +630,8 @@ const API_BASE = (window.SPEASY_BASE_URL || '').replace(/\/$/, '') + '/';
         showFetchBar(true);
         renderLegend();
         setStatus(`Fetching ${uid.split('/').pop()}...`);
-        return apiFetchData({
-            baseUrl: API_BASE, path: uid, startISO, stopISO,
-            maxPoints: 10000, coordinateSystem: coordSys,
-        })
-            .then(data => {
-                const reData = toReData(data.values.values);
+        return fetchTrajectoryData(uid, coordSys, startISO, stopISO)
+            .then(({ reData }) => {
                 const color = CHART_COLORS[colorIndex % CHART_COLORS.length];
                 colorIndex++;
                 const name = uid.split('/').pop();
@@ -687,12 +689,8 @@ const API_BASE = (window.SPEASY_BASE_URL || '').replace(/\/$/, '') + '/';
             const span = cb.closest('.tree-node');
             const swatch = span.querySelector('.color-swatch');
             span.classList.add('loading');
-            return apiFetchData({
-                baseUrl: API_BASE, path: uid, startISO, stopISO,
-                maxPoints: 10000, coordinateSystem: coordSys,
-            })
-                .then(data => {
-                    const reData = toReData(data.values.values);
+            return fetchTrajectoryData(uid, coordSys, startISO, stopISO)
+                .then(({ reData }) => {
                     const color = existingColors.get(uid) || CHART_COLORS[colorIndex++ % CHART_COLORS.length];
                     trajectories.set(uid, { name: uid.split('/').pop(), color, data: reData, uid });
                     swatch.style.background = color;

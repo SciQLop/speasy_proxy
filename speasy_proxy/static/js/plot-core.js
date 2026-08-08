@@ -187,6 +187,7 @@ export function evictProductCache(cache, maxPoints) {
       .map((iv) => [Math.max(iv[0], newStart), iv[1]])
       .filter((iv) => iv[1] > iv[0]);
   }
+  cache.valueRange = null;
 }
 
 export function buildSeriesData(times, values) {
@@ -299,6 +300,28 @@ export function sharedAxisExtent(plots, padRatio) {
     }
   }
   return lo <= hi ? axisExtent([lo, hi], padRatio) : { min: undefined, max: undefined };
+}
+
+export function axisNeedsExpansion(viewStart, viewEnd, axisMin, axisMax, thresholdRatio = 0.5) {
+  if (axisMin == null || axisMax == null) return null;
+  const viewSpan = viewEnd - viewStart;
+  const proximity = viewSpan * thresholdRatio;
+  const nearLeft = viewStart - axisMin < proximity;
+  const nearRight = axisMax - viewEnd < proximity;
+  if (!nearLeft && !nearRight) return null;
+  return {
+    min: nearLeft ? axisMin - viewSpan : axisMin,
+    max: nearRight ? axisMax + viewSpan : axisMax,
+  };
+}
+
+// Build the minimal setOption payload for a data-only (structure-unchanged) chart update.
+// Only includes series — xAxis is NOT updated here because doing so during pan
+// causes ECharts to preserve dataZoom percentages, which widens the absolute window
+// (zoom-out). xAxis growth is handled separately in onMultiZoomPan after a fetch,
+// where dataZoom percentages are recomputed to preserve the absolute window width.
+export function dataOnlyOption(series) {
+  return { series };
 }
 
 // A signature of everything that affects the chart's *structure* (component layout), so a

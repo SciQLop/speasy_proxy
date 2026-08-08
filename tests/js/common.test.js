@@ -88,6 +88,19 @@ describe('installErrorBoundary', () => {
     expect(document.getElementById('s').textContent).toContain('Unknown error');
   });
 
+  it('extracts reason.message from PromiseRejectionEvent', () => {
+    installDomMock();
+    installErrorBoundary('s');
+    if (typeof PromiseRejectionEvent !== 'undefined') {
+      window.dispatchEvent(new PromiseRejectionEvent('unhandledrejection', { reason: new Error('rejected!') }));
+    } else {
+      const ev = new Event('unhandledrejection');
+      ev.reason = new Error('rejected!');
+      window.dispatchEvent(ev);
+    }
+    expect(document.getElementById('s').textContent).toContain('rejected!');
+  });
+
   it('returns a cleanup function that removes the handlers', () => {
     installDomMock();
     const cleanup = installErrorBoundary('s');

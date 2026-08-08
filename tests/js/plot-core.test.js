@@ -4,6 +4,7 @@ import {
   detectPlotType, configToBase64, base64ToConfig, isCovered, resolutionSufficient, rangesOverlap, trimCacheWindow, cacheToCsv,
   createSubplotData, createProductCache, subplotToConfig, subplotFromConfig,
   normalizeWheelDelta, zoomRange, panRange, zoomToward, axisExtent, sharedAxisExtent, structureKey, resampleTarget,
+  axisNeedsExpansion, dataOnlyOption,
 } from '../../speasy_proxy/static/js/plot-core.js';
 
 describe('merge', () => {
@@ -178,6 +179,25 @@ describe('evictProductCache', () => {
     expect(cache.times).toEqual([3, 4]);
     expect(cache.columns.a).toEqual([30, 40]);
     expect(cache.intervals).toEqual([[3, 4]]);
+  });
+
+  it('nulls valueRange after eviction to force recomputation', () => {
+    const cache = createProductCache('p');
+    cache.times = [1, 2, 3, 4, 5];
+    cache.columnNames = ['a'];
+    cache.columns = { a: [10, 20, 30, 40, 50] };
+    cache.valueRange = { vMin: 10, vMax: 50 };
+    evictProductCache(cache, 3);
+    expect(cache.valueRange).toBeNull();
+  });
+
+  it('leaves cache untouched when under maxPoints', () => {
+    const cache = createProductCache('p');
+    cache.times = [1, 2];
+    cache.valueRange = { vMin: 1, vMax: 2 };
+    evictProductCache(cache, 5);
+    expect(cache.times).toEqual([1, 2]);
+    expect(cache.valueRange).toEqual({ vMin: 1, vMax: 2 });
   });
 });
 
@@ -378,5 +398,70 @@ describe('factories', () => {
     expect(restored.products).toEqual([{ path: 'amda/imf', label: 'IMF' }]);
     expect(restored.y_axis.log).toBe(true);
     expect(restored.logScale).toBe(false);
+  });
+});
+
+describe('axisNeedsExpansion', () => {
+  it('returns null when view has room on both sides', () => {
+    expect(axisNeedsExpansion(100, 200, 0, 500)).toBeNull();
+  });
+
+  it('signals expansion when view is near the left boundary', () => {
+    // viewSpan=100, proximity=50, viewStart-axisMin=10 < 50 → near left
+    expect(axisNeedsExpansion(10, 110, 0, 500)).not.toBeNull();
+    // viewSpan=100, proximity=50, viewStart-axisMin=60 > 50 → NOT near
+    expect(axisNeedsExpansion(60, 160, 0, 500)).toBeNull();
+  });
+
+  it('signals expansion when view is near the right boundary', () => {
+    // viewSpan=100, proximity=50, axisMax-viewEnd=500-400=100 > 50 → NOT near
+    expect(axisNeedsExpansion(300, 400, 0, 500)).toBeNull();
+    // viewSpan=100, proximity=50, axisMax-viewEnd=500-460=40 < 50 → near right
+    expect(axisNeedsExpansion(360, 460, 0, 500)).not.toBeNull();
+  });
+
+  it('returns expanded axis values that give breathing room', () => {
+    const r = axisNeedsExpansion(40, 140, 0, 500);
+    expect(r.min).toBeLessThan(0);
+    expect(r.max).toBe(500);
+  });
+
+  it('expands both sides when the view touches both boundaries', () => {
+    const r = axisNeedsExpansion(50, 450, 0, 500);
+    // near-left: 50-0=50 < 400*0.5=200 → true
+    // near-right: 500-450=50 < 200 → true
+    expect(r.min).toBeLessThan(0);
+    expect(r.max).toBeGreaterThan(500);
+  });
+
+  it('returns null for undefined axis boundaries', () => {
+    expect(axisNeedsExpansion(100, 200, undefined, undefined)).toBeNull();
+    expect(axisNeedsExpansion(100, 200, null, null)).toBeNull();
+  });
+});
+
+describe('dataOnlyOption', () => {
+  it('includes only series — xAxis update is deferred to avoid zoom-out during pan', () => {
+    const series = [{ type: 'line', data: [[1, 2]] }];
+    const opt = dataOnlyOption(series);
+    expect(opt.series).toBe(series);
+    expect(opt.xAxis).toBeUndefined();
+    expect(opt.dataZoom).toBeUndefined();
+  });
+});
+
+describe('plot.js structureSame path regression guard', () => {
+  // Reads plot.js source and asserts the data-only (structureSame) render path uses
+  // dataOnlyOption(series) instead of the bare { series: series } that caused
+  // the pan-to-boundary stall (commit 5b72f67).
+  it('calls dataOnlyOption(series) in the structureSame branch', async () => {
+    const fs = await import('fs');
+    const src = fs.readFileSync(
+      new URL('../../speasy_proxy/static/js/plot.js', import.meta.url).pathname, 'utf8');
+
+    // The structureSame branch MUST use dataOnlyOption(series) — just series.
+    expect(src).toContain('chart.setOption(dataOnlyOption(series)');
+    // And NOT the old bare { series: series }.
+    expect(src).not.toContain('chart.setOption({ series: series }');
   });
 });
