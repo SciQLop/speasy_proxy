@@ -327,6 +327,7 @@ const API_BASE = (window.SPEASY_BASE_URL || '').replace(/\/$/, '') + '/';
             const swatch = span.querySelector('.color-swatch');
             if (swatch) swatch.style.display = 'none';
         }
+        syncGroupCheckboxes();
         updateChartOption();
         updateActionButtons();
         renderLegend();
@@ -570,6 +571,7 @@ const API_BASE = (window.SPEASY_BASE_URL || '').replace(/\/$/, '') + '/';
             renderLegend();
             setStatus(`Removed ${uid.split('/').pop()}.`);
             updateURL();
+            syncGroupCheckboxes();
             return;
         }
 
@@ -613,6 +615,7 @@ const API_BASE = (window.SPEASY_BASE_URL || '').replace(/\/$/, '') + '/';
         }
 
         await fetchSatellite(uid, cb, span, swatch, coordSys, startISO, stopISO);
+        syncGroupCheckboxes();
     }
 
     async function fetchTrajectoryData(uid, coordSys, startISO, stopISO) {
@@ -1017,6 +1020,19 @@ const API_BASE = (window.SPEASY_BASE_URL || '').replace(/\/$/, '') + '/';
             return fetchSatellite(cb.dataset.uid, cb, span, swatch, coordSys, startISO, stopISO);
         });
         await runWithConcurrency(tasks, 3);
+        syncGroupCheckboxes();
+    }
+
+    // Sync folder group-checkbox state from their leaf checkboxes: a folder is
+    // checked when at least one leaf is, and fully checked when all leaves are.
+    function syncGroupCheckboxes() {
+        for (const groupCb of document.querySelectorAll('.group-checkbox')) {
+            const folder = groupCb.closest('li');
+            const leaves = folder.querySelectorAll('.tree-node input[type="checkbox"][data-uid]');
+            const checked = [...leaves].filter(cb => cb.checked).length;
+            groupCb.checked = checked === leaves.length && leaves.length > 0;
+            groupCb.indeterminate = checked > 0 && checked < leaves.length;
+        }
     }
 
     // ---- Init ----

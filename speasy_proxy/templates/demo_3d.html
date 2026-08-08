@@ -134,6 +134,27 @@
             vertical-align: middle;
         }
 
+        .controls-bar > button {
+            padding: 4px 10px;
+            border: 1px solid #2a3358;
+            border-radius: 4px;
+            background: #0b0e17;
+            color: #8892b0;
+            font-size: 0.78rem;
+            cursor: pointer;
+            transition: background 0.15s, color 0.15s;
+        }
+
+        .controls-bar > button:hover {
+            background: #2a3358;
+            color: #e0e6f0;
+        }
+
+        .controls-bar > button:disabled {
+            opacity: 0.4;
+            cursor: not-allowed;
+        }
+
         .controls-value {
             font-size: 0.75rem;
             color: #8892b0;
