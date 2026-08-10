@@ -59,10 +59,10 @@ describe('spectrogram', () => {
       globalThis.document = globalThis.document || {};
       globalThis.document.createElement = (tag) => {
         if (tag !== 'canvas') return origCreate ? origCreate(tag) : {};
-        const canvas = { width: 0, height: 0 };
+        const canvas = { width: 0, height: 0, imageData: null };
         canvas.getContext = () => ({
           createImageData: (w, h) => ({ data: new Uint8ClampedArray(w * h * 4), width: w, height: h }),
-          putImageData: () => {},
+          putImageData: (img) => { canvas.imageData = img; },
         });
         return canvas;
       };
@@ -107,6 +107,23 @@ describe('spectrogram', () => {
       expect(result.tEnd).toBe(times[times.length - 1]);
       expect(result.yMin).toBe(yBins[0]);
       expect(result.yMax).toBe(yBins[yBins.length - 1]);
+    });
+
+    // Columns are decimated once the slice exceeds the canvas cap; a burst sitting on a
+    // dropped source index must still reach the image, or the user sees a quiet interval
+    // where the instrument actually spiked.
+    it('keeps a burst that falls on a decimated-away column', () => {
+      const { times, rows, yBins } = makeData(10000, 4);
+      for (const row of rows) row.fill(1);
+      const burstIdx = 5001; // not hit by nearest-neighbour picking (step = 10000/4096)
+      rows[burstIdx][2] = 1e6;
+
+      const result = renderSpectrogramImage(times, rows, yBins, 1, 1e6, false, null);
+      const { data, width } = result.canvas.imageData;
+      const py = 4 - 1 - 2;
+      let brightest = 0;
+      for (let t = 0; t < width; t++) brightest = Math.max(brightest, data[(py * width + t) * 4]);
+      expect(brightest).toBe(253); // viridis top of scale
     });
 
     it('returns null for empty data', () => {

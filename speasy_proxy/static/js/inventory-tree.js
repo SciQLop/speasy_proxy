@@ -12,7 +12,12 @@ export const SKIP_KEYS = new Set([
   'COORDINATE_SYSTEM', 'TENSOR_ORDER', 'SIZES', 'DEPEND_1',
   'LABL_PTR_1', 'LABL_PTR_2', 'COMPONENT_0', 'COMPONENT_1',
   'COMPONENT_2', 'QUALITY', 'spaseId', 'dataSource',
-  // SSC-specific metadata keys (used to be a separate METADATA_KEYS set in demo3d.js).
+]);
+
+// SSC trajectory-catalog keys. Kept out of SKIP_KEYS because they are ordinary
+// attribute names elsewhere ('Id', 'Resolution', 'Geometry'), and hiding them
+// globally would drop real parameters from the /plot tree and metadata panel.
+export const SSC_METADATA_KEYS = new Set([
   'maxDate', 'minDate', 'Id', 'Resolution', 'Geometry',
   'TrajectoryGeometry', 'ResourceId', 'GroupId',
 ]);

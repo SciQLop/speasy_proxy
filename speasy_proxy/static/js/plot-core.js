@@ -56,6 +56,54 @@ export function detectPlotType(json) {
   return 'line';
 }
 
+// Plot type of an already-loaded cache (detectPlotType needs the raw response, which
+// is gone by the time a product is removed from a subplot). displayType holds the raw
+// DISPLAY_TYPE, so it must be compared, not just tested for truthiness — 'time_series'
+// is truthy and would turn every line product into an empty heatmap.
+export function plotTypeFromCache(cache) {
+  if (!cache) return 'line';
+  if ((cache.displayType || '').toLowerCase() === 'spectrogram') return 'heatmap';
+  return cache.yAxis && cache.rows && cache.rows.length > 0 ? 'heatmap' : 'line';
+}
+
+// Min/max of all positive values in a spectrogram's rows, or null when there are none
+// (an all-gap slice). Returning null rather than a sentinel keeps callers from folding
+// a fake floor into a real range.
+export function computeValueRange(rows) {
+  let vMin = Infinity, vMax = -Infinity;
+  for (const row of rows || []) {
+    if (!row) continue;
+    for (const val of row) {
+      if (val != null && !isNaN(val) && val > 0) {
+        if (val < vMin) vMin = val;
+        if (val > vMax) vMax = val;
+      }
+    }
+  }
+  return vMin === Infinity ? null : { vMin, vMax };
+}
+
+// Value range covering the cache after a freshly fetched slice was merged in.
+// A null cachedRange means it was invalidated (trim/evict) while retained rows stayed,
+// so the whole cache must be rescanned; otherwise only the new slice is scanned and
+// unioned in, keeping pan/zoom refetches off an O(total) rescan.
+export function mergeValueRange(cachedRange, cacheRows, newValues) {
+  if (!cachedRange) return computeValueRange(cacheRows);
+  const newRange = computeValueRange(newValues);
+  if (!newRange) return cachedRange;
+  return {
+    vMin: Math.min(cachedRange.vMin, newRange.vMin),
+    vMax: Math.max(cachedRange.vMax, newRange.vMax),
+  };
+}
+
+// Color scale actually handed to the renderer: a missing or zero-width range has no
+// usable log10 span, so substitute a decade.
+export function renderableRange(range) {
+  if (!range) return { vMin: 1e-30, vMax: 1 };
+  return range.vMin === range.vMax ? { vMin: range.vMin, vMax: range.vMin * 10 } : range;
+}
+
 export function mergeSortedRows(oldTimes, newTimes, oldRows, newRows) {
   const resultTimes = [];
   const resultRows = [];

@@ -9,6 +9,7 @@ import {
   detectPlotType, mergeSorted, mergeSortedRows, mergeIntervals, evictProductCache,
   buildSeriesData, configToBase64, base64ToConfig, isCovered, resolutionSufficient, rangesOverlap, trimCacheWindow, cacheToCsv,
   normalizeWheelDelta, zoomRange, panRange, zoomToward, axisExtent, sharedAxisExtent, structureKey, resampleTarget, axisNeedsExpansion, dataOnlyOption,
+  plotTypeFromCache, computeValueRange, mergeValueRange, renderableRange,
 } from './plot-core.js';
 import { computeYEdges, renderSpectrogramImage, spectrogramValueAt } from './spectrogram.js';
 import { fetchData as apiFetchData, fetchInventory } from './api-client.js';
@@ -329,11 +330,13 @@ import { fetchData as apiFetchData, fetchInventory } from './api-client.js';
         attachDatePicker(document.getElementById('stop-time'));
 
         document.getElementById('btn-plot').addEventListener('click', doPlot);
+        // Plain Enter replots; Shift+Enter is the add-to-plot shortcut below, so it must
+        // not fall through to doPlot() — that would wipe the other subplots first.
         document.getElementById('start-time').addEventListener('keydown', (e) => {
-            if (e.key === 'Enter') doPlot();
+            if (e.key === 'Enter' && !e.shiftKey) doPlot();
         });
         document.getElementById('stop-time').addEventListener('keydown', (e) => {
-            if (e.key === 'Enter') doPlot();
+            if (e.key === 'Enter' && !e.shiftKey) doPlot();
         });
         // Shift+Enter adds to plot instead of replacing, when a product is selected.
         document.addEventListener('keydown', (e) => {
@@ -602,8 +605,7 @@ import { fetchData as apiFetchData, fetchInventory } from './api-client.js';
         } else {
             // First product drives plot type — re-detect if we removed it
             if (subplot.products[0]) {
-                const cache = subplot.productData[subplot.products[0].path];
-                subplot.plotType = cache && cache.displayType ? 'heatmap' : 'line';
+                subplot.plotType = plotTypeFromCache(subplot.productData[subplot.products[0].path]);
             }
             renderAllSubplots();
             updateURL();
@@ -627,7 +629,9 @@ import { fetchData as apiFetchData, fetchInventory } from './api-client.js';
         if (plotState.plots.length === 0) return;
         const config = stateToConfig();
         const encoded = configToBase64(config);
-        const fullUrl = BASE_URL + window.location.pathname + '?config=' + encoded;
+        // origin + pathname, not BASE_URL: behind a reverse proxy BASE_URL already
+        // carries the root_path prefix that pathname repeats.
+        const fullUrl = window.location.origin + window.location.pathname + '?config=' + encoded;
         document.getElementById('share-url').value = fullUrl;
     }
 
@@ -782,15 +786,7 @@ import { fetchData as apiFetchData, fetchInventory } from './api-client.js';
                 const merged = mergeSortedRows(cache.times, newTimes, cache.rows, newValues);
                 cache.times = merged.times;
                 cache.rows = merged.rows;
-                // Incremental: only scan the new slice, then union with the
-                // existing range. Re-scanning all merged rows would be O(total)
-                // on every pan/zoom refetch.
-                const newRange = computeValueRange(newValues);
-                const oldRange = cache.valueRange;
-                cache.valueRange = oldRange ? {
-                    vMin: Math.min(oldRange.vMin, newRange.vMin),
-                    vMax: Math.max(oldRange.vMax, newRange.vMax),
-                } : newRange;
+                cache.valueRange = mergeValueRange(cache.valueRange, cache.rows, newValues);
             } else {
                 const merged = mergeSorted(cache.times, newTimes, cache.columns, newValues, cache.columnNames);
                 cache.times = merged.times;
@@ -1047,14 +1043,6 @@ import { fetchData as apiFetchData, fetchInventory } from './api-client.js';
             graphic: []
         };
 
-        // Render heatmap images after chart is set up
-        for (const subplot of plotState.plots) {
-            if (subplot.plotType === 'heatmap') {
-                const graphic = buildSubplotHeatmap(subplot);
-                if (graphic) option.graphic.push(graphic);
-            }
-        }
-
         // Data-only updates (pan/zoom refetch) merge series in place — no teardown, no
         // resize, so the chart doesn't flash. Structural changes (subplot count, plot
         // type, log toggle, products) fall back to a full rebuild.
@@ -1070,6 +1058,17 @@ import { fetchData as apiFetchData, fetchInventory } from './api-client.js';
             chart.resize();
             lastStructureKey = structureKey(plotState.plots);
         }
+        // Heatmap images are positioned from the laid-out chart (grid rect, pixel
+        // coordinates), which only exists once the option above has been applied —
+        // building them earlier reads a model that isn't there yet.
+        const heatmapGraphics = [];
+        for (const subplot of plotState.plots) {
+            if (subplot.plotType === 'heatmap') {
+                const graphic = buildSubplotHeatmap(subplot);
+                if (graphic) heatmapGraphics.push(graphic);
+            }
+        }
+        if (heatmapGraphics.length > 0) chart.setOption({ graphic: heatmapGraphics });
         suppressDataZoom = false;
 
         if (!preserveView) {
@@ -1089,33 +1088,13 @@ import { fetchData as apiFetchData, fetchInventory } from './api-client.js';
         updateShareURL();
     }
 
-    // Min/max of all positive values in a spectrogram's rows. Used for the color
-    // scale; computed once on data load/merge (see mergeProductData) and cached on
-    // the cache object so per-render heatmap builds don't re-scan the whole dataset.
-    function computeValueRange(rows) {
-        let vMin = Infinity, vMax = -Infinity;
-        for (const row of rows) {
-            if (!row) continue;
-            for (const val of row) {
-                if (val != null && !isNaN(val) && val > 0) {
-                    if (val < vMin) vMin = val;
-                    if (val > vMax) vMax = val;
-                }
-            }
-        }
-        if (vMin === Infinity) vMin = 1e-30;
-        if (vMax === -Infinity) vMax = 1;
-        if (vMin === vMax) vMax = vMin * 10;
-        return { vMin, vMax };
-    }
-
     function buildSubplotHeatmap(subplot) {
         const cache = subplot.productData[subplot.products[0]?.path];
         if (!cache || !cache.yAxis || cache.rows.length === 0) return null;
 
         const yBinsFlat = Array.isArray(cache.yAxis[0]) ? cache.yAxis[0] : cache.yAxis;
 
-        const { vMin, vMax } = cache.valueRange || computeValueRange(cache.rows);
+        const { vMin, vMax } = renderableRange(cache.valueRange || computeValueRange(cache.rows));
 
         const img = renderSpectrogramImage(cache.times, cache.rows, yBinsFlat, vMin, vMax, subplot.logScale, currentView);
         if (!img) return null;
@@ -1877,3 +1856,10 @@ import { fetchData as apiFetchData, fetchInventory } from './api-client.js';
         }
         loadFromURLParams();
     });
+
+    // Seam for the Vitest suite: the page glue above is not otherwise reachable from a
+    // test, and asserting on source text instead of behaviour proved worthless.
+    export const __test__ = {
+        plotState, initChart, bindControls, renderAllSubplots, removeProductFromSubplot,
+        updateShareURL, mergeProductData, getChart: () => chart,
+    };

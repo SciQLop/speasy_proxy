@@ -65,8 +65,9 @@ export function spectrogramValueAt(times, rows, yBinsFlat, timeMs, yValue) {
 
 // Browser canvas dimensions are bounded (typically 16384–32768 px); a spectrogram
 // with more time samples than that either fails to render or stutters. Cap the canvas
-// width and decimate columns when the slice exceeds it — the ECharts graphic element
-// still stretches the image to the full grid width, so visual fidelity is preserved.
+// width and reduce each bucket of source columns to its per-bin maximum — picking one
+// sample per bucket instead would drop bursts narrower than the bucket, showing a
+// quiet interval where the instrument actually spiked.
 const MAX_SPECTROGRAM_CANVAS_WIDTH = 4096;
 
 // view: { start, end } in ms (nullable); returns { canvas, tStart, tEnd, yMin, yMax } or null
@@ -103,13 +104,23 @@ export function renderSpectrogramImage(times, rows, yBinsFlat, vMin, vMax, logSc
   const logVMin = Math.log10(Math.max(vMin, 1e-30));
   const logVMax = Math.log10(vMax);
 
+  const bucket = new Float64Array(nY);
+
   for (let t = 0; t < outWidth; t++) {
-    const srcIdx = iStart + Math.floor(t * step);
-    const row = rows[srcIdx];
-    if (!row) continue;
+    const srcFrom = iStart + Math.floor(t * step);
+    const srcTo = Math.min(iStart + Math.floor((t + 1) * step), iEnd);
+    bucket.fill(0);
+    for (let s = srcFrom; s < srcTo; s++) {
+      const row = rows[s];
+      if (!row) continue;
+      for (let y = 0; y < nY; y++) {
+        const val = row[y];
+        if (val != null && !isNaN(val) && val > bucket[y]) bucket[y] = val;
+      }
+    }
     for (let y = 0; y < nY; y++) {
-      const val = row[y];
-      if (val == null || isNaN(val) || val <= 0) continue;
+      const val = bucket[y];
+      if (val <= 0) continue;
       const norm = logScaleParam
         ? (Math.log10(val) - logVMin) / (logVMax - logVMin)
         : (val - vMin) / (vMax - vMin);

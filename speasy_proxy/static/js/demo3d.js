@@ -4,7 +4,8 @@ import {
   toReData as sharedToReData, computeAxisRange,
 } from './magnetosphere.js';
 import { fetchData as apiFetchData, fetchInventory } from './api-client.js';
-import { isSpzMetaKey, hasVisibleChildren, SKIP_KEYS } from './inventory-tree.js';
+import { isSpzMetaKey, hasVisibleChildren, SKIP_KEYS, SSC_METADATA_KEYS } from './inventory-tree.js';
+import { buildEarthColorLUT, sampleEarthColor } from './earth-texture.js';
 
 const API_BASE = (window.SPEASY_BASE_URL || '').replace(/\/$/, '') + '/';
     function currentBoundaryParams() {
@@ -31,6 +32,9 @@ const API_BASE = (window.SPEASY_BASE_URL || '').replace(/\/$/, '') + '/';
 
     // uid -> { name, color, data, uid }
     const trajectories = new Map();
+    // Bumped whenever the plotted set is wiped; a fetch that started before the wipe
+    // drops its result instead of resurrecting a cleared orbit with its box unchecked.
+    let trajectoryGeneration = 0;
     let colorIndex = 0;
     let chart = null;
 
@@ -60,39 +64,6 @@ const API_BASE = (window.SPEASY_BASE_URL || '').replace(/\/$/, '') + '/';
         });
     }
 
-    function buildEarthColorLUT(pixels, w, h) {
-        // Grid resolution: fine enough that adjacent vertices land in the same cell
-        // (the surface steps at PI/180, so 360 x 180 covers it with margin).
-        const cols = 360;
-        const rows = 180;
-        const lut = new Array(cols * rows);
-        for (let ry = 0; ry < rows; ry++) {
-            // Map row to latitude: ry=0 → north pole (lat=PI/2), ry=rows-1 → south pole
-            const lat = (Math.PI / 2) * (1 - ry / (rows - 1));
-            const py = Math.floor(((Math.PI / 2 - lat) / Math.PI) * (h - 1));
-            for (let cx = 0; cx < cols; cx++) {
-                // Map column to longitude: cx=0 → -PI, cx=cols-1 → +PI
-                const lon = Math.PI * (2 * cx / cols - 1);
-                const px = Math.floor(((lon + Math.PI) / (2 * Math.PI)) * (w - 1));
-                const i = (py * w + px) * 4;
-                lut[ry * cols + cx] = `rgb(${pixels[i]},${pixels[i + 1]},${pixels[i + 2]})`;
-            }
-        }
-        return { lut, cols, rows };
-    }
-
-    function sampleEarthColor(x, y, z) {
-        if (!earthColorLUT) return '#2255aa';
-        const r = Math.sqrt(x * x + y * y + z * z) || 1;
-        const lat = Math.asin(Math.max(-1, Math.min(1, z / r)));
-        const lon = Math.atan2(y, x);
-        const cx = Math.floor(((lon + Math.PI) / (2 * Math.PI)) * earthColorLUT.cols);
-        const ry = Math.floor(((Math.PI / 2 - lat) / Math.PI) * earthColorLUT.rows);
-        const clampedCx = Math.max(0, Math.min(earthColorLUT.cols - 1, cx));
-        const clampedRy = Math.max(0, Math.min(earthColorLUT.rows - 1, ry));
-        return earthColorLUT.lut[clampedRy * earthColorLUT.cols + clampedCx];
-    }
-
     // ---- Chart ----
     function initChart() {
         chart = echarts.init(document.getElementById('chart3d'), 'dark');
@@ -107,7 +78,7 @@ const API_BASE = (window.SPEASY_BASE_URL || '').replace(/\/$/, '') + '/';
             wireframe: { show: false },
             shading: earthColorLUT ? 'lambert' : 'color',
             itemStyle: earthColorLUT
-                ? { color: params => sampleEarthColor(params.value[0], params.value[1], params.value[2]) }
+                ? { color: params => sampleEarthColor(earthColorLUT, params.value[0], params.value[1], params.value[2]) }
                 : { color: '#2255aa', opacity: 0.6 },
             parametricEquation: {
                 u: { min: 0, max: Math.PI, step: Math.PI / 180 },
@@ -317,6 +288,7 @@ const API_BASE = (window.SPEASY_BASE_URL || '').replace(/\/$/, '') + '/';
     }
 
     function clearAllTrajectories() {
+        trajectoryGeneration++;
         trajectories.clear();
         loadingUids.clear();
         colorIndex = 0;
@@ -346,8 +318,8 @@ const API_BASE = (window.SPEASY_BASE_URL || '').replace(/\/$/, '') + '/';
 
     // ---- Inventory tree ----
     function isMetadataKey(key) {
-  return isSpzMetaKey(key) || SKIP_KEYS.has(key);
-}
+        return isSpzMetaKey(key) || SKIP_KEYS.has(key) || SSC_METADATA_KEYS.has(key);
+    }
 
     function nodeHasVisibleChildren(node) {
         return hasVisibleChildren(node, isMetadataKey);
@@ -633,8 +605,10 @@ const API_BASE = (window.SPEASY_BASE_URL || '').replace(/\/$/, '') + '/';
         showFetchBar(true);
         renderLegend();
         setStatus(`Fetching ${uid.split('/').pop()}...`);
+        const generation = trajectoryGeneration;
         return fetchTrajectoryData(uid, coordSys, startISO, stopISO)
             .then(({ reData }) => {
+                if (generation !== trajectoryGeneration) return;  // cleared while in flight
                 const color = CHART_COLORS[colorIndex % CHART_COLORS.length];
                 colorIndex++;
                 const name = uid.split('/').pop();
@@ -1074,3 +1048,7 @@ const API_BASE = (window.SPEASY_BASE_URL || '').replace(/\/$/, '') + '/';
         // Inventory loads even if the chart didn't, so the tree stays usable.
         loadInventory();
     })();
+
+// Seam for the Vitest suite: the page glue above is not otherwise reachable from a
+// test, and asserting on source text instead of behaviour proved worthless.
+export const __test__ = { trajectories, fetchSatellite, clearAllTrajectories };

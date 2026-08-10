@@ -4,7 +4,7 @@ import {
   detectPlotType, configToBase64, base64ToConfig, isCovered, resolutionSufficient, rangesOverlap, trimCacheWindow, cacheToCsv,
   createSubplotData, createProductCache, subplotToConfig, subplotFromConfig,
   normalizeWheelDelta, zoomRange, panRange, zoomToward, axisExtent, sharedAxisExtent, structureKey, resampleTarget,
-  axisNeedsExpansion, dataOnlyOption,
+  axisNeedsExpansion, dataOnlyOption, plotTypeFromCache, computeValueRange, mergeValueRange, renderableRange,
 } from '../../speasy_proxy/static/js/plot-core.js';
 
 describe('merge', () => {
@@ -210,6 +210,59 @@ describe('detectPlotType', () => {
   });
   it('line otherwise', () => {
     expect(detectPlotType({ axes: [{}], values: { values: [[1, 2]] } })).toBe('line');
+  });
+});
+
+describe('plotTypeFromCache', () => {
+  it('keeps line products on the line path even with a DISPLAY_TYPE', () => {
+    const cache = createProductCache('cda/b_gse');
+    cache.displayType = 'time_series';
+    cache.columnNames = ['bx', 'by', 'bz'];
+    expect(plotTypeFromCache(cache)).toBe('line');
+  });
+  it('detects a spectrogram cache', () => {
+    const cache = createProductCache('cda/flux');
+    cache.displayType = 'spectrogram';
+    expect(plotTypeFromCache(cache)).toBe('heatmap');
+  });
+  it('detects a heatmap cache from its loaded y axis and rows', () => {
+    const cache = createProductCache('cda/flux');
+    cache.yAxis = [1, 2, 3];
+    cache.rows = [[1, 2, 3]];
+    expect(plotTypeFromCache(cache)).toBe('heatmap');
+  });
+  it('falls back to line for a missing cache', () => {
+    expect(plotTypeFromCache(null)).toBe('line');
+  });
+});
+
+describe('value range merging', () => {
+  it('returns null for a slice with no positive samples', () => {
+    expect(computeValueRange([[null, NaN], [0, -1]])).toBeNull();
+    expect(computeValueRange([])).toBeNull();
+  });
+  it('widens a degenerate range only where it is rendered', () => {
+    expect(computeValueRange([[5]])).toEqual({ vMin: 5, vMax: 5 });
+    expect(renderableRange({ vMin: 5, vMax: 5 })).toEqual({ vMin: 5, vMax: 50 });
+    expect(renderableRange(null)).toEqual({ vMin: 1e-30, vMax: 1 });
+  });
+  // After a trim/evict the cached range is invalidated but the retained rows stay, so
+  // seeding from the new slice alone would color the whole cache by its newest chunk.
+  it('rescans the whole cache when the cached range was invalidated', () => {
+    const rows = [[1000], [2000], [3]];
+    expect(mergeValueRange(null, rows, [[3]])).toEqual({ vMin: 3, vMax: 2000 });
+  });
+  it('unions a new slice into the cached range', () => {
+    expect(mergeValueRange({ vMin: 10, vMax: 20 }, [[10], [20], [5]], [[5]]))
+      .toEqual({ vMin: 5, vMax: 20 });
+  });
+  // A data gap must not drag vMin down to the sentinel and flatten the color scale.
+  it('ignores an all-gap slice instead of folding in a sentinel', () => {
+    expect(mergeValueRange({ vMin: 1e-9, vMax: 1e-6 }, [[1e-9]], [[null, NaN]]))
+      .toEqual({ vMin: 1e-9, vMax: 1e-6 });
+  });
+  it('returns null when neither the cache nor the slice has positive data', () => {
+    expect(mergeValueRange(null, [[null]], [[null]])).toBeNull();
   });
 });
 

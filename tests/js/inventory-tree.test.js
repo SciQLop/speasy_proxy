@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
-  SKIP_KEYS, getDisplayName, getProductPath, shouldSkipNode,
+  SKIP_KEYS, SSC_METADATA_KEYS, getDisplayName, getProductPath, shouldSkipNode,
   isSpzMetaKey, hasVisibleChildren, isParameterIndex,
 } from '../../speasy_proxy/static/js/inventory-tree.js';
 
@@ -35,5 +35,11 @@ describe('inventory primitives', () => {
     expect(SKIP_KEYS.has('__spz_name__')).toBe(true);
     expect(SKIP_KEYS.has('description')).toBe(true);
     expect(SKIP_KEYS.has('UNITS')).toBe(true);
+  });
+  it('keeps SSC-only keys out of the shared set, so /plot still shows them', () => {
+    for (const k of ['Id', 'Resolution', 'Geometry', 'GroupId', 'ResourceId', 'maxDate', 'minDate']) {
+      expect(SKIP_KEYS.has(k)).toBe(false);
+      expect(SSC_METADATA_KEYS.has(k)).toBe(true);
+    }
   });
 });

@@ -12,9 +12,10 @@ TypeScript**. The FastAPI app serves these `.js` files as static assets under
 |--------|----------------|
 | `common.js` | `setStatus`, `showLoading`, `showFetchBar`, `fallbackCopy`, `toLocalISOString` (unified, with seconds), `escapeHtml` |
 | `format.js` | `formatBytes`, `formatNumber`, `formatDuration`, `formatDateTime` |
-| `inventory-tree.js` | speasy `__spz_*` schema primitives: `isSpzMetaKey`, `getDisplayName`, `getProductPath`, `shouldSkipNode`, `hasVisibleChildren`, `isParameterIndex`, `SKIP_KEYS` |
+| `inventory-tree.js` | speasy `__spz_*` schema primitives: `isSpzMetaKey`, `getDisplayName`, `getProductPath`, `shouldSkipNode`, `hasVisibleChildren`, `isParameterIndex`, `SKIP_KEYS` (shared) + `SSC_METADATA_KEYS` (SSC-only, not applied on `/plot`) |
 | `magnetosphere.js` | 3D physics: `shueParams`, `bowShockParams`, `classifyPoint`, `toReData`, `computeAxisRange` |
-| `plot-core.js` | data merges, interval coalescing, cache eviction, `detectPlotType`, config base64, subplot/cache factories |
+| `earth-texture.js` | globe albedo: `buildEarthColorLUT` (equirectangular image → lat/lon grid), `sampleEarthColor` |
+| `plot-core.js` | data merges, interval coalescing, cache eviction, `detectPlotType`/`plotTypeFromCache`, heatmap value ranges (`computeValueRange`, `mergeValueRange`, `renderableRange`), config base64, subplot/cache factories |
 | `spectrogram.js` | viridis LUT, `computeYEdges`, `renderSpectrogramImage` |
 | `api-client.js` | `buildDataUrl`, NaN-safe `decodeJson`, `fetchData`/`jsonCodec` (codec seam), `fetchInventory`, `enableCdfCodec` |
 | `cdf-codec.js` | `cdfCodec` — decodes `format=cdf` (application/x-cdf) into `SpeasyData` via CDFpp-WASM (`vendor/cdfpp.js` + `cdfpp.wasm`) |
@@ -84,6 +85,12 @@ npm run test:js  # run the unit tests in tests/js/
 
 There is **nothing to build**. Vitest is a dev-only dependency; it is not required to
 run or deploy the server.
+
+`plot.js` and `demo3d.js` each end with an `export const __test__ = { ... }` seam so the
+page orchestration is reachable from `tests/js/plot.test.js` and
+`tests/js/demo3d-clear.test.js`; `tests/js/helpers/dom-mock.js` supplies the browser
+globals (its ECharts stub has no model until the first `setOption`, matching the real
+one). Prefer a behavioural test through that seam over asserting on source text.
 
 ## Not yet modularized
 
