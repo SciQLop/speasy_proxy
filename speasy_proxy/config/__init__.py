@@ -11,4 +11,5 @@ core = ConfigSection("PROXY_CORE",
                      inventory_retry_backoff={"default": 300, "type_ctor": int, "description": "Seconds to wait before retrying a failed inventory refresh."},
                      inventory_lease_ttl={"default": 600, "type_ctor": int, "description": "TTL (seconds) of the cross-worker inventory refresh lease."},
                      inventory_shared_path={"default": "", "description": "Directory for the cross-worker shared inventory store (default: <index path>/inventory_shared)."},
+                     max_query_span_days={"default": 366 * 50, "type_ctor": int, "description": "Maximum start_time/stop_time span (days) accepted by /get_data, to bound worst-case fetch/resample time in the threadpool."},
                      )

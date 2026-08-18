@@ -61,6 +61,15 @@ class InventoryManager:
         self._retry_backoff: int = config.inventory_retry_backoff.get()
         self._lease_ttl: int = config.inventory_lease_ttl.get()
         self._update_lock = threading.Lock()
+        # Guards the shared speasy `tree` global against a lazy build (_build_lazy)
+        # reading it while a refresh's spz.update_inventories() is mid-flight: speasy's
+        # DataProvider.update_inventory() clears each provider's SpeasyIndex in place
+        # before reassigning it, so an unguarded concurrent read can pickle (and
+        # permanently cache) a torn/empty snapshot.
+        self._tree_lock = threading.Lock()
+        # Guards _inventories/_build_dates/_generation as a single unit so a reader
+        # never observes them from two different generations.
+        self._state_lock = threading.Lock()
         self._inventory_size: str = "0"
         self._shared = shared_store if shared_store is not None else SharedInventoryStore(_default_shared_path())
 
@@ -196,19 +205,33 @@ class InventoryManager:
             data = self._build_lazy(provider, fmt, version, pickle_proto, key)
         return data
 
+    def get_inventory_with_build_date(self, provider: str, fmt: str, version: int = 1,
+                                      pickle_proto: int = None, zstd: bool = False):
+        """Same as get_inventory() but also returns the build date, read together
+        under the state lock so a concurrent refresh can't pair a stale body with a
+        fresher Last-Modified header (or vice versa)."""
+        with self._state_lock:
+            data = self.get_inventory(provider, fmt, version, pickle_proto, zstd)
+            build_date = self._build_dates.get(provider)
+        return data, build_date
+
     def _build_lazy(self, provider: str, fmt: str, version: int, pickle_proto: int,
                     key: str) -> Optional[bytes | str]:
         """Build a valid but non-eager pickle variant on first request and memoize
-        it. Not thread-safe by design: the worst case is two workers computing the
-        same bytes once. Any failure returns None (the endpoint serves a 404)."""
+        it. Not thread-safe against other lazy builds by design: the worst case
+        there is two workers computing the same bytes once. Reading the shared tree
+        itself is protected by _tree_lock (see __init__) against a concurrent
+        refresh, which clears each provider's SpeasyIndex in place before
+        reassigning it. Any failure returns None (the endpoint serves a 404)."""
         if fmt != "python_dict" or pickle_proto is None or pickle_proto in _EAGER_PICKLE_PROTOS:
             return None
         try:
-            if provider == "all":
-                source = SpeasyIndex(name="all", provider="speasy_proxy", uid="", meta=tree.__dict__)
-            else:
-                source = tree.__dict__[provider]
-            data = pickle_data(to_dict(source, version=version), pickle_proto)
+            with self._tree_lock:
+                if provider == "all":
+                    source = SpeasyIndex(name="all", provider="speasy_proxy", uid="", meta=tree.__dict__)
+                else:
+                    source = tree.__dict__[provider]
+                data = pickle_data(to_dict(source, version=version), pickle_proto)
         except Exception:
             log.exception(f"Failed to lazily build {key}.")
             return None
@@ -224,14 +247,18 @@ class InventoryManager:
         self._sync_from_shared()
         self._refresh_if_due()
 
+    def _apply_state(self, inventories: dict, build_dates: dict, generation: int):
+        with self._state_lock:
+            self._inventories = inventories
+            self._build_dates = build_dates
+            self._generation = generation
+
     def _sync_from_shared(self):
         snapshot = self._shared.read_if_newer(self._generation)
         if snapshot is None:
             return
         generation, payload, build_dates = snapshot
-        self._inventories = payload
-        self._build_dates = build_dates
-        self._generation = generation
+        self._apply_state(payload, build_dates, generation)
         self._last_update = datetime.now(UTC)
         log.info(f"Loaded shared inventory generation {generation}.")
 
@@ -262,13 +289,13 @@ class InventoryManager:
                 now = datetime.now(UTC)
                 self._last_attempt = now
                 self._shared.set_last_attempt(now)  # set before network so a crash still backs off
-                spz.update_inventories()
+                with self._tree_lock:  # excludes a concurrent lazy build from a torn tree read
+                    spz.update_inventories()
                 payload = self._build_all_inventories()
                 build_dates = self._collect_build_dates()
                 generation = self._shared.publish(payload, build_dates)
-                self._inventories = payload
-                self._build_dates = build_dates
-                self._generation = generation if generation is not None else self._generation + 1
+                generation = generation if generation is not None else self._generation + 1
+                self._apply_state(payload, build_dates, generation)
                 self._last_update = datetime.now(UTC)
                 log.info(f"Refreshed inventory (generation {self._generation}).")
             except Exception:

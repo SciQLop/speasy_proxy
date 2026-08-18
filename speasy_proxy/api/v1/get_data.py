@@ -2,7 +2,7 @@ import json
 import logging
 import time
 import uuid
-from datetime import datetime, UTC
+from datetime import datetime, timedelta, UTC
 from typing import Optional
 import numpy as np
 import speasy as spz
@@ -23,6 +23,7 @@ from .query_parameters import ZstdCompression, PickleProtocol, DataFormat, MaxPo
 from speasy_proxy.api.compression import compress_if_asked
 from speasy_proxy.backend.bokeh_backend import plot_data
 from speasy_proxy.backend.resample import resample
+from speasy_proxy.config import core as core_config
 from speasy_proxy.dependencies import trigger_inventory_check
 
 log = logging.getLogger(__name__)
@@ -58,6 +59,18 @@ def to_json(var: SpeasyVariable) -> str:
 def _get_data(product, start_time, stop_time, extra_http_headers, **extra_params):
     return spz.get_data(product=product, start_time=start_time, stop_time=stop_time,
                         extra_http_headers=extra_http_headers, **extra_params)
+
+
+def _invalid_time_range_reason(start_time: datetime, stop_time: datetime) -> Optional[str]:
+    # speasy does not validate ordering or span itself (DateTimeRange has no
+    # such check), so an inverted or unbounded range would otherwise be
+    # dispatched straight into the threadpool.
+    if stop_time <= start_time:
+        return f"stop_time ({stop_time}) must be after start_time ({start_time})"
+    max_span = timedelta(days=core_config.max_query_span_days.get())
+    if stop_time - start_time > max_span:
+        return f"Requested time range ({stop_time - start_time}) exceeds the maximum allowed span ({max_span})"
+    return None
 
 
 @router.get('/get_data', description='Get data from cache or remote server')
@@ -100,6 +113,11 @@ async def get_data(request: Request,
         extra_params["product_inputs"] = product_inputs
 
     log.debug(f'New request {request_id}: {product} {start_time} {stop_time} from {client_chain}')
+
+    invalid_reason = _invalid_time_range_reason(start_time, stop_time)
+    if invalid_reason is not None:
+        log.debug(f'{request_id}: rejected invalid time range: {invalid_reason}')
+        return JSONResponse(status_code=400, content={"error": "Invalid time range", "detail": invalid_reason})
 
     try:
         var = await run_in_threadpool(_get_data, product=product, start_time=start_time, stop_time=stop_time,

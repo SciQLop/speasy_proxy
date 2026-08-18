@@ -7,9 +7,11 @@
 // The codec seam lets a future CDF/WASM decoder slot in by reading
 // resp.arrayBuffer() instead of resp.text(); pages only ever see SpeasyData.
 
-// The proxy json format emits bare `NaN` tokens; sanitize before JSON.parse.
+// The proxy json format emits bare `NaN`/`Infinity`/`-Infinity` tokens (Python's
+// json.dumps default); sanitize before JSON.parse. All three map to null, matching
+// how downstream code (plot-core, spectrogram) already treats NaN/null as a data gap.
 export function decodeJson(text) {
-  return JSON.parse(text.replace(/\bNaN\b/g, 'null'));
+  return JSON.parse(text.replace(/-?\bInfinity\b|\bNaN\b/g, 'null'));
 }
 
 export const jsonCodec = {

@@ -34,13 +34,16 @@ def encode_output(inventory_mgr: InventoryManager, provider: str, fmt, pickle_pr
     mime = _mime_type(fmt)
     if zstd_compression:
         # Serve the pre-compressed variant when one was built at inventory build time.
-        data = inventory_mgr.get_inventory(provider, fmt=fmt, pickle_proto=pickle_proto, version=version, zstd=True)
+        data, build_date = inventory_mgr.get_inventory_with_build_date(
+            provider, fmt=fmt, pickle_proto=pickle_proto, version=version, zstd=True)
         if data is not None:
-            return data, "application/x-zstd-compressed"
-    data = inventory_mgr.get_inventory(provider, fmt=fmt, pickle_proto=pickle_proto, version=version)
+            return data, "application/x-zstd-compressed", build_date
+    data, build_date = inventory_mgr.get_inventory_with_build_date(
+        provider, fmt=fmt, pickle_proto=pickle_proto, version=version)
     if data is None:
-        return None, mime
-    return compress_if_asked(data, mime, zstd_compression)
+        return None, mime, build_date
+    encoded, out_mime = compress_if_asked(data, mime, zstd_compression)
+    return encoded, out_mime, build_date
 
 
 @router.get('/get_inventory', response_class=Response, description='Get the inventory of a provider or all providers',
@@ -66,9 +69,11 @@ async def get_inventory(request: Request, provider: Provider = "ssc",
         return Response(status_code=status.HTTP_304_NOT_MODIFIED)
 
     # Offload to a threadpool: the manager lookup may do blocking work (BL-4),
-    # and compression must never run on the event loop.
-    data, mime = await run_in_threadpool(encode_output, inventory_mgr, provider, format, pickle_proto, version,
-                                         zstd_compression)
+    # and compression must never run on the event loop. build_date is read in the
+    # same call as the data (not a separate call after this await) so a concurrent
+    # refresh can't pair a stale body with a fresher Last-Modified, or vice versa.
+    data, mime, build_date = await run_in_threadpool(encode_output, inventory_mgr, provider, format, pickle_proto,
+                                                      version, zstd_compression)
     if data is None:
         log.debug(f'{request_id}, inventory not available for requested format/version')
         return Response(status_code=status.HTTP_404_NOT_FOUND,
@@ -81,7 +86,6 @@ async def get_inventory(request: Request, provider: Provider = "ssc",
     # Advertise our build date so any client can do conditional GETs
     # (If-Modified-Since -> 304 above). Best effort: an unparseable or missing
     # build date just skips the header.
-    build_date = inventory_mgr.build_date(provider)
     if build_date:
         try:
             headers['Last-Modified'] = formatdate(parser.parse(build_date).timestamp(), usegmt=True)

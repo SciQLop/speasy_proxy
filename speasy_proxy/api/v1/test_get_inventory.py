@@ -1,5 +1,6 @@
 import asyncio
 import importlib
+import threading
 import time
 
 import pytest
@@ -33,6 +34,9 @@ class _BlockingManager:
 
     def build_date(self, provider):
         return None
+
+    def get_inventory_with_build_date(self, *args, **kwargs):
+        return self.get_inventory(*args, **kwargs), self.build_date(None)
 
 
 @pytest.mark.anyio
@@ -147,6 +151,41 @@ async def test_200_without_build_date_omits_last_modified():
     resp = await m.get_inventory(request=_FakeRequest(), provider="all", format="json", inventory_mgr=mgr)
     assert resp.status_code == 200
     assert "Last-Modified" not in resp.headers
+
+
+@pytest.mark.anyio
+async def test_body_and_last_modified_never_mismatch_under_concurrent_refresh(monkeypatch):
+    """Regression: build_date used to be read via a second, separate call to
+    inventory_mgr.build_date() AFTER the run_in_threadpool await that fetches the
+    body — a refresh landing in that window could pair a stale body with a fresher
+    Last-Modified (or vice versa). Now both come from the single threadpool call."""
+    mgr = _manager_with({"inventory/all/json": "OLD"}, {"all": "2020-01-01T00:00:00+00:00"})
+
+    real_run_in_threadpool = m.run_in_threadpool
+    mutated = threading.Event()
+
+    async def hooked_run_in_threadpool(func, *args, **kwargs):
+        result = await real_run_in_threadpool(func, *args, **kwargs)
+        # Simulate a refresh landing exactly after the body/build_date lookup
+        # returns but before the endpoint would (pre-fix) separately re-read
+        # build_date() after this await.
+        apply_state = getattr(mgr, "_apply_state", None)
+        if apply_state is not None:
+            apply_state({"inventory/all/json": "NEW"}, {"all": "2030-01-01T00:00:00+00:00"}, 2)
+        else:
+            mgr._inventories = {"inventory/all/json": "NEW"}
+            mgr._build_dates = {"all": "2030-01-01T00:00:00+00:00"}
+        mutated.set()
+        return result
+
+    monkeypatch.setattr(m, "run_in_threadpool", hooked_run_in_threadpool)
+
+    resp = await m.get_inventory(request=_FakeRequest(), provider="all", format="json", inventory_mgr=mgr)
+    assert mutated.is_set()
+
+    body_is_old = resp.body == b"OLD"
+    last_modified_is_old = resp.headers.get("Last-Modified") == "Wed, 01 Jan 2020 00:00:00 GMT"
+    assert body_is_old == last_modified_is_old, "body and Last-Modified came from different generations"
 
 
 @pytest.fixture

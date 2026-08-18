@@ -93,7 +93,21 @@ def test_lttb_multi_column():
     var = _make_var(1000, values=values)
     result = resample(var, max_points=100, strategy='lttb')
     assert len(result) > 0
-    assert len(result) <= 200  # up to max_points * n_cols worst case
+    assert len(result) <= 100  # per-column budget divides max_points by n_cols
+
+
+def test_min_max_wide_product_stays_within_max_points():
+    """A many-channel product (e.g. a spectrogram) must not blow past
+    max_points by a factor of n_cols: the per-bucket budget divides by n_cols."""
+    var = _make_var(100_000, n_cols=64)
+    result = resample(var, max_points=200, strategy='min_max')
+    assert len(result) <= 200
+
+
+def test_lttb_wide_product_stays_within_max_points():
+    var = _make_var(100_000, n_cols=64)
+    result = resample(var, max_points=200, strategy='lttb')
+    assert len(result) <= 200
 
 
 def test_invalid_strategy_raises():

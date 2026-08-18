@@ -534,60 +534,62 @@ const API_BASE = (window.SPEASY_BASE_URL || '').replace(/\/$/, '') + '/';
     async function onToggleSatellite(cb, span, swatch) {
         const uid = cb.dataset.uid;
 
-        if (!cb.checked) {
-            trajectories.delete(uid);
-            span.classList.remove('plotted');
-            swatch.style.display = 'none';
-            updateChartOption();
-            updateActionButtons();
-            renderLegend();
-            setStatus(`Removed ${uid.split('/').pop()}.`);
-            updateURL();
-            syncGroupCheckboxes();
-            return;
-        }
+        try {
+            if (!cb.checked) {
+                trajectories.delete(uid);
+                span.classList.remove('plotted');
+                swatch.style.display = 'none';
+                updateChartOption();
+                updateActionButtons();
+                renderLegend();
+                setStatus(`Removed ${uid.split('/').pop()}.`);
+                updateURL();
+                return;
+            }
 
-        // Validate time window; auto-fill from inventory bounds if unset.
-        const startVal = document.getElementById('startTime').value;
-        const stopVal = document.getElementById('stopTime').value;
-        if (!startVal || !stopVal) {
-            try {
-                const bounds = JSON.parse(cb.dataset.timeBoundsJson || '{}');
-                if (bounds.start) {
-                    const e = new Date(bounds.stop || bounds.start);
-                    const s = new Date(e.getTime() - getSelectedDurationMs());
-                    setDateInput(document.getElementById('startTime'), s);
-                    setDateInput(document.getElementById('stopTime'), e);
-                } else {
+            // Validate time window; auto-fill from inventory bounds if unset.
+            const startVal = document.getElementById('startTime').value;
+            const stopVal = document.getElementById('stopTime').value;
+            if (!startVal || !stopVal) {
+                try {
+                    const bounds = JSON.parse(cb.dataset.timeBoundsJson || '{}');
+                    if (bounds.start) {
+                        const e = new Date(bounds.stop || bounds.start);
+                        const s = new Date(e.getTime() - getSelectedDurationMs());
+                        setDateInput(document.getElementById('startTime'), s);
+                        setDateInput(document.getElementById('stopTime'), e);
+                    } else {
+                        cb.checked = false;
+                        setStatus('Set start and stop times first.');
+                        return;
+                    }
+                } catch (_) {
                     cb.checked = false;
                     setStatus('Set start and stop times first.');
                     return;
                 }
-            } catch (_) {
+            }
+
+            const coordSys = document.getElementById('coordSys').value;
+            const startDate = parseDateInput(document.getElementById('startTime').value);
+            const stopDate = parseDateInput(document.getElementById('stopTime').value);
+            if (!startDate || !stopDate) {
                 cb.checked = false;
-                setStatus('Set start and stop times first.');
+                setStatus('Please set valid start and stop times (DD-MM-YYYY HH:MM).');
                 return;
             }
-        }
+            const startISO = startDate.toISOString();
+            const stopISO = stopDate.toISOString();
+            if (startDate >= stopDate) {
+                cb.checked = false;
+                setStatus('Start time must be before stop time.');
+                return;
+            }
 
-        const coordSys = document.getElementById('coordSys').value;
-        const startDate = parseDateInput(document.getElementById('startTime').value);
-        const stopDate = parseDateInput(document.getElementById('stopTime').value);
-        if (!startDate || !stopDate) {
-            cb.checked = false;
-            setStatus('Please set valid start and stop times (DD-MM-YYYY HH:MM).');
-            return;
+            await fetchSatellite(uid, cb, span, swatch, coordSys, startISO, stopISO);
+        } finally {
+            syncGroupCheckboxes();
         }
-        const startISO = startDate.toISOString();
-        const stopISO = stopDate.toISOString();
-        if (startDate >= stopDate) {
-            cb.checked = false;
-            setStatus('Start time must be before stop time.');
-            return;
-        }
-
-        await fetchSatellite(uid, cb, span, swatch, coordSys, startISO, stopISO);
-        syncGroupCheckboxes();
     }
 
     async function fetchTrajectoryData(uid, coordSys, startISO, stopISO) {
@@ -1051,4 +1053,4 @@ const API_BASE = (window.SPEASY_BASE_URL || '').replace(/\/$/, '') + '/';
 
 // Seam for the Vitest suite: the page glue above is not otherwise reachable from a
 // test, and asserting on source text instead of behaviour proved worthless.
-export const __test__ = { trajectories, fetchSatellite, clearAllTrajectories };
+export const __test__ = { trajectories, fetchSatellite, clearAllTrajectories, onToggleSatellite };

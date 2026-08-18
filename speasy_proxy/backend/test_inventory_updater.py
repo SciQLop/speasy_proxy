@@ -1,6 +1,7 @@
 import threading
 from datetime import UTC, datetime, timedelta
 
+from speasy.core.inventory.indexes import SpeasyIndex
 from speasy.inventories import tree
 from speasy_proxy.backend import inventory_updater
 from speasy_proxy.backend.inventory_updater import InventoryManager
@@ -209,3 +210,96 @@ def test_missing_eager_variant_is_not_built_lazily():
     mgr = InventoryManager(update_interval_seconds=3600, shared_store=SharedInventoryStore(path=None))
     mgr._inventories = {}
     assert mgr.get_inventory("all", "python_dict", version=2, pickle_proto=3) is None
+
+
+def test_lazy_build_excludes_concurrent_tree_refresh():
+    """speasy's DataProvider.update_inventory() clears the existing SpeasyIndex
+    IN PLACE before reassigning it (speasy/core/dataprovider.py: `tree.__dict__[name].clear()`
+    then `tree.__dict__[name] = new_inventory`). _build_lazy() reads that same shared
+    `tree` global; without mutual exclusion a lazy build racing a refresh can observe
+    the object mid-clear and permanently cache a torn/empty pickle under its key.
+    This proves _build_lazy() and a refresh both hold the same tree lock, so one
+    always fully completes before the other's tree mutation/read begins."""
+    provider_index = SpeasyIndex(name="ssc", provider="ssc", uid="ssc")
+    provider_index.__dict__["some_param"] = SpeasyIndex(name="p", provider="ssc", uid="ssc/p")
+    tree.__dict__["ssc"] = provider_index
+
+    mgr = InventoryManager(update_interval_seconds=3600, shared_store=SharedInventoryStore(path=None))
+
+    build_started = threading.Event()
+    release_build = threading.Event()
+    real_to_dict = inventory_updater.to_dict
+
+    def slow_to_dict(source, *a, **k):
+        build_started.set()
+        release_build.wait(timeout=2)
+        return real_to_dict(source, *a, **k)
+
+    inventory_updater.to_dict = slow_to_dict
+    try:
+        result = {}
+
+        def do_lazy_build():
+            result["data"] = mgr._build_lazy(
+                "ssc", "python_dict", 1, 5, "inventory/ssc/pickle_proto_5_version_1"
+            )
+
+        t = threading.Thread(target=do_lazy_build)
+        t.start()
+        assert build_started.wait(timeout=2), "lazy build never reached to_dict()"
+
+        # Simulate the exact clear-then-reassign speasy performs mid-refresh, via
+        # the same coordination point _refresh_if_due() uses (its own call is
+        # exercised end-to-end by test_refresh_excludes_concurrent_lazy_build below).
+        with mgr._tree_lock:
+            provider_index.clear()
+            tree.__dict__["ssc"] = SpeasyIndex(name="ssc", provider="ssc", uid="ssc")
+
+        release_build.set()
+        t.join(timeout=2)
+    finally:
+        inventory_updater.to_dict = real_to_dict
+
+    import pickle
+    # Test-only: unpickling data this same test just pickled above, not untrusted input.
+    unpickled = pickle.loads(result["data"])
+    assert "some_param" in unpickled, "lazy build observed a torn/cleared tree"
+
+
+def test_refresh_excludes_concurrent_lazy_build(monkeypatch):
+    """The other half of the same contract: a refresh's spz.update_inventories()
+    call must not proceed while a lazy build is mid-flight on the same tree
+    entry — proven by mutual exclusion on InventoryManager._tree_lock."""
+    _quiet_tree()
+    provider_index = SpeasyIndex(name="ssc", provider="ssc", uid="ssc")
+    tree.__dict__["ssc"] = provider_index
+
+    mgr = InventoryManager(update_interval_seconds=3600, shared_store=SharedInventoryStore(path=None))
+    monkeypatch.setattr(mgr, "_build_all_inventories", lambda: {"inv": "x"})
+    monkeypatch.setattr(mgr, "_collect_build_dates", lambda: {})
+
+    lazy_holds_lock = threading.Event()
+    release_lazy = threading.Event()
+
+    # No-op: _refresh_if_due() itself wraps this call in `with self._tree_lock:`,
+    # so the mutual exclusion under test happens before this function is even
+    # entered — it must NOT also acquire _tree_lock (that would be a reentrant
+    # acquire of a plain, non-reentrant Lock from the same thread and deadlock).
+    monkeypatch.setattr(inventory_updater.spz, "update_inventories", lambda: None)
+
+    def held_lazy_build():
+        with mgr._tree_lock:
+            lazy_holds_lock.set()
+            release_lazy.wait(timeout=2)
+
+    t = threading.Thread(target=held_lazy_build)
+    t.start()
+    assert lazy_holds_lock.wait(timeout=2)
+
+    # While the lazy build holds the lock, the tree lock must not be free.
+    assert mgr._tree_lock.acquire(blocking=False) is False
+
+    release_lazy.set()
+    t.join(timeout=2)
+    mgr._refresh_if_due()  # must complete now that the lock is free
+    assert mgr._inventories == {"inv": "x"}

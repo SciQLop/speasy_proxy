@@ -70,6 +70,43 @@ def test_plot_data_does_not_mutate_input_variable():
     assert np.array_equal(var.values, before)
 
 
+def test_plot_data_escapes_product_uid_in_oops_fallback():
+    """Reflected XSS: product/provider come straight from the request's `path`
+    query param. When data is None, plot_data falls back to an f-string that
+    gets served verbatim as text/html - it must be HTML-escaped."""
+    payload = "<script>alert(1)</script>"
+    html = plot_data(f"amda/{payload}", None, "2020-01-01", "2020-01-02", _FakeRequest())
+    assert payload not in html
+    assert "&lt;script&gt;alert(1)&lt;/script&gt;" in html
+
+
+def test_plot_data_escapes_product_uid_in_no_data_message():
+    """Same XSS vector via the 'No data for X from Y' branch (empty result)."""
+    payload = "<script>alert(2)</script>"
+    empty_var = _line_var([])
+    html = plot_data(f"amda/{payload}", empty_var, "2020-01-01", "2020-01-02", _FakeRequest())
+    assert payload not in html
+    assert "&lt;script&gt;alert(2)&lt;/script&gt;" in html
+
+
+def _zero_spectro_var(n=200, n_freq=16):
+    times = np.arange(n).astype("datetime64[s]").astype("datetime64[ns]")
+    values = np.zeros((n, n_freq))
+    axis = VariableTimeAxis(values=times, meta={})
+    data = DataContainer(values=values, meta={"DISPLAY_TYPE": "spectrogram"}, name="spec")
+    return SpeasyVariable(axes=[axis], values=data)
+
+
+def test_spectrogram_all_zero_data_renders_instead_of_oops():
+    """A legitimate all-zero (not all-NaN) spectrogram must still render: the
+    color-scale computed as np.nanmin(values[np.nonzero(values)]) raises
+    ValueError (empty nonzero selection) for all-zero data, which the outer
+    except swallows into the generic 'Oops' response - indistinguishable from
+    a real error."""
+    html = plot_data("amda/spec", _zero_spectro_var(), "2020-01-01", "2020-01-02", _FakeRequest())
+    assert html and "Oops" not in html
+
+
 def test_bokeh_page_scripts_are_vendored():
     """Regression for BL-23: the html_bokeh page must not depend on third-party
     CDNs (availability + integrity); jquery/json5 are vendored under

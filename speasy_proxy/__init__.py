@@ -5,7 +5,6 @@ __version__ = '0.13.5'
 import asyncio
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.staticfiles import StaticFiles
 import os
 from datetime import datetime, UTC
@@ -55,8 +54,13 @@ def get_application(lifespan=None) -> FastAPI:
         allow_methods=["*"],
         allow_headers=["*"],
     )
-    _app.add_middleware(GZipMiddleware)
-
+    # No GZipMiddleware: Starlette's implementation compresses response bodies
+    # synchronously on the event loop (no threadpool option), which this project
+    # otherwise deliberately avoids (see api/compression.py's compress_if_asked,
+    # always run via run_in_threadpool/a background thread). gzip for plain
+    # JSON/HTML responses is expected to be handled by the reverse proxy this
+    # app is deployed behind (see SPEASY_PROXY_PREFIX); zstd_compression=true
+    # requests are already compressed off-loop by compress_if_asked.
     return _app
 
 

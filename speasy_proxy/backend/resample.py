@@ -18,16 +18,24 @@ def resample(var: SpeasyVariable, max_points: int, strategy: str = 'min_max') ->
 
 
 def _min_max(var: SpeasyVariable, max_points: int) -> SpeasyVariable:
-    n_buckets = max(1, (max_points - 2) // 2)
+    # min_max_indices keeps up to 2 points per bucket PER COLUMN in one shared,
+    # already-deduplicated index set; the per-bucket budget must shrink with
+    # n_cols or a wide product (e.g. a many-channel spectrogram) blows past
+    # max_points by a factor of n_cols.
+    n_cols = var.values.shape[1]
+    n_buckets = max(1, (max_points - 2) // (2 * n_cols))
     values = np.asarray(var.values)
     sorted_indices = min_max_indices(values, n_buckets)
     return var[sorted_indices]
 
 
 def _lttb(var: SpeasyVariable, max_points: int) -> SpeasyVariable:
+    # Each column is resampled independently and the results unioned, so the
+    # per-column budget must be max_points / n_cols or the union can reach
+    # n_cols * max_points for a wide product.
     n_cols = var.values.shape[1]
     values = np.asarray(var.values)
-    n_out = max(max_points, 3)
+    n_out = max(max_points // n_cols, 3)
 
     per_column = [lttb_single_indices(values[:, col], n_out) for col in range(n_cols)]
     sorted_indices = np.unique(np.concatenate(per_column))

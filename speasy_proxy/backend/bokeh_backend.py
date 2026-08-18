@@ -1,6 +1,7 @@
 import itertools
 import logging
 import traceback
+from html import escape as html_escape
 
 from fastapi import Request
 import numpy as np
@@ -204,10 +205,13 @@ def _plot_spectrogram(plot, provider_uid, product_uid, data: SpeasyVariable, hos
         else:
             y = np.arange(values.shape[1]).T
 
+        nonzero_values = values[np.nonzero(values)]
+        # All-zero data (legitimate, not all-NaN) has an empty nonzero selection,
+        # so nanmin over it would raise; 0 is the sensible flat-scale default.
+        vmin = np.nanmin(nonzero_values) if nonzero_values.size else 0
         cm = ax.pcolormesh(x, y.T, values.T,
                            cmap='plasma',
-                           norm=colors.LogNorm(vmin=np.nanmin(values[np.nonzero(values)]),
-                                               vmax=np.nanmax(values)))
+                           norm=colors.LogNorm(vmin=vmin, vmax=np.nanmax(values)))
         flat_cmap = cm.cmap(cm.norm(cm.get_array()))
         image = np.empty((values.shape[1], values.shape[0]), dtype=np.uint32)
         view = image.view(dtype=np.uint8).reshape((image.shape[0], image.shape[1], 4))
@@ -279,8 +283,9 @@ def plot_data(product, data: SpeasyVariable, start_time, stop_time, request: Req
 
         log.debug(f"Can't plot {product}, data shape: {data.values.shape if data is not None else None}")
         if data is not None and len(data) == 0:
-            return f"No data for {product_uid} from {provider_uid} betweeen {start_time} and {stop_time}"
+            return (f"No data for {html_escape(product_uid)} from {html_escape(provider_uid)} "
+                    f"betweeen {html_escape(str(start_time))} and {html_escape(str(stop_time))}")
 
     except Exception as e:
         log.debug(''.join(traceback.format_exception(e)))
-    return f"Oops, unable to plot {product_uid} from {provider_uid}"
+    return f"Oops, unable to plot {html_escape(product_uid)} from {html_escape(provider_uid)}"

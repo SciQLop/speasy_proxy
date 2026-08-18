@@ -25,4 +25,9 @@ describe('decodeJson', () => {
     expect(d.values.values[0][0]).toBeNull();
     expect(d.values.values[1][0]).toBe(3);
   });
+
+  it('parses JSON with bare Infinity and -Infinity tokens', () => {
+    const d = decodeJson('{"values":[1.0, Infinity, -Infinity, NaN]}');
+    expect(d.values).toEqual([1.0, null, null, null]);
+  });
 });
