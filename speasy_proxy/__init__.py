@@ -24,6 +24,17 @@ spz.update_inventories()
 log.info("Inventories updated.")
 
 
+class RevalidatingJSStaticFiles(StaticFiles):
+    # Unbundled, unhashed JS modules: without forced revalidation, browsers can
+    # heuristically cache one imported module fresh and its importer stale (or
+    # vice versa) across a deploy, breaking `import` resolution.
+    async def get_response(self, path, scope):
+        response = await super().get_response(path, scope)
+        if path.endswith(".js"):
+            response.headers["Cache-Control"] = "no-cache"
+        return response
+
+
 def get_application(lifespan=None) -> FastAPI:
     root_path = os.environ.get('SPEASY_PROXY_PREFIX', '')
     if root_path:
@@ -44,7 +55,7 @@ def get_application(lifespan=None) -> FastAPI:
     )
     _app.include_router(frontend_router)
     _app.include_router(v1_api_router)
-    _app.mount("/static/", StaticFiles(directory=f"{os.path.dirname(os.path.abspath(__file__))}/static"), name="static")
+    _app.mount("/static/", RevalidatingJSStaticFiles(directory=f"{os.path.dirname(os.path.abspath(__file__))}/static"), name="static")
 
     up_since.set(datetime.now(UTC))
 
