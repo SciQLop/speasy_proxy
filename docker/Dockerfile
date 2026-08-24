@@ -20,6 +20,10 @@ ENV SPEASY_CACHE_PATH=/data \
 # speasy 1.8.0 migrates its cache from diskcache to pysciqlop-cache on first
 # import; move instead of copy, the proxy never needs the legacy backup.
 ENV SPEASY_CACHE_MIGRATE_BY_MOVING=True
+# speasy disables cdpp3dview (3DView) by default to speed up interactive
+# loading; irrelevant here since inventories are preloaded once at startup
+# (see CLAUDE.md), so serve every provider including 3DView.
+ENV SPEASY_CORE_DISABLED_PROVIDERS=""
 
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /usr/local/bin/
 
