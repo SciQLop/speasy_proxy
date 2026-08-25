@@ -42,6 +42,9 @@ export function elStub(tag = 'div') {
 export function mkEchartsInstance() {
   const calls = [];
   let hasOption = false;
+  // A real zrender instance is one object for the chart's lifetime — elements
+  // added via getZr().add() must still be found by a later getZr().remove().
+  const zr = { on: vi.fn(), off: vi.fn(), add: vi.fn(), remove: vi.fn() };
   return {
     calls,
     setOption: vi.fn((opt, mode) => { hasOption = true; calls.push({ opt, mode }); }),
@@ -53,7 +56,7 @@ export function mkEchartsInstance() {
         coordinateSystem: { getRect: vi.fn(() => ({ x: 0, y: 0, width: 800, height: 600 })) },
       })),
     } : undefined)),
-    getZr: vi.fn(() => ({ on: vi.fn(), off: vi.fn() })),
+    getZr: vi.fn(() => zr),
     getWidth: vi.fn(() => 800),
     getHeight: vi.fn(() => 600),
     convertToPixel: vi.fn(() => 100),
@@ -154,7 +157,23 @@ export function installDom({ pathname = '/', search = '', origin = 'http://local
   };
   globalThis.history = globalThis.window.history;
 
-  globalThis.echarts = { init: vi.fn(() => mkEchartsInstance()) };
+  // Minimal stand-ins for the zrender element classes plot.js uses to position
+  // heatmap images directly (bypassing chart.setOption for per-frame repositioning).
+  class ZrElStub {
+    constructor(opts = {}) { Object.assign(this, opts); }
+    setStyle(style) { this.style = { ...(this.style || {}), ...style }; }
+  }
+  class GroupStub extends ZrElStub {
+    constructor(opts) { super(opts); this.children = []; }
+    add(child) { this.children.push(child); }
+    setClipPath(shape) { this.clipPath = shape; }
+  }
+  class RectStub extends ZrElStub {}
+
+  globalThis.echarts = {
+    init: vi.fn(() => mkEchartsInstance()),
+    graphic: { Image: ZrElStub, Group: GroupStub, Rect: RectStub },
+  };
 
   return {
     elements,

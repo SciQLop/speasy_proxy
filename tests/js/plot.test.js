@@ -89,9 +89,15 @@ describe('cold spectrogram render', () => {
     expect(() => renderAllSubplots()).not.toThrow();
 
     const chart = getChart();
-    const withGraphic = chart.calls.filter((c) => c.opt.graphic && c.opt.graphic.length > 0);
-    expect(withGraphic.length).toBeGreaterThan(0);
     expect(chart.calls[0].opt.grid).toBeTruthy(); // structure applied before any geometry read
+
+    // Heatmap images are zrender elements added directly to chart.getZr(), not
+    // the ECharts `graphic` option component — see positionHeatmapZrEl in plot.js.
+    const zr = chart.getZr();
+    expect(zr.add).toHaveBeenCalled();
+    const group = zr.add.mock.calls[0][0];
+    expect(group.children[0].style.image).toBeTruthy();
+    expect(group.clipPath).toBeTruthy();
   });
 });
 
