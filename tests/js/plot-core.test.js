@@ -439,6 +439,9 @@ describe('factories', () => {
     expect(sp.y_axis.log).toBe(false);
     expect(sp.logScale).toBe(true);
     expect(sp.plotType).toBe('line');
+    // Fresh subplot: Y/Z still follow the ISTP SCALETYP hint, not a user override.
+    expect(sp._yScaleAuto).toBe(true);
+    expect(sp._zScaleAuto).toBe(true);
   });
   it('subplotToConfig / subplotFromConfig round-trip', () => {
     const sp = createSubplotData();
@@ -451,6 +454,16 @@ describe('factories', () => {
     expect(restored.products).toEqual([{ path: 'amda/imf', label: 'IMF' }]);
     expect(restored.y_axis.log).toBe(true);
     expect(restored.logScale).toBe(false);
+  });
+  it('subplotFromConfig treats a loaded/shared config as a deliberate choice', () => {
+    const restored = subplotFromConfig({ products: [], y_axis: { log: true }, log_z: false });
+    expect(restored._yScaleAuto).toBe(false);
+    expect(restored._zScaleAuto).toBe(false);
+  });
+  it('subplotFromConfig leaves auto flags set when the config omits that axis', () => {
+    const restored = subplotFromConfig({ products: [] });
+    expect(restored._yScaleAuto).toBe(true);
+    expect(restored._zScaleAuto).toBe(true);
   });
 });
 

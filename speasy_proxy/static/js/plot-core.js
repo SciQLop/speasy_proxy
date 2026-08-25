@@ -8,6 +8,10 @@ export function createSubplotData() {
     plotType: 'line',
     lastHeatmapImg: null,
     productData: {},
+    // Whether Y/Z still follow the ISTP SCALETYP hint from the data (applyScaleHints
+    // in plot.js) rather than an explicit Log Y / Log Z click.
+    _yScaleAuto: true,
+    _zScaleAuto: true,
   };
 }
 
@@ -40,7 +44,13 @@ export function subplotToConfig(sp) {
 export function subplotFromConfig(plotDef) {
   const subplot = createSubplotData();
   subplot.y_axis.log = plotDef.y_axis?.log || false;
-  if (plotDef.log_z !== undefined) subplot.logScale = plotDef.log_z;
+  // A shared/loaded config is a deliberate choice, not a default — but only when it
+  // actually specified one; an old/malformed config with no y_axis is still a fresh state.
+  if (plotDef.y_axis?.log !== undefined) subplot._yScaleAuto = false;
+  if (plotDef.log_z !== undefined) {
+    subplot.logScale = plotDef.log_z;
+    subplot._zScaleAuto = false;
+  }
   for (const prod of plotDef.products) {
     subplot.products.push({ path: prod.path, label: prod.label || prod.path });
     subplot.productData[prod.path] = createProductCache(prod.path);

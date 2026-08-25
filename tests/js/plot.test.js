@@ -12,7 +12,7 @@ const dom = installPlotDom({ baseUrl: 'https://host/cache', pathname: '/cache/pl
 const plot = await import('../../speasy_proxy/static/js/plot.js');
 const {
   plotState, initChart, renderAllSubplots, removeProductFromSubplot,
-  updateShareURL, mergeProductData, bindControls, getChart,
+  updateShareURL, mergeProductData, bindControls, getChart, applyScaleHints,
 } = plot.__test__;
 
 afterAll(() => dom.restore());
@@ -155,6 +155,63 @@ describe('Shift+Enter in a time field', () => {
 
     expect(dom.getById('btn-add').click).toHaveBeenCalled();
     expect(plotState.plots).toHaveLength(2); // doPlot would have reset this to 1
+  });
+});
+
+describe('ISTP SCALETYP scale hints', () => {
+  function autoSubplot(plotType) {
+    return { plotType, logScale: true, y_axis: { log: false }, _yScaleAuto: true, _zScaleAuto: true };
+  }
+
+  it('seeds Log Z and Log Y from a spectrogram\'s SCALETYP (energy axis log, values linear)', () => {
+    const subplot = autoSubplot('heatmap');
+    const data = {
+      values: { meta: { SCALETYP: 'linear' } },
+      axes: [{ values: [] }, { meta: { SCALETYP: 'log' } }],
+    };
+
+    applyScaleHints(subplot, data);
+
+    expect(subplot.logScale).toBe(false); // values.meta.SCALETYP -> Z (color)
+    expect(subplot.y_axis.log).toBe(true); // axes[1].meta.SCALETYP -> Y (energy)
+  });
+
+  it('uses values.meta.SCALETYP for a line subplot\'s Y axis (no DEPEND_1)', () => {
+    const subplot = autoSubplot('line');
+    const data = { values: { meta: { SCALETYP: 'log' } }, axes: [{ values: [] }] };
+
+    applyScaleHints(subplot, data);
+
+    expect(subplot.y_axis.log).toBe(true);
+  });
+
+  it('leaves the current value untouched when SCALETYP is absent (e.g. AMDA)', () => {
+    const subplot = autoSubplot('heatmap');
+    subplot.logScale = false; // deliberately not the createSubplotData default, to prove
+    subplot.y_axis.log = true; // an absent hint doesn't coincidentally "restore" a default
+    const data = { values: { meta: {} }, axes: [{ values: [] }, { meta: {} }] };
+
+    applyScaleHints(subplot, data);
+
+    expect(subplot.logScale).toBe(false);
+    expect(subplot.y_axis.log).toBe(true);
+  });
+
+  it('never overwrites an explicit user Log Y / Log Z choice', () => {
+    const subplot = autoSubplot('heatmap');
+    subplot._yScaleAuto = false;
+    subplot._zScaleAuto = false;
+    subplot.logScale = true;
+    subplot.y_axis.log = false;
+    const data = {
+      values: { meta: { SCALETYP: 'linear' } },
+      axes: [{ values: [] }, { meta: { SCALETYP: 'log' } }],
+    };
+
+    applyScaleHints(subplot, data);
+
+    expect(subplot.logScale).toBe(true);
+    expect(subplot.y_axis.log).toBe(false);
   });
 });
 

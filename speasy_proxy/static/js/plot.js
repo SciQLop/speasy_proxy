@@ -373,13 +373,13 @@ import { fetchData as apiFetchData, fetchInventory } from './api-client.js';
         document.getElementById('btn-log-scale').addEventListener('click', () => {
             const heatmapPlots = plotState.plots.filter(sp => sp.plotType === 'heatmap');
             if (heatmapPlots.length === 0) return;
-            for (const sp of heatmapPlots) sp.logScale = !sp.logScale;
+            for (const sp of heatmapPlots) { sp.logScale = !sp.logScale; sp._zScaleAuto = false; }
             document.getElementById('btn-log-scale').textContent = heatmapPlots[0].logScale ? 'Log Z' : 'Linear Z';
             renderAllSubplots(true);
         });
         document.getElementById('btn-log-y').addEventListener('click', () => {
             if (plotState.plots.length === 0) return;
-            for (const sp of plotState.plots) sp.y_axis.log = !sp.y_axis.log;
+            for (const sp of plotState.plots) { sp.y_axis.log = !sp.y_axis.log; sp._yScaleAuto = false; }
             document.getElementById('btn-log-y').textContent = plotState.plots[0].y_axis.log ? 'Log Y' : 'Linear Y';
             renderAllSubplots(true);
         });
@@ -663,6 +663,7 @@ import { fetchData as apiFetchData, fetchInventory } from './api-client.js';
 
             if (subplot.products[0].path === productPath) {
                 subplot.plotType = detectPlotType(data);
+                applyScaleHints(subplot, data);
             }
 
             renderAllSubplots();
@@ -747,6 +748,36 @@ import { fetchData as apiFetchData, fetchInventory } from './api-client.js';
         const chartWidth = document.getElementById('chart')?.clientWidth || 0;
         const maxPoints = resampleTarget(chartWidth, POINTS_PER_PIXEL, BUFFER_RATIO);
         return apiFetchData({ baseUrl: API_BASE, path: product, startISO, stopISO, maxPoints, signal });
+    }
+
+    // ISTP CDF variables carry a SCALETYP attribute ('linear'/'log') describing how
+    // that variable's own values should be displayed. Normalizes it to a boolean, or
+    // null when absent/unrecognized (AMDA rarely sets it; CDAWeb — real ISTP CDFs —
+    // reliably does).
+    function scaleTypToLog(meta) {
+        const v = ((meta && meta.SCALETYP) || '').toString().toLowerCase();
+        if (v === 'log') return true;
+        if (v === 'linear') return false;
+        return null;
+    }
+
+    // Seeds Log Z / Log Y from the first product's ISTP hints the moment its data
+    // arrives — a spectrogram's energy axis is almost always log-spaced, and a linear
+    // Y axis squashes it into a sliver near the bottom. Only while the user hasn't
+    // already made an explicit choice for that axis (_yScaleAuto/_zScaleAuto) — a
+    // click always sticks, hints never overwrite it.
+    function applyScaleHints(subplot, data) {
+        if (subplot._zScaleAuto) {
+            const zHint = scaleTypToLog(data.values && data.values.meta);
+            if (zHint !== null) subplot.logScale = zHint;
+        }
+        if (subplot._yScaleAuto) {
+            const yMeta = subplot.plotType === 'heatmap' && data.axes.length >= 2
+                ? data.axes[1].meta
+                : (data.values && data.values.meta);
+            const yHint = scaleTypToLog(yMeta);
+            if (yHint !== null) subplot.y_axis.log = yHint;
+        }
     }
 
     function mergeProductData(cache, json, fetchStart, fetchStop) {
@@ -1667,6 +1698,7 @@ import { fetchData as apiFetchData, fetchInventory } from './api-client.js';
             // Detect plot type from first product
             if (subplot.products[0].path === path) {
                 subplot.plotType = detectPlotType(data);
+                applyScaleHints(subplot, data);
             }
         }
 
@@ -1881,5 +1913,5 @@ import { fetchData as apiFetchData, fetchInventory } from './api-client.js';
     // test, and asserting on source text instead of behaviour proved worthless.
     export const __test__ = {
         plotState, initChart, bindControls, renderAllSubplots, removeProductFromSubplot,
-        updateShareURL, mergeProductData, getChart: () => chart,
+        updateShareURL, mergeProductData, applyScaleHints, getChart: () => chart,
     };
