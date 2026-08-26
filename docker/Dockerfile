@@ -5,7 +5,7 @@ ARG SPEASY=speasy
 
 ENV SPEASY_CACHE_PATH=/data \
     SPEASY_CACHE_SIZE="20e9" \
-    SPEASY_INDEX_PATH=/index \
+    SPEASY_INDEX_PATH=/index/data \
     SPEASY_CDAWEB_INVENTORY_DATA_PATH=/index/cdaweb_inventory_data \
     SPEASY_LOG_PATH=/log \
     SPEASY_PROXY="true" \
@@ -27,12 +27,18 @@ ENV SPEASY_CORE_DISABLED_PROVIDERS=""
 
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /usr/local/bin/
 
+# Speasy's migrate-by-move renames $SPEASY_INDEX_PATH itself to a sibling
+# <path>.diskcache.backup, which needs write access on its *parent* (unlike the
+# main cache, where the migrated path is $SPEASY_CACHE_PATH/Cache, one level
+# below the chowned dir). SPEASY_INDEX_PATH is nested under /index for exactly
+# this reason -- chown the whole /index mount below, not just the leaf, or the
+# rename fails with EPERM on container start.
 RUN useradd speasy && mkdir -p $SPEASY_CACHE_PATH $SPEASY_INDEX_PATH \
     && dnf update -y \
     && dnf install -y git python3 python3-devel libxslt libxslt-devel gcc g++ qhull-devel qhull \
     glibc-langpack-en freetype-devel freetype libpng libpng-devel xorg-x11-server-Xvfb zlib-devel python3-matplotlib \
     && dnf clean all \
-    && chown -R speasy $SPEASY_CACHE_PATH $SPEASY_INDEX_PATH \
+    && chown -R speasy $SPEASY_CACHE_PATH /index \
     && mkdir -p $SPEASY_LOG_PATH/speasy $SPEASY_CDAWEB_INVENTORY_DATA_PATH \
     && chown -R speasy $SPEASY_LOG_PATH/speasy $SPEASY_CDAWEB_INVENTORY_DATA_PATH
 
@@ -49,6 +55,8 @@ ADD docker/entry_point.sh /home/speasy/entry_point.sh
 
 VOLUME $SPEASY_CACHE_PATH
 VOLUME $SPEASY_LOG_PATH
-VOLUME $SPEASY_INDEX_PATH
+# Mount point stays /index (unchanged, matches existing deployments); SPEASY_INDEX_PATH
+# above points at a subdirectory of it, not the mount root itself -- see the chown note.
+VOLUME /index
 EXPOSE $PORT/tcp
 CMD ["/home/speasy/entry_point.sh"]
