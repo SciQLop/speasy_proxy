@@ -10,7 +10,7 @@ speasy-proxy is a FastAPI-based caching proxy server for [speasy](https://github
 
 ```bash
 # Setup
-uv sync --dev
+uv sync --extra dev
 
 # Run locally (development)
 uv run uvicorn speasy_proxy:app --reload
