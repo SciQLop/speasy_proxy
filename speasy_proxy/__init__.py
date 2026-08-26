@@ -1,6 +1,6 @@
 __author__ = """Alexis Jeandet"""
 __email__ = 'alexis.jeandet@member.fsf.org'
-__version__ = '0.15.0'
+__version__ = '0.15.1'
 
 import asyncio
 from fastapi import FastAPI
