@@ -1,6 +1,6 @@
 from datetime import datetime, timedelta, UTC
 
-from speasy_proxy.backend import status
+from speasy_proxy.backend import status, _cache
 from speasy_proxy.api.v1.models import ServerStatus
 
 
@@ -22,3 +22,17 @@ def test_status_never_updated_reports_never():
     result = status(last_inventory_update=None)
     assert result["last_inventory_update"] == "never"
     assert result["inventory_size"] == "0"
+
+
+def test_status_does_not_take_a_whole_cache_lock(monkeypatch):
+    # transact() with no key is a whole-cache exclusive lock on a plain (non-Fanout)
+    # Cache -- fine for a small diskcache instance, but at production scale (millions
+    # of entries) it made this endpoint hang indefinitely and blocked concurrent
+    # get_data requests too. Reading approximate stats doesn't need a consistent
+    # cross-field snapshot badly enough to justify that.
+    def _boom(*args, **kwargs):
+        raise AssertionError("status() must not call _cache.transact()")
+
+    # Cache uses __slots__ -- patch the class, not the instance.
+    monkeypatch.setattr(type(_cache), "transact", _boom)
+    status(last_inventory_update=None)

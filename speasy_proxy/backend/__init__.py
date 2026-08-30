@@ -9,9 +9,12 @@ def status(last_inventory_update: datetime = None, update_interval_seconds: int 
     _up_since = up_since.value()
     up_time = datetime.now(UTC) - _up_since
 
-    with _cache.transact():
-        cache_len = len(_cache)
-        cache_disk = _cache.disk_size()
+    # No transact(): on a plain (non-Fanout) Cache it's a whole-cache exclusive lock,
+    # which at production scale (millions of entries) blocks every other cache user
+    # for as long as len()/disk_size() take -- and those aren't cheap either at that
+    # size. A perfectly consistent snapshot of these two numbers isn't worth that.
+    cache_len = len(_cache)
+    cache_disk = _cache.disk_size()
     return {
         'entries': cache_len,
         'cache_disk_size': cache_disk,
