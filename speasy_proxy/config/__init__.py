@@ -12,4 +12,6 @@ core = ConfigSection("PROXY_CORE",
                      inventory_lease_ttl={"default": 600, "type_ctor": int, "description": "TTL (seconds) of the cross-worker inventory refresh lease."},
                      inventory_shared_path={"default": "", "description": "Directory for the cross-worker shared inventory store (default: <index path>/inventory_shared)."},
                      max_query_span_days={"default": 366 * 50, "type_ctor": int, "description": "Maximum start_time/stop_time span (days) accepted by /get_data, to bound worst-case fetch/resample time in the threadpool."},
+                     cache_scrub_interval={"default": 7 * 24 * 60 * 60, "type_ctor": int, "description": "Seconds between full background cache scrubs (every cache entry is checked, fossils dropped)."},
+                     cache_scrub_batch_size={"default": 500, "type_ctor": int, "description": "Cache entries checked per progress-log batch during a scrub."},
                      )

@@ -13,6 +13,7 @@ from .api.v1 import api_router as v1_api_router
 from .frontend import frontend_router
 import logging
 from .backend.inventory_updater import InventoryManager
+from .backend.cache_scrubber import periodic_scrub_loop
 from .config import core as config
 from contextlib import asynccontextmanager
 import speasy as spz
@@ -82,8 +83,13 @@ async def lifespan(app: FastAPI):
     app.state.inventory_manager = mgr
     mgr.build_inventories()
     task = asyncio.create_task(mgr.periodic_update_loop())
+    scrub_task = asyncio.create_task(periodic_scrub_loop(
+        interval_seconds=config.cache_scrub_interval.get(),
+        batch_size=config.cache_scrub_batch_size.get(),
+    ))
     yield
     task.cancel()
+    scrub_task.cancel()
     log.info("Shutting down speasy-proxy...")
 
 app = get_application(lifespan=lifespan)
