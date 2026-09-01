@@ -32,6 +32,15 @@ def test_is_fossil_entry_accepts_healthy_entry():
     assert m.is_fossil_entry(item) is False
 
 
+def test_is_fossil_entry_flags_a_legacy_non_cache_item_entry():
+    # cache.entries() walks every key ever written, including some pre-CacheItem
+    # legacy format still sitting in a years-old production cache -- a bare str
+    # (no .version/.data at all) crashed the whole scrub with an uncaught
+    # AttributeError on prod, live: "'str' object has no attribute 'version'"
+    # for amda/imf_gsm-cdf_istp/... keys.
+    assert m.is_fossil_entry("just a plain string, not a CacheItem") is True
+
+
 DEFAULT_CUTOFF = datetime(2023, 10, 20, tzinfo=timezone.utc)
 
 
@@ -118,6 +127,22 @@ def test_scrub_all_drops_only_fossils(monkeypatch):
 
     assert dropped == 1
     assert dropped_keys == ["bad_key"]
+
+
+def test_scrub_all_drops_a_legacy_non_cache_item_entry_without_crashing(monkeypatch):
+    good = CacheItem(data=_healthy_data(), version="1.0.0")
+    store = {"good_key": good, "legacy_key": "just a plain string, not a CacheItem"}
+    dropped_keys = []
+
+    monkeypatch.setattr(m.config.amda_cache_stale_before, "get", lambda: DEFAULT_CUTOFF)
+    monkeypatch.setattr(m.cache, "entries", lambda: list(store.keys()))
+    monkeypatch.setattr(m.cache, "get_item", lambda key, default=None: store.get(key, default))
+    monkeypatch.setattr(m.cache, "drop_item", lambda key: dropped_keys.append(key))
+
+    dropped = m.scrub_all(batch_size=500)
+
+    assert dropped == 1
+    assert dropped_keys == ["legacy_key"]
 
 
 def test_scrub_all_handles_empty_cache(monkeypatch):

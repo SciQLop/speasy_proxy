@@ -45,9 +45,13 @@ log = logging.getLogger(__name__)
 
 
 def is_fossil_entry(item) -> bool:
-    if isinstance(item.version, datetime):
-        return True
+    # cache.entries() walks every key ever written, including some pre-CacheItem
+    # legacy format that can still be sitting in a years-old production cache (seen
+    # live: a bare str with no .version/.data at all) -- treat anything that
+    # doesn't even look like a CacheItem as a fossil too, not just a bad payload.
     try:
+        if isinstance(item.version, datetime):
+            return True
         from_dictionary(item.data)
     except Exception:
         return True
@@ -55,7 +59,12 @@ def is_fossil_entry(item) -> bool:
 
 
 def is_stale_amda_entry(key: str, item, cutoff: datetime) -> bool:
-    return key.startswith("amda/") and item.created < cutoff
+    if not key.startswith("amda/"):
+        return False
+    try:
+        return item.created < cutoff
+    except Exception:
+        return False
 
 
 def scrub_all(batch_size: int) -> int:
