@@ -3706,7 +3706,7 @@ wheels = [
 
 [[package]]
 name = "speasy-proxy"
-version = "0.17.0"
+version = "0.18.0"
 source = { editable = "." }
 dependencies = [
     { name = "bokeh" },
@@ -3753,7 +3753,7 @@ requires-dist = [
     { name = "mypy", marker = "extra == 'dev'" },
     { name = "numba", marker = "extra == 'fast'" },
     { name = "pycdfpp", specifier = ">=0.7.3" },
-    { name = "pycrdt-websocket", specifier = ">=0.15.4,<0.17.0" },
+    { name = "pycrdt-websocket", specifier = ">=0.15.4,<0.18.0" },
     { name = "pytest", marker = "extra == 'dev'" },
     { name = "pytest-asyncio", marker = "extra == 'dev'" },
     { name = "pytest-cov", marker = "extra == 'dev'" },
