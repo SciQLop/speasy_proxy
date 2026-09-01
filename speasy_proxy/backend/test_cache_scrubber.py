@@ -79,6 +79,39 @@ def test_is_stale_amda_entry_honors_a_custom_cutoff():
     assert m.is_stale_amda_entry("amda/x/t", item, datetime(2023, 1, 1, tzinfo=timezone.utc)) is False
 
 
+def test_scrub_all_only_touches_provider_data_keys(monkeypatch):
+    """Allowlist, not denylist: the scrubber exists to judge provider data
+    entries (SpeasyVariable payloads under the @Cacheable prefixes). Everything
+    else in the shared cache must never even be read, let alone dropped:
+    CacheCall memoization entries are never SpeasyVariables so they always
+    look 'fossil'; speasy's own 'cache/version' marker is a bare str, and
+    dropping it makes the next startup wipe the ENTIRE cache (version 0.0.0 <
+    current -> clear()). Seen live 2026-09-01: a full sweep classified ~58k
+    CacheCall entries as fossils."""
+    monkeypatch.setattr(m.config.amda_cache_stale_before, "get", lambda: DEFAULT_CUTOFF)
+    store = {
+        "__internal__/CacheCall/speasy.core.codecs/IstpCdf.load_variable/abc":
+            CacheItem(data={"not": "a variable"}, version=1),
+        "cache/version": "1.7.0",
+        "amda/fossil/t": "legacy string entry",
+    }
+    read_keys, dropped_keys = [], []
+    monkeypatch.setattr(m.cache, "entries", lambda: list(store.keys()))
+
+    def _get(key, default=None):
+        read_keys.append(key)
+        return store.get(key, default)
+
+    monkeypatch.setattr(m.cache, "get_item", _get)
+    monkeypatch.setattr(m.cache, "drop_item", lambda key: dropped_keys.append(key))
+
+    dropped = m.scrub_all(batch_size=500)
+
+    assert read_keys == ["amda/fossil/t"]
+    assert dropped_keys == ["amda/fossil/t"]
+    assert dropped == 1
+
+
 def test_scrub_all_also_drops_stale_amda_entries(monkeypatch):
     monkeypatch.setattr(m.config.amda_cache_stale_before, "get", lambda: DEFAULT_CUTOFF)
     stale_amda = CacheItem(data=_healthy_data(), version="1.0.0")
@@ -116,7 +149,7 @@ def test_scrub_all_uses_the_configured_cutoff(monkeypatch):
 def test_scrub_all_drops_only_fossils(monkeypatch):
     good = CacheItem(data=_healthy_data(), version="1.0.0")
     bad = CacheItem(data=_healthy_data(), version=datetime(2025, 12, 1))
-    store = {"good_key": good, "bad_key": bad}
+    store = {"cda/good/t": good, "cda/bad/t": bad}
     dropped_keys = []
 
     monkeypatch.setattr(m.cache, "entries", lambda: list(store.keys()))
@@ -126,12 +159,12 @@ def test_scrub_all_drops_only_fossils(monkeypatch):
     dropped = m.scrub_all(batch_size=500)
 
     assert dropped == 1
-    assert dropped_keys == ["bad_key"]
+    assert dropped_keys == ["cda/bad/t"]
 
 
 def test_scrub_all_drops_a_legacy_non_cache_item_entry_without_crashing(monkeypatch):
     good = CacheItem(data=_healthy_data(), version="1.0.0")
-    store = {"good_key": good, "legacy_key": "just a plain string, not a CacheItem"}
+    store = {"amda/good/t": good, "amda/legacy/t": "just a plain string, not a CacheItem"}
     dropped_keys = []
 
     monkeypatch.setattr(m.config.amda_cache_stale_before, "get", lambda: DEFAULT_CUTOFF)
@@ -142,7 +175,7 @@ def test_scrub_all_drops_a_legacy_non_cache_item_entry_without_crashing(monkeypa
     dropped = m.scrub_all(batch_size=500)
 
     assert dropped == 1
-    assert dropped_keys == ["legacy_key"]
+    assert dropped_keys == ["amda/legacy/t"]
 
 
 def test_scrub_all_handles_empty_cache(monkeypatch):
@@ -154,8 +187,8 @@ def test_scrub_all_covers_every_key_across_multiple_batches(monkeypatch):
     """batch_size smaller than the number of keys must still check every key,
     not just the first batch."""
     store = {
-        f"key_{i}": CacheItem(data=_healthy_data(),
-                              version=(datetime(2025, 12, 1) if i % 3 == 0 else "1.0.0"))
+        f"cda/key_{i}/t": CacheItem(data=_healthy_data(),
+                                    version=(datetime(2025, 12, 1) if i % 3 == 0 else "1.0.0"))
         for i in range(23)
     }
     dropped_keys = []

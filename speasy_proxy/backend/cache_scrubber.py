@@ -43,6 +43,23 @@ from ..config import core as config
 
 log = logging.getLogger(__name__)
 
+# Allowlist of provider data-cache key prefixes -- the @Cacheable /
+# @UnversionedProviderCache prefixes in speasy.data_providers.* -- the only
+# namespaces whose payloads are SpeasyVariable dictionaries this scrubber
+# knows how to judge. Everything else sharing the cache is out of scope by
+# construction rather than excluded case by case: CacheCall memoization
+# entries (never SpeasyVariables, so they always look like fossils), speasy's
+# own 'cache/version' marker (a bare str; dropping it makes the next startup
+# wipe the whole cache), and any namespace a future speasy adds.
+PROVIDER_DATA_KEY_PREFIXES = (
+    "amda/",
+    "cda/",
+    "csa/",
+    "ssc_orbits/",
+    "cdpp3dview/",
+    "UiowaEphTool_orbits/",
+)
+
 
 def is_fossil_entry(item) -> bool:
     # cache.entries() walks every key ever written, including some pre-CacheItem
@@ -71,7 +88,7 @@ def scrub_all(batch_size: int) -> int:
     """Walk every cache entry once, dropping fossils and stale AMDA entries.
     Returns how many were dropped."""
     amda_cutoff = config.amda_cache_stale_before.get()
-    keys = cache.entries()
+    keys = [k for k in cache.entries() if k.startswith(PROVIDER_DATA_KEY_PREFIXES)]
     dropped = 0
     for i in range(0, len(keys), batch_size):
         for key in keys[i:i + batch_size]:
