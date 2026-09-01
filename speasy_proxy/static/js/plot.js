@@ -1619,15 +1619,20 @@ import { fetchData as apiFetchData, fetchInventory } from './api-client.js';
     }
 
     function applyConfig(config) {
-        plotState.time_range.start = config.time_range.start;
-        plotState.time_range.stop = config.time_range.stop;
+        const startDate = config.time_range.start ? new Date(config.time_range.start) : null;
+        let stopDate = config.time_range.stop ? new Date(config.time_range.stop) : null;
+        // A bare "YYYY-MM-DD" (e.g. the legacy ?start=&stop= link format, both parsed as
+        // UTC midnight) used for both start and stop is meant as "that whole day", not a
+        // zero-width instant -- left alone it silently produces a request the backend
+        // rejects as invalid every time this link is opened.
+        if (startDate && stopDate && stopDate.getTime() <= startDate.getTime()) {
+            stopDate = new Date(startDate.getTime() + 86400000);
+        }
+        plotState.time_range.start = startDate ? startDate.toISOString() : null;
+        plotState.time_range.stop = stopDate ? stopDate.toISOString() : null;
 
-        if (config.time_range.start) {
-            setDateInput(document.getElementById('start-time'), new Date(config.time_range.start));
-        }
-        if (config.time_range.stop) {
-            setDateInput(document.getElementById('stop-time'), new Date(config.time_range.stop));
-        }
+        if (startDate) setDateInput(document.getElementById('start-time'), startDate);
+        if (stopDate) setDateInput(document.getElementById('stop-time'), stopDate);
 
         plotState.intervals = (config.intervals || []).map(iv => ({
             start: iv.start,
@@ -1913,5 +1918,5 @@ import { fetchData as apiFetchData, fetchInventory } from './api-client.js';
     // test, and asserting on source text instead of behaviour proved worthless.
     export const __test__ = {
         plotState, initChart, bindControls, renderAllSubplots, removeProductFromSubplot,
-        updateShareURL, mergeProductData, applyScaleHints, getChart: () => chart,
+        updateShareURL, mergeProductData, applyScaleHints, applyConfig, getChart: () => chart,
     };

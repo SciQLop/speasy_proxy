@@ -12,7 +12,7 @@ const dom = installPlotDom({ baseUrl: 'https://host/cache', pathname: '/cache/pl
 const plot = await import('../../speasy_proxy/static/js/plot.js');
 const {
   plotState, initChart, renderAllSubplots, removeProductFromSubplot,
-  updateShareURL, mergeProductData, bindControls, getChart, applyScaleHints,
+  updateShareURL, mergeProductData, bindControls, getChart, applyScaleHints, applyConfig,
 } = plot.__test__;
 
 afterAll(() => dom.restore());
@@ -98,6 +98,25 @@ describe('cold spectrogram render', () => {
     const group = zr.add.mock.calls[0][0];
     expect(group.children[0].style.image).toBeTruthy();
     expect(group.clipPath).toBeTruthy();
+  });
+});
+
+describe('applying a config with a zero-width time range', () => {
+  // The legacy ?path=&start=&stop= URL format (still generated for old bookmarks/links)
+  // passes start/stop straight through unvalidated. A bare "YYYY-MM-DD" used for both --
+  // e.g. someone linking to "that day's data" -- parses as the exact same UTC midnight for
+  // both fields, producing a zero-width request the backend always rejects as invalid.
+  it('expands stop when a bare-date URL gives identical start and stop', () => {
+    initChart();
+    applyConfig({
+      version: 1,
+      time_range: { start: '2026-08-20', stop: '2026-08-20' },
+      plots: [{ products: [{ path: 'amda/imf' }], y_axis: { log: false } }],
+    });
+
+    const startMs = new Date(plotState.time_range.start).getTime();
+    const stopMs = new Date(plotState.time_range.stop).getTime();
+    expect(stopMs).toBeGreaterThan(startMs);
   });
 });
 
