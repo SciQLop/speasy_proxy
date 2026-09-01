@@ -1,3 +1,4 @@
+import asyncio
 import importlib
 from datetime import datetime, timedelta, timezone
 
@@ -117,6 +118,30 @@ def test_scrub_all_covers_every_key_across_multiple_batches(monkeypatch):
 
 
 @pytest.mark.anyio
+async def test_periodic_scrub_loop_runs_immediately_on_startup(monkeypatch):
+    """A fresh deploy must scrub right away, not wait out a full (default
+    weekly) interval first -- otherwise a fix that only takes effect via the
+    scrubber (e.g. is_stale_amda_entry) sits inert for up to a week post-deploy."""
+    calls = []
+    monkeypatch.setattr(m, "scrub_all", lambda batch_size: calls.append(batch_size) or 0)
+
+    async def _run():
+        # An interval long enough that reaching it during the test would fail it.
+        await m.periodic_scrub_loop(interval_seconds=3600, batch_size=5)
+
+    task = asyncio.create_task(_run())
+    for _ in range(50):
+        if len(calls) >= 1:
+            break
+        await asyncio.sleep(0.01)
+    task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await task
+
+    assert calls == [5]
+
+
+@pytest.mark.anyio
 async def test_periodic_scrub_loop_survives_tick_exception(monkeypatch):
     """A failing tick must be logged and swallowed, not kill the loop -- verified
     by getting past a first raising tick to a second call before cancellation."""
@@ -129,7 +154,6 @@ async def test_periodic_scrub_loop_survives_tick_exception(monkeypatch):
     monkeypatch.setattr(m, "scrub_all", _boom)
 
     task = None
-    import asyncio
 
     async def _run():
         await m.periodic_scrub_loop(interval_seconds=0, batch_size=5)

@@ -74,13 +74,21 @@ def scrub_all(batch_size: int) -> int:
     return dropped
 
 
+async def _scrub_tick(batch_size: int):
+    try:
+        dropped = await run_in_threadpool(scrub_all, batch_size)
+        log.info(f"Cache scrub: swept the cache, dropped {dropped} fossil entries.")
+    except Exception:
+        log.exception("Cache scrub failed.")
+
+
 async def periodic_scrub_loop(interval_seconds: int, batch_size: int):
-    """Background task: once per interval (default weekly), sweep the whole
-    cache. Never lets an error break the loop."""
+    """Background task: sweeps the whole cache once immediately on startup, then
+    once per interval after (default weekly). Immediate-on-startup matters: a
+    scrubber-only fix (e.g. is_stale_amda_entry) must take effect on deploy, not
+    sit inert for up to a week waiting for the first interval to elapse. Never
+    lets an error break the loop."""
+    await _scrub_tick(batch_size)
     while True:
         await asyncio.sleep(interval_seconds)
-        try:
-            dropped = await run_in_threadpool(scrub_all, batch_size)
-            log.info(f"Cache scrub: swept the cache, dropped {dropped} fossil entries.")
-        except Exception:
-            log.exception("Cache scrub failed.")
+        await _scrub_tick(batch_size)
