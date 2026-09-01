@@ -93,12 +93,22 @@ async def _scrub_tick(batch_size: int):
 
 
 async def periodic_scrub_loop(interval_seconds: int, batch_size: int):
-    """Background task: sweeps the whole cache once immediately on startup, then
-    once per interval after (default weekly). Immediate-on-startup matters: a
-    scrubber-only fix (e.g. is_stale_amda_entry) must take effect on deploy, not
-    sit inert for up to a week waiting for the first interval to elapse. Never
-    lets an error break the loop."""
-    await _scrub_tick(batch_size)
+    """Background task: sweeps the whole cache once per interval (default
+    weekly). Never lets an error break the loop.
+
+    Deliberately does NOT scrub immediately on startup (reverted 2026-09-01,
+    see incident memory): cache.entries() + cache.get_item() per key means a
+    full sweep touches every one of the (multi-million) entries in a
+    production cache synchronously, in one burst. A meaningful fraction of a
+    years-old cache is apparently unreadable off disk for reasons unrelated to
+    this scrubber (memory-mapped file open failures -- pre-existing, seen
+    trickling in at ~300/day before this code ever ran) -- walking the whole
+    cache at once touches all of them simultaneously instead of the normal
+    slow trickle, which live-incident-confirmed floods logs and looks
+    (feels) like mass cache deletion on every single restart, forever, since
+    a restart re-triggers the same immediate sweep every time. Scrubbing
+    only on the slower periodic cadence keeps the fossil/stale-AMDA cleanup
+    this module exists for, without that burst blast radius."""
     while True:
         await asyncio.sleep(interval_seconds)
         await _scrub_tick(batch_size)

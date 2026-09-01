@@ -172,27 +172,26 @@ def test_scrub_all_covers_every_key_across_multiple_batches(monkeypatch):
 
 
 @pytest.mark.anyio
-async def test_periodic_scrub_loop_runs_immediately_on_startup(monkeypatch):
-    """A fresh deploy must scrub right away, not wait out a full (default
-    weekly) interval first -- otherwise a fix that only takes effect via the
-    scrubber (e.g. is_stale_amda_entry) sits inert for up to a week post-deploy."""
+async def test_periodic_scrub_loop_does_not_scrub_immediately_on_startup(monkeypatch):
+    """Reverted 2026-09-01 (live incident): scrub_all() touches every key in
+    the cache via cache.entries()/get_item(), which at production scale
+    (millions of entries) means an immediate-on-startup sweep hits every
+    unreadable legacy entry in the whole cache in one synchronous burst --
+    live-confirmed to flood logs and look like mass cache deletion, on every
+    single restart. Must wait for the first interval like any other tick."""
     calls = []
     monkeypatch.setattr(m, "scrub_all", lambda batch_size: calls.append(batch_size) or 0)
 
     async def _run():
-        # An interval long enough that reaching it during the test would fail it.
         await m.periodic_scrub_loop(interval_seconds=3600, batch_size=5)
 
     task = asyncio.create_task(_run())
-    for _ in range(50):
-        if len(calls) >= 1:
-            break
-        await asyncio.sleep(0.01)
+    await asyncio.sleep(0.05)  # give a wrongly-immediate call every chance to happen
     task.cancel()
     with pytest.raises(asyncio.CancelledError):
         await task
 
-    assert calls == [5]
+    assert calls == []
 
 
 @pytest.mark.anyio
