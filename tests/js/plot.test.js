@@ -1,6 +1,8 @@
 import { describe, it, expect, vi, beforeEach, afterAll } from 'vitest';
 import { installPlotDom } from './helpers/dom-mock.js';
 
+import * as apiClient from '../../speasy_proxy/static/js/api-client.js';
+
 vi.mock('../../speasy_proxy/static/js/api-client.js', () => ({
   fetchData: vi.fn(() => Promise.resolve(null)),
   fetchInventory: vi.fn(() => Promise.resolve({})),
@@ -13,7 +15,7 @@ const plot = await import('../../speasy_proxy/static/js/plot.js');
 const {
   plotState, initChart, renderAllSubplots, removeProductFromSubplot,
   updateShareURL, mergeProductData, bindControls, getChart, applyScaleHints, applyConfig,
-  renderProductParams, collectProductParams,
+  renderProductParams, collectProductParams, onProductParamsChanged,
 } = plot.__test__;
 
 afterAll(() => dom.restore());
@@ -166,6 +168,35 @@ describe('per-product extra params (AMDA template args, SSC/3DView frames)', () 
     expect(collectProductParams()).toEqual({ coordinateSystem: 'GSE' });
   });
 
+  it('a preset value overrides the AMDA argument default', () => {
+    renderProductParams({
+      __spz_type__: 'TemplatedParameterIndex',
+      __spz_provider__: 'amda',
+      __spz_arguments__: {
+        __spz_type__: 'ArgumentListIndex',
+        side: {
+          __spz_type__: 'ArgumentIndex', key: 'side', name: 'Side', default: '0',
+          choices: [['Side 0', '0'], ['Side 1', '1'], ['Side 2', '2']],
+        },
+      },
+    }, { productInputs: { side: '2' } });
+    expect(collectProductParams()).toEqual({ productInputs: { side: '2' } });
+  });
+
+  it('a preset value overrides the SSC coordinate_system default', () => {
+    renderProductParams({ __spz_type__: 'ParameterIndex', __spz_provider__: 'ssc' },
+      { coordinateSystem: 'gsm' });
+    expect(collectProductParams()).toEqual({ coordinateSystem: 'gsm' });
+  });
+
+  it('a preset 3DView frame survives the live frame list arriving afterwards', async () => {
+    globalThis.fetch = () => Promise.resolve({ ok: true, json: () => Promise.resolve({ frames: ['J2000', 'GSE'] }) });
+    renderProductParams({ __spz_type__: 'ParameterIndex', __spz_provider__: 'cdpp3dview' },
+      { coordinateSystem: 'GSE' });
+    await new Promise((r) => setTimeout(r, 0));
+    expect(collectProductParams()).toEqual({ coordinateSystem: 'GSE' });
+  });
+
   it('a later selection is not clobbered by a slow-to-arrive 3DView frame list', async () => {
     let resolveFrames;
     globalThis.fetch = () => new Promise((resolve) => {
@@ -176,6 +207,101 @@ describe('per-product extra params (AMDA template args, SSC/3DView frames)', () 
     resolveFrames();
     await new Promise((r) => setTimeout(r, 0));
     expect(collectProductParams()).toEqual({ coordinateSystem: 'gse' });
+  });
+});
+
+describe('changing a param select on an already-plotted product', () => {
+  beforeEach(() => {
+    plot.__test__.__resetCdpp3dviewFramesCache();
+    apiClient.fetchData.mockClear();
+  });
+
+  it('wires a change listener to onProductParamsChanged', () => {
+    renderProductParams({ __spz_type__: 'ParameterIndex', __spz_provider__: 'ssc' });
+    const select = dom.created.filter(el => el.tagName === 'SELECT').at(-1);
+    expect(select.addEventListener).toHaveBeenCalledWith('change', onProductParamsChanged);
+  });
+
+  it('does nothing if the product is not part of the current plot yet', () => {
+    dom.getById('product-path').value = 'ssc/ace';
+    renderProductParams({ __spz_type__: 'ParameterIndex', __spz_provider__: 'ssc' });
+    plotState.plots = [];
+
+    onProductParamsChanged();
+
+    expect(apiClient.fetchData).not.toHaveBeenCalled();
+  });
+
+  it('drops the stale cache and re-fetches with the new coordinate_system', async () => {
+    dom.getById('product-path').value = 'ssc/ace';
+    renderProductParams({ __spz_type__: 'ParameterIndex', __spz_provider__: 'ssc' });
+
+    const staleCache = { path: 'ssc/ace', marker: 'stale-gse-data' };
+    plotState.plots = [{
+      products: [{ path: 'ssc/ace', label: 'ace', coordinateSystem: 'gse' }],
+      productData: { 'ssc/ace': staleCache },
+      y_axis: { log: false },
+      plotType: 'line',
+      _yScaleAuto: true, _zScaleAuto: true,
+    }];
+    plotState.time_range = { start: '2020-01-01T00:00:00.000Z', stop: '2020-01-02T00:00:00.000Z' };
+
+    // Simulate picking a different coordinate system in the dropdown.
+    const select = dom.created.filter(el => el.tagName === 'SELECT').at(-1);
+    select.value = 'gsm';
+
+    onProductParamsChanged();
+    await Promise.resolve(); await Promise.resolve();
+
+    expect(plotState.plots[0].products[0].coordinateSystem).toBe('gsm');
+    expect(plotState.plots[0].productData['ssc/ace']).not.toBe(staleCache);
+    expect(apiClient.fetchData).toHaveBeenCalled();
+    const call = apiClient.fetchData.mock.calls[0][0];
+    expect(call.path).toBe('ssc/ace');
+    expect(call.coordinateSystem).toBe('gsm');
+  });
+});
+
+describe('restoring the params box after a page refresh', () => {
+  const sscTree = {
+    ssc: {
+      Trajectories: {
+        ace: {
+          __spz_type__: 'ParameterIndex', __spz_provider__: 'ssc',
+          __spz_uid__: 'ace', __spz_name__: 'ACE',
+        },
+      },
+    },
+  };
+
+  beforeEach(() => {
+    apiClient.fetchInventory.mockReset();
+    dom.getById('product-path').value = '';
+    plotState.plots = [];
+    // productParamSelects/productParamsKind are module-private and only reset by
+    // renderProductParams itself -- clear any state a previous test left behind.
+    renderProductParams({ __spz_type__: 'DatasetIndex' });
+  });
+
+  it('re-renders the params box, restored to the config-loaded value, once inventory arrives', async () => {
+    // Simulates the state right after applyConfig() runs on a page load, before
+    // loadInventory()'s fetch (fired in parallel, not awaited) has resolved.
+    dom.getById('product-path').value = 'ssc/ace';
+    plotState.plots = [{
+      products: [{ path: 'ssc/ace', label: 'ace', coordinateSystem: 'gsm' }],
+      productData: {}, y_axis: { log: false },
+    }];
+    apiClient.fetchInventory.mockResolvedValueOnce(sscTree);
+
+    await plot.__test__.loadInventory();
+
+    expect(collectProductParams()).toEqual({ coordinateSystem: 'gsm' });
+  });
+
+  it('does nothing when no product was selected before inventory arrives', async () => {
+    apiClient.fetchInventory.mockResolvedValueOnce(sscTree);
+    await plot.__test__.loadInventory();
+    expect(collectProductParams()).toEqual({});
   });
 });
 

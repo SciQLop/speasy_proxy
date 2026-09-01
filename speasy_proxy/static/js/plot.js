@@ -57,6 +57,18 @@ import { fetchData as apiFetchData, fetchInventory } from './api-client.js';
             inventory = await fetchInventory(API_BASE, 'all', 2);
             renderTree(inventory);
             setupSearch();
+            // Restore the params box for a product already selected by the time this
+            // resolves (a ?config=/?path= URL applies before the inventory fetch
+            // finishes) -- otherwise a page refresh with e.g. a chosen coordinate_system
+            // silently loses the visible box, even though the data itself round-trips.
+            const activeProduct = document.getElementById('product-path').value;
+            if (activeProduct) {
+                const leaf = leafIndex.find(l => l.path === activeProduct);
+                if (leaf) {
+                    const prod = plotState.plots.flatMap(sp => sp.products).find(p => p.path === activeProduct);
+                    renderProductParams(leaf.node, prod);
+                }
+            }
         } catch (e) {
             container.innerHTML = '';
             const msg = document.createElement('div');
@@ -214,21 +226,64 @@ import { fetchData as apiFetchData, fetchInventory } from './api-client.js';
             select.appendChild(opt);
         }
         select.value = selected;
+        select.addEventListener('change', onProductParamsChanged);
         productParamSelects[key] = select;
         container.appendChild(label);
         container.appendChild(select);
+    }
+
+    // A param select (coordinate_system, an AMDA argument, ...) only takes effect
+    // once collectProductParams() is read again -- which otherwise only happens at
+    // the next Plot/Add-to-plot click. If the product is already plotted, changing
+    // a dropdown must re-fetch it live instead of silently doing nothing. The old
+    // cache is dropped, not just refreshed: merging e.g. a GSE fetch into a cache
+    // that already holds J2000 samples for the same product would silently mix
+    // two coordinate frames in one series.
+    function onProductParamsChanged() {
+        const product = document.getElementById('product-path').value;
+        if (!product) return;
+        const newParams = collectProductParams();
+        let changed = false;
+        for (const subplot of plotState.plots) {
+            const prod = subplot.products.find(p => p.path === product);
+            if (!prod) continue;
+            prod.coordinateSystem = newParams.coordinateSystem;
+            prod.productInputs = newParams.productInputs;
+            subplot.productData[product] = createProductCache(product);
+            changed = true;
+        }
+        if (changed) {
+            updateURL();
+            fetchAllAndRender();
+        }
     }
 
     // AMDA's TemplatedParameterIndex carries __spz_arguments__ (an ArgumentListIndex
     // of ArgumentIndex nodes: key/name/type/default/choices) -- render one <select>
     // per argument. Requires inventory version 2 (see loadInventory) so `choices`
     // survives as a real [[label, value], ...] array instead of a stringified repr.
-    function renderProductParams(node) {
+    //
+    // presetValues (optional): { coordinateSystem?, productInputs? } to select instead
+    // of the usual defaults -- used to restore a page-refresh/shared config's actual
+    // choice (see loadInventory) rather than silently resetting it.
+    function renderProductParams(node, presetValues) {
         const container = document.getElementById('product-params');
         container.innerHTML = '';
         productParamSelects = {};
         productParamsKind = null;
         const myGeneration = ++paramsGeneration;
+
+        const applyPreset = () => {
+            if (!presetValues) return;
+            if (presetValues.coordinateSystem && productParamSelects['coordinate_system']) {
+                productParamSelects['coordinate_system'].value = presetValues.coordinateSystem;
+            }
+            if (presetValues.productInputs) {
+                for (const key of Object.keys(presetValues.productInputs)) {
+                    if (productParamSelects[key]) productParamSelects[key].value = presetValues.productInputs[key];
+                }
+            }
+        };
 
         if (node.__spz_type__ === 'TemplatedParameterIndex' && node.__spz_arguments__) {
             productParamsKind = 'product_inputs';
@@ -241,6 +296,7 @@ import { fetchData as apiFetchData, fetchInventory } from './api-client.js';
                     ? arg.choices : [[arg.default, arg.default]];
                 addParamSelect(container, arg.key || key, arg.name || arg.key || key, choices, arg.default);
             }
+            applyPreset();
             return;
         }
 
@@ -248,12 +304,14 @@ import { fetchData as apiFetchData, fetchInventory } from './api-client.js';
             productParamsKind = 'coordinate_system';
             addParamSelect(container, 'coordinate_system', 'Coord.',
                 SSC_COORDINATE_SYSTEMS.map(c => [c, c]), 'gse');
+            applyPreset();
             return;
         }
 
         if (node.__spz_provider__ === 'cdpp3dview') {
             productParamsKind = 'coordinate_system';
             addParamSelect(container, 'coordinate_system', 'Frame', [['J2000', 'J2000']], 'J2000');
+            applyPreset();  // in case the live frame list never arrives
             get3dViewFrames().then(frames => {
                 if (myGeneration !== paramsGeneration || frames.length === 0) return;
                 const select = productParamSelects['coordinate_system'];
@@ -266,6 +324,7 @@ import { fetchData as apiFetchData, fetchInventory } from './api-client.js';
                     select.appendChild(opt);
                 }
                 select.value = frames.includes('J2000') ? 'J2000' : frames[0];
+                applyPreset();  // re-apply now that the real options exist
             });
         }
     }
@@ -2037,6 +2096,6 @@ import { fetchData as apiFetchData, fetchInventory } from './api-client.js';
     export const __test__ = {
         plotState, initChart, bindControls, renderAllSubplots, removeProductFromSubplot,
         updateShareURL, mergeProductData, applyScaleHints, applyConfig, getChart: () => chart,
-        renderProductParams, collectProductParams, selectProduct,
+        renderProductParams, collectProductParams, selectProduct, onProductParamsChanged, loadInventory,
         __resetCdpp3dviewFramesCache: () => { cdpp3dviewFramesPromise = null; },
     };

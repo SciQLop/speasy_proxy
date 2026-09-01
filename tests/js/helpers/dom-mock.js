@@ -127,6 +127,7 @@ export function installDom({ pathname = '/', search = '', origin = 'http://local
       return el;
     }),
     createDocumentFragment: vi.fn(() => ({ appendChild: vi.fn() })),
+    createTextNode: vi.fn((text) => ({ nodeType: 3, textContent: text })),
     body: elStub(),
     documentElement: elStub(),
     addEventListener: vi.fn((type, fn) => { (listeners[type] ||= []).push(fn); }),
