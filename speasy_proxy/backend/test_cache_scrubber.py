@@ -1,5 +1,5 @@
 import importlib
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 
 import numpy as np
 import pytest
@@ -29,6 +29,49 @@ def test_is_fossil_entry_flags_undeserializable_data():
 def test_is_fossil_entry_accepts_healthy_entry():
     item = CacheItem(data=_healthy_data(), version="1.0.0")
     assert m.is_fossil_entry(item) is False
+
+
+def test_is_stale_amda_entry_flags_entries_from_before_the_cdf_istp_switch():
+    # speasy defaulted AMDA requests to ASCII until 2023-10-20 (commit 73d3bbd).
+    # An entry cached before that is almost certainly ASCII-decoded, a different
+    # (and possibly narrower) shape than today's CDF_ISTP decoder produces for
+    # the same product -- confirmed live for amda/mex_els_spec_0, which crashed
+    # merging a stale few-column fragment with a freshly-fetched 128-column one.
+    item = CacheItem(data=_healthy_data(), version="1.0.0")
+    item.created = datetime(2022, 1, 1, tzinfo=timezone.utc)
+    assert m.is_stale_amda_entry("amda/mex_els_spec_0-cdf_istp/2004-05-25T12:00:00", item) is True
+
+
+def test_is_stale_amda_entry_accepts_entries_written_after_the_switch():
+    item = CacheItem(data=_healthy_data(), version="1.0.0")
+    item.created = datetime.now(tz=timezone.utc) - timedelta(days=1)
+    assert m.is_stale_amda_entry("amda/mex_els_spec_0-cdf_istp/2004-05-25T12:00:00", item) is False
+
+
+def test_is_stale_amda_entry_ignores_non_amda_keys():
+    # Other providers have their own cache mechanisms/self-heal (e.g.
+    # UnversionedProviderCache's fossil-version check) -- an old entry there
+    # isn't evidence of the ASCII/CDF_ISTP format switch this only applies to.
+    item = CacheItem(data=_healthy_data(), version="1.0.0")
+    item.created = datetime(2022, 1, 1, tzinfo=timezone.utc)
+    assert m.is_stale_amda_entry("cda/some_product/2004-05-25T12:00:00", item) is False
+
+
+def test_scrub_all_also_drops_stale_amda_entries(monkeypatch):
+    stale_amda = CacheItem(data=_healthy_data(), version="1.0.0")
+    stale_amda.created = datetime(2022, 1, 1, tzinfo=timezone.utc)
+    fresh_amda = CacheItem(data=_healthy_data(), version="1.0.0")
+    store = {"amda/old-cdf_istp/t": stale_amda, "amda/new-cdf_istp/t": fresh_amda}
+    dropped_keys = []
+
+    monkeypatch.setattr(m.cache, "entries", lambda: list(store.keys()))
+    monkeypatch.setattr(m.cache, "get_item", lambda key, default=None: store.get(key, default))
+    monkeypatch.setattr(m.cache, "drop_item", lambda key: dropped_keys.append(key))
+
+    dropped = m.scrub_all(batch_size=500)
+
+    assert dropped == 1
+    assert dropped_keys == ["amda/old-cdf_istp/t"]
 
 
 def test_scrub_all_drops_only_fossils(monkeypatch):
