@@ -3,8 +3,15 @@ FROM fedora:42
 ARG PORT=6543
 ARG SPEASY=speasy
 
+# SPEASY_CACHE_SIZE default is deliberately huge: any container started from
+# this image (a debug shell, a one-off script) that imports speasy against the
+# production cache volume gets a background evictor with this limit -- a small
+# default silently mass-deletes the coldest entries of a multi-TB cache toward
+# 90% of the limit (bit us on 2026-09-01, see
+# HANDOVER-2026-09-01-cache-scrub-incident.md). Deployments size it explicitly
+# at run time; the baked default only has to be safe, not right.
 ENV SPEASY_CACHE_PATH=/data \
-    SPEASY_CACHE_SIZE="20e9" \
+    SPEASY_CACHE_SIZE="100e12" \
     SPEASY_INDEX_PATH=/index/data \
     SPEASY_CDAWEB_INVENTORY_DATA_PATH=/index/cdaweb_inventory_data \
     SPEASY_LOG_PATH=/log \
