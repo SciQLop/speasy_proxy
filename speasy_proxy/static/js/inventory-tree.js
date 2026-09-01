@@ -12,6 +12,9 @@ export const SKIP_KEYS = new Set([
   'COORDINATE_SYSTEM', 'TENSOR_ORDER', 'SIZES', 'DEPEND_1',
   'LABL_PTR_1', 'LABL_PTR_2', 'COMPONENT_0', 'COMPONENT_1',
   'COMPONENT_2', 'QUALITY', 'spaseId', 'dataSource',
+  // Rendered explicitly by the AMDA template-parameter form (see plot.js
+  // renderProductParams), not as a browsable tree branch.
+  '__spz_arguments__',
 ]);
 
 // SSC trajectory-catalog keys. Kept out of SKIP_KEYS because they are ordinary
@@ -48,4 +51,11 @@ export function hasVisibleChildren(node, isMeta = isSpzMetaKey) {
 
 export function isParameterIndex(node) {
   return node.__spz_type__ === 'ParameterIndex';
+}
+
+// A TemplatedParameterIndex (AMDA's parametrized products, e.g. "proton flux,
+// side ##key##") is selectable exactly like a plain ParameterIndex -- it just
+// also needs a product_inputs form (see plot.js renderProductParams).
+export function isSelectableProduct(node) {
+  return node.__spz_type__ === 'ParameterIndex' || node.__spz_type__ === 'TemplatedParameterIndex';
 }

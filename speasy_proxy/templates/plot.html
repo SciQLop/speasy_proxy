@@ -57,6 +57,28 @@
             min-width: 180px;
         }
 
+        .product-params {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            flex-wrap: wrap;
+        }
+
+        .product-params label {
+            font-size: 0.8rem;
+            color: #8892b0;
+        }
+
+        .product-params select {
+            padding: 4px 8px;
+            border: 1px solid #2a3358;
+            border-radius: 6px;
+            background: #0b0e17;
+            color: #e0e6f0;
+            font-size: 0.8rem;
+            outline: none;
+        }
+
         .controls-bar .dt-input {
             width: 168px;
             font-variant-numeric: tabular-nums;
@@ -218,6 +240,8 @@
     <div class="controls-bar">
         <label for="product-path">Product</label>
         <input type="text" id="product-path" readonly placeholder="Select a product from the tree">
+
+        <div class="product-params" id="product-params"></div>
 
         <label for="start-time">Start</label>
         <input type="text" class="dt-input" id="start-time" placeholder="DD-MM-YYYY HH:MM" autocomplete="off" spellcheck="false">

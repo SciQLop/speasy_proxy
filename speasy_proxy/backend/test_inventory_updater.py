@@ -159,10 +159,32 @@ def test_degraded_mode_in_process_guard(monkeypatch):
     assert mgr._inventories == {"inv": "x"}
 
 
+def test_json_version_2_preserves_structured_attributes():
+    """AMDA templated-parameter arguments carry a `choices` list of (label, value)
+    tuples (e.g. speasy's ArgumentIndex). speasy's to_json(version=1) stringifies
+    any non-str attribute -- turning `choices` into an unparseable Python repr
+    like "[('Side 0', '0'), ...]" -- while version=2 keeps it as real JSON. The
+    JSON cache used to always build version=1 regardless of what was asked for;
+    it must now build both, keyed separately."""
+    import json
+    _quiet_tree()
+    mgr = InventoryManager(update_interval_seconds=3600, shared_store=SharedInventoryStore(path=None))
+    node = SpeasyIndex(name="arg", provider="amda", uid="side",
+                       meta={"choices": [("Side 0", "0"), ("Side 1", "1")]})
+    built = {}
+    mgr._save_inventory_as_json(node, "amda", 1, target=built)
+    mgr._save_inventory_as_json(node, "amda", 2, target=built)
+
+    v1 = json.loads(built["inventory/amda/json_version_1"])
+    v2 = json.loads(built["inventory/amda/json_version_2"])
+    assert isinstance(v1["choices"], str)          # stringified, as before
+    assert v2["choices"] == [["Side 0", "0"], ["Side 1", "1"]]  # real JSON array
+
+
 def test_get_inventory_reads_memory_only(monkeypatch):
     """get_inventory must serve from memory and never trigger a refresh."""
     mgr = InventoryManager(update_interval_seconds=3600, shared_store=SharedInventoryStore(path=None))
-    mgr._inventories = {"inventory/all/json": "DATA"}
+    mgr._inventories = {"inventory/all/json_version_1": "DATA"}
     mgr._build_dates = {"all": "2020-01-01T00:00:00+00:00"}
 
     def fail(*a, **k):
@@ -177,18 +199,22 @@ def test_get_inventory_reads_memory_only(monkeypatch):
 
 
 def test_eager_build_covers_common_variants_and_zstd():
-    """Only JSON + pickle protocols 3/4 (versions 1..2) are built eagerly, each
-    with a pre-compressed zstd variant; protocols 1, 2 and 5 are left out."""
+    """JSON (versions 1..2) + pickle protocols 3/4 (versions 1..2) are built
+    eagerly, each with a pre-compressed zstd variant; protocols 1, 2 and 5 are
+    left out."""
     import pyzstd
     _quiet_tree()
     mgr = InventoryManager(update_interval_seconds=3600, shared_store=SharedInventoryStore(path=None))
     built = mgr._build_all_inventories()
-    assert "inventory/all/json" in built
+    for version in (1, 2):
+        assert f"inventory/all/json_version_{version}" in built
     for proto in (3, 4):
         for version in (1, 2):
             assert f"inventory/all/pickle_proto_{proto}_version_{version}" in built
             assert f"inventory/all/pickle_proto_{proto}_version_{version}/zstd" in built
-    assert pyzstd.decompress(built["inventory/all/json/zstd"]).decode() == built["inventory/all/json"]
+    for version in (1, 2):
+        key = f"inventory/all/json_version_{version}"
+        assert pyzstd.decompress(built[f"{key}/zstd"]).decode() == built[key]
     for proto in (1, 2, 5):
         assert f"inventory/all/pickle_proto_{proto}_version_1" not in built
 

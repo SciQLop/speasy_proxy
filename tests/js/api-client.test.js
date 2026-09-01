@@ -1,5 +1,5 @@
-import { describe, it, expect } from 'vitest';
-import { buildDataUrl, decodeJson } from '../../speasy_proxy/static/js/api-client.js';
+import { describe, it, expect, vi, afterEach } from 'vitest';
+import { buildDataUrl, decodeJson, fetchInventory } from '../../speasy_proxy/static/js/api-client.js';
 
 describe('buildDataUrl', () => {
   it('builds a JSON get_data URL with required params', () => {
@@ -16,6 +16,31 @@ describe('buildDataUrl', () => {
   it('appends coordinate_system when provided', () => {
     const url = buildDataUrl({ baseUrl: 'b/', path: 'ssc/ace', startISO: 'a', stopISO: 'b', maxPoints: 100, coordinateSystem: 'GSE' });
     expect(url).toContain('coordinate_system=GSE');
+  });
+  it('appends product_inputs as JSON when provided (AMDA templated parameters)', () => {
+    const url = buildDataUrl({
+      baseUrl: 'b/', path: 'amda/bepi_sixp_p', startISO: 'a', stopISO: 'b', maxPoints: 100,
+      productInputs: { side: '1' },
+    });
+    expect(url).toContain('product_inputs=' + encodeURIComponent(JSON.stringify({ side: '1' })));
+  });
+});
+
+describe('fetchInventory', () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  it('defaults to inventory version 1 (unchanged behavior)', async () => {
+    const fetchMock = vi.fn(() => Promise.resolve({ ok: true, text: () => Promise.resolve('{}') }));
+    vi.stubGlobal('fetch', fetchMock);
+    await fetchInventory('b/', 'amda');
+    expect(fetchMock.mock.calls[0][0]).not.toContain('version=2');
+  });
+
+  it('requests version 2 when asked, for typed AMDA argument choices', async () => {
+    const fetchMock = vi.fn(() => Promise.resolve({ ok: true, text: () => Promise.resolve('{}') }));
+    vi.stubGlobal('fetch', fetchMock);
+    await fetchInventory('b/', 'amda', 2);
+    expect(fetchMock.mock.calls[0][0]).toContain('version=2');
   });
 });
 

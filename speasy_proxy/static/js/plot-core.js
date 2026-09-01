@@ -35,7 +35,11 @@ export function createProductCache(path) {
 
 export function subplotToConfig(sp) {
   return {
-    products: sp.products.map((p) => ({ path: p.path, label: p.label })),
+    products: sp.products.map((p) => ({
+      path: p.path, label: p.label,
+      coordinate_system: p.coordinateSystem,
+      product_inputs: p.productInputs,
+    })),
     y_axis: { log: sp.y_axis.log },
     log_z: sp.logScale,
   };
@@ -52,7 +56,11 @@ export function subplotFromConfig(plotDef) {
     subplot._zScaleAuto = false;
   }
   for (const prod of plotDef.products) {
-    subplot.products.push({ path: prod.path, label: prod.label || prod.path });
+    subplot.products.push({
+      path: prod.path, label: prod.label || prod.path,
+      coordinateSystem: prod.coordinate_system,
+      productInputs: prod.product_inputs,
+    });
     subplot.productData[prod.path] = createProductCache(prod.path);
   }
   return subplot;

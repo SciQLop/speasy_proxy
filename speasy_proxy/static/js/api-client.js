@@ -39,7 +39,8 @@ if (typeof globalThis !== 'undefined' && globalThis.SPEASY_USE_CDF) {
   codecReady = enableCdfCodec().catch(() => { /* stay on JSON if the WASM codec can't load */ });
 }
 
-// opts: { baseUrl (ends with '/'), path, startISO, stopISO, maxPoints, coordinateSystem?, signal? }
+// opts: { baseUrl (ends with '/'), path, startISO, stopISO, maxPoints,
+//         coordinateSystem?, productInputs?, signal? }
 export function buildDataUrl(o, format = 'json') {
   let url =
     o.baseUrl + 'get_data?format=' + format + '&path=' + encodeURIComponent(o.path) +
@@ -47,6 +48,7 @@ export function buildDataUrl(o, format = 'json') {
     '&stop_time=' + encodeURIComponent(o.stopISO) +
     '&max_points=' + o.maxPoints;
   if (o.coordinateSystem) url += '&coordinate_system=' + encodeURIComponent(o.coordinateSystem);
+  if (o.productInputs) url += '&product_inputs=' + encodeURIComponent(JSON.stringify(o.productInputs));
   return url;
 }
 
@@ -72,8 +74,11 @@ export async function fetchData(o, codec) {
   }
 }
 
-export async function fetchInventory(baseUrl, provider) {
-  const resp = await fetch(baseUrl + 'get_inventory?format=json&provider=' + provider);
+// version 2 keeps structured attributes (e.g. AMDA ArgumentIndex `choices`, a
+// list of (label, value) pairs) as real JSON instead of version 1's stringified
+// Python repr -- pass it when the caller needs to read such attributes.
+export async function fetchInventory(baseUrl, provider, version = 1) {
+  const resp = await fetch(baseUrl + 'get_inventory?format=json&provider=' + provider + '&version=' + version);
   if (!resp.ok) throw new Error('Server returned ' + resp.status);
   return decodeJson(await resp.text());
 }

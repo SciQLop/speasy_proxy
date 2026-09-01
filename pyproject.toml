@@ -31,7 +31,7 @@ classifiers = [
 ]
 dependencies = [
     "humanize",
-    "speasy>=1.6.0",
+    "speasy>=1.8.0",
     "pycdfpp>=0.7.3",
     "diskcache",
     "jinja2",

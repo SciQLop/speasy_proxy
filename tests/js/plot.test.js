@@ -13,6 +13,7 @@ const plot = await import('../../speasy_proxy/static/js/plot.js');
 const {
   plotState, initChart, renderAllSubplots, removeProductFromSubplot,
   updateShareURL, mergeProductData, bindControls, getChart, applyScaleHints, applyConfig,
+  renderProductParams, collectProductParams,
 } = plot.__test__;
 
 afterAll(() => dom.restore());
@@ -117,6 +118,64 @@ describe('applying a config with a zero-width time range', () => {
     const startMs = new Date(plotState.time_range.start).getTime();
     const stopMs = new Date(plotState.time_range.stop).getTime();
     expect(stopMs).toBeGreaterThan(startMs);
+  });
+});
+
+describe('per-product extra params (AMDA template args, SSC/3DView frames)', () => {
+  beforeEach(() => {
+    plot.__test__.__resetCdpp3dviewFramesCache();
+    globalThis.fetch = vi.fn(() => Promise.resolve({ ok: true, json: () => Promise.resolve({}) }));
+  });
+
+  it('renders no params for a plain ParameterIndex', () => {
+    renderProductParams({ __spz_type__: 'ParameterIndex', __spz_provider__: 'amda' });
+    expect(collectProductParams()).toEqual({});
+  });
+
+  it('builds one select per AMDA templated-parameter argument, defaulted', () => {
+    renderProductParams({
+      __spz_type__: 'TemplatedParameterIndex',
+      __spz_provider__: 'amda',
+      __spz_arguments__: {
+        __spz_type__: 'ArgumentListIndex',
+        side: {
+          __spz_type__: 'ArgumentIndex', key: 'side', name: 'Side', default: '0',
+          choices: [['Side 0', '0'], ['Side 1', '1'], ['Side 2', '2']],
+        },
+      },
+    });
+    expect(collectProductParams()).toEqual({ productInputs: { side: '0' } });
+  });
+
+  it('defaults an SSC product to a gse coordinate_system dropdown', () => {
+    renderProductParams({ __spz_type__: 'ParameterIndex', __spz_provider__: 'ssc' });
+    expect(collectProductParams()).toEqual({ coordinateSystem: 'gse' });
+  });
+
+  it('defaults a 3DView product to a J2000 coordinate_frame dropdown', () => {
+    renderProductParams({ __spz_type__: 'ParameterIndex', __spz_provider__: 'cdpp3dview' });
+    expect(collectProductParams()).toEqual({ coordinateSystem: 'J2000' });
+  });
+
+  it('replaces the 3DView frame list once the live list arrives', async () => {
+    // A list that does NOT include the hardcoded 'J2000' placeholder, so a changed
+    // selected value proves the live list actually replaced it (not a no-op).
+    globalThis.fetch = () => Promise.resolve({ ok: true, json: () => Promise.resolve({ frames: ['GSE', 'GSM'] }) });
+    renderProductParams({ __spz_type__: 'ParameterIndex', __spz_provider__: 'cdpp3dview' });
+    await new Promise((r) => setTimeout(r, 0));
+    expect(collectProductParams()).toEqual({ coordinateSystem: 'GSE' });
+  });
+
+  it('a later selection is not clobbered by a slow-to-arrive 3DView frame list', async () => {
+    let resolveFrames;
+    globalThis.fetch = () => new Promise((resolve) => {
+      resolveFrames = () => resolve({ ok: true, json: () => Promise.resolve({ frames: ['J2000', 'GSE'] }) });
+    });
+    renderProductParams({ __spz_type__: 'ParameterIndex', __spz_provider__: 'cdpp3dview' });
+    renderProductParams({ __spz_type__: 'ParameterIndex', __spz_provider__: 'ssc' });
+    resolveFrames();
+    await new Promise((r) => setTimeout(r, 0));
+    expect(collectProductParams()).toEqual({ coordinateSystem: 'gse' });
   });
 });
 

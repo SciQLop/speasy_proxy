@@ -465,6 +465,17 @@ describe('factories', () => {
     expect(restored._yScaleAuto).toBe(true);
     expect(restored._zScaleAuto).toBe(true);
   });
+  it('carries a product\'s coordinate_system / product_inputs through a share-URL round-trip', () => {
+    // Without this, sharing a link to an SSC/3DView product or an AMDA templated
+    // parameter silently drops the chosen frame/arguments on the recipient's end.
+    const sp = createSubplotData();
+    sp.products.push({ path: 'ssc/ace', label: 'ace', coordinateSystem: 'gsm' });
+    sp.products.push({ path: 'amda/bepi_sixp_p', label: 'p', productInputs: { side: '1' } });
+    const cfg = subplotToConfig(sp);
+    const restored = subplotFromConfig(cfg);
+    expect(restored.products[0].coordinateSystem).toBe('gsm');
+    expect(restored.products[1].productInputs).toEqual({ side: '1' });
+  });
 });
 
 describe('axisNeedsExpansion', () => {

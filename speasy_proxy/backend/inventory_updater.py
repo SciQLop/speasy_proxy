@@ -91,10 +91,13 @@ class InventoryManager:
             if pickle_proto is None:
                 raise ValueError("pickle_proto must be specified when format is 'python_dict'.")
             return _INVENTORY_KEY.format(provider=provider, fmt=f"pickle_proto_{pickle_proto}_version_{version}")
+        if fmt == "json":
+            return _INVENTORY_KEY.format(provider=provider, fmt=f"json_version_{version}")
         return _INVENTORY_KEY.format(provider=provider, fmt=fmt)
 
-    def _save_inventory_as_json(self, inventory: SpeasyIndex, provider: str, target: dict):
-        target[_INVENTORY_KEY.format(provider=provider, fmt="json")] = to_json(inventory)
+    def _save_inventory_as_json(self, inventory: SpeasyIndex, provider: str, version: int, target: dict):
+        key = _INVENTORY_KEY.format(provider=provider, fmt=f"json_version_{version}")
+        target[key] = to_json(inventory, version=version)
 
     def _save_inventory_as_pickled_dict(self, inventory: SpeasyIndex, provider: str, version: int,
                                         pickle_proto: int, target: dict):
@@ -109,7 +112,8 @@ class InventoryManager:
                 tree.__dict__["build_date"] = max(dates, key=parser.parse)
 
     def _build_eager_inventories(self, inventory: SpeasyIndex, provider: str, target: dict):
-        self._save_inventory_as_json(inventory, provider, target=target)
+        for version in range(1, 3):
+            self._save_inventory_as_json(inventory, provider, version, target=target)
         for pickle_proto in _EAGER_PICKLE_PROTOS:
             for version in range(1, 3):
                 self._save_inventory_as_pickled_dict(inventory, provider, version, pickle_proto, target)

@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   SKIP_KEYS, SSC_METADATA_KEYS, getDisplayName, getProductPath, shouldSkipNode,
-  isSpzMetaKey, hasVisibleChildren, isParameterIndex,
+  isSpzMetaKey, hasVisibleChildren, isParameterIndex, isSelectableProduct,
 } from '../../speasy_proxy/static/js/inventory-tree.js';
 
 describe('inventory primitives', () => {
@@ -41,5 +41,16 @@ describe('inventory primitives', () => {
       expect(SKIP_KEYS.has(k)).toBe(false);
       expect(SSC_METADATA_KEYS.has(k)).toBe(true);
     }
+  });
+  it('hides AMDA template-argument metadata from the browsable tree', () => {
+    // Rendered explicitly by the params form instead -- as an ordinary child it
+    // would show up as a bogus "__spz_arguments__" folder full of ArgumentIndex
+    // nodes that aren't themselves selectable products.
+    expect(SKIP_KEYS.has('__spz_arguments__')).toBe(true);
+  });
+  it('treats both plain and AMDA templated parameters as selectable products', () => {
+    expect(isSelectableProduct({ __spz_type__: 'ParameterIndex' })).toBe(true);
+    expect(isSelectableProduct({ __spz_type__: 'TemplatedParameterIndex' })).toBe(true);
+    expect(isSelectableProduct({ __spz_type__: 'DatasetIndex' })).toBe(false);
   });
 });

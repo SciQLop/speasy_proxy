@@ -74,7 +74,7 @@ _BUILD_DATES = {"all": "2020-01-01T00:00:00+00:00"}
 async def test_missing_format_returns_404():
     """Regression for BL-7: a format/version that was never built must be 404, not
     a misleading 304."""
-    mgr = _manager_with({"inventory/all/json": "X"}, _BUILD_DATES)
+    mgr = _manager_with({"inventory/all/json_version_1": "X"}, _BUILD_DATES)
     resp = await m.get_inventory(request=_FakeRequest(), provider="all", format="python_dict",
                                  version=2, pickle_proto=3, inventory_mgr=mgr)
     assert resp.status_code == 404
@@ -82,7 +82,7 @@ async def test_missing_format_returns_404():
 
 @pytest.mark.anyio
 async def test_invalid_version_returns_400():
-    mgr = _manager_with({"inventory/all/json": "X"}, _BUILD_DATES)
+    mgr = _manager_with({"inventory/all/json_version_1": "X"}, _BUILD_DATES)
     resp = await m.get_inventory(request=_FakeRequest(), provider="all", format="json",
                                  version=5, inventory_mgr=mgr)
     assert resp.status_code == 400
@@ -90,7 +90,7 @@ async def test_invalid_version_returns_400():
 
 @pytest.mark.anyio
 async def test_not_newer_returns_304():
-    mgr = _manager_with({"inventory/all/json": "X"}, _BUILD_DATES)
+    mgr = _manager_with({"inventory/all/json_version_1": "X"}, _BUILD_DATES)
     resp = await m.get_inventory(request=_FakeRequest({"If-Modified-Since": "2030-01-01T00:00:00+00:00"}),
                                  provider="all", format="json", inventory_mgr=mgr)
     assert resp.status_code == 304
@@ -98,7 +98,7 @@ async def test_not_newer_returns_304():
 
 @pytest.mark.anyio
 async def test_present_returns_200():
-    mgr = _manager_with({"inventory/all/json": "X"}, _BUILD_DATES)
+    mgr = _manager_with({"inventory/all/json_version_1": "X"}, _BUILD_DATES)
     resp = await m.get_inventory(request=_FakeRequest(), provider="all", format="json", inventory_mgr=mgr)
     assert resp.status_code == 200
 
@@ -106,7 +106,7 @@ async def test_present_returns_200():
 @pytest.mark.anyio
 async def test_zstd_served_from_precompressed_variant():
     """When a zstd variant was pre-compressed at build time, it is served as-is."""
-    mgr = _manager_with({"inventory/all/json": "X", "inventory/all/json/zstd": b"Z"}, _BUILD_DATES)
+    mgr = _manager_with({"inventory/all/json_version_1": "X", "inventory/all/json_version_1/zstd": b"Z"}, _BUILD_DATES)
     resp = await m.get_inventory(request=_FakeRequest(), provider="all", format="json",
                                  zstd_compression=True, inventory_mgr=mgr)
     assert resp.status_code == 200
@@ -119,7 +119,7 @@ async def test_zstd_falls_back_to_on_demand_compression():
     """Without a pre-compressed variant, the response is compressed on demand
     (in the threadpool, off the event loop)."""
     import pyzstd
-    mgr = _manager_with({"inventory/all/json": "X"}, _BUILD_DATES)
+    mgr = _manager_with({"inventory/all/json_version_1": "X"}, _BUILD_DATES)
     resp = await m.get_inventory(request=_FakeRequest(), provider="all", format="json",
                                  zstd_compression=True, inventory_mgr=mgr)
     assert resp.status_code == 200
@@ -129,7 +129,7 @@ async def test_zstd_falls_back_to_on_demand_compression():
 @pytest.mark.anyio
 async def test_bad_if_modified_since_does_not_500():
     """A malformed If-Modified-Since must never 500 — serve the data instead."""
-    mgr = _manager_with({"inventory/all/json": "X"}, _BUILD_DATES)
+    mgr = _manager_with({"inventory/all/json_version_1": "X"}, _BUILD_DATES)
     resp = await m.get_inventory(request=_FakeRequest({"If-Modified-Since": "not-a-date"}),
                                  provider="all", format="json", inventory_mgr=mgr)
     assert resp.status_code == 200
@@ -139,7 +139,7 @@ async def test_bad_if_modified_since_does_not_500():
 async def test_200_includes_last_modified():
     """200 responses advertise the inventory build date so clients can do
     conditional GETs (If-Modified-Since)."""
-    mgr = _manager_with({"inventory/all/json": "X"}, _BUILD_DATES)
+    mgr = _manager_with({"inventory/all/json_version_1": "X"}, _BUILD_DATES)
     resp = await m.get_inventory(request=_FakeRequest(), provider="all", format="json", inventory_mgr=mgr)
     assert resp.status_code == 200
     assert resp.headers["Last-Modified"] == "Wed, 01 Jan 2020 00:00:00 GMT"
@@ -147,7 +147,7 @@ async def test_200_includes_last_modified():
 
 @pytest.mark.anyio
 async def test_200_without_build_date_omits_last_modified():
-    mgr = _manager_with({"inventory/all/json": "X"}, {})
+    mgr = _manager_with({"inventory/all/json_version_1": "X"}, {})
     resp = await m.get_inventory(request=_FakeRequest(), provider="all", format="json", inventory_mgr=mgr)
     assert resp.status_code == 200
     assert "Last-Modified" not in resp.headers
@@ -159,7 +159,7 @@ async def test_body_and_last_modified_never_mismatch_under_concurrent_refresh(mo
     inventory_mgr.build_date() AFTER the run_in_threadpool await that fetches the
     body — a refresh landing in that window could pair a stale body with a fresher
     Last-Modified (or vice versa). Now both come from the single threadpool call."""
-    mgr = _manager_with({"inventory/all/json": "OLD"}, {"all": "2020-01-01T00:00:00+00:00"})
+    mgr = _manager_with({"inventory/all/json_version_1": "OLD"}, {"all": "2020-01-01T00:00:00+00:00"})
 
     real_run_in_threadpool = m.run_in_threadpool
     mutated = threading.Event()
@@ -171,9 +171,9 @@ async def test_body_and_last_modified_never_mismatch_under_concurrent_refresh(mo
         # build_date() after this await.
         apply_state = getattr(mgr, "_apply_state", None)
         if apply_state is not None:
-            apply_state({"inventory/all/json": "NEW"}, {"all": "2030-01-01T00:00:00+00:00"}, 2)
+            apply_state({"inventory/all/json_version_1": "NEW"}, {"all": "2030-01-01T00:00:00+00:00"}, 2)
         else:
-            mgr._inventories = {"inventory/all/json": "NEW"}
+            mgr._inventories = {"inventory/all/json_version_1": "NEW"}
             mgr._build_dates = {"all": "2030-01-01T00:00:00+00:00"}
         mutated.set()
         return result

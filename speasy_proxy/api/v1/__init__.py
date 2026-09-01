@@ -10,6 +10,7 @@ from . import (
     get_speasy_version,
     get_version,
     get_server_status,
+    get_3dview_frames,
     is_up,
     ws_collaboration,
 )

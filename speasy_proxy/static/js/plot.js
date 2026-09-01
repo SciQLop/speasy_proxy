@@ -3,7 +3,7 @@ import {
   setStatus, showLoading, showFetchBar, fallbackCopy,
   installErrorBoundary, CHART_COLORS,
 } from './common.js';
-import { getDisplayName, getProductPath, shouldSkipNode, SKIP_KEYS } from './inventory-tree.js';
+import { getDisplayName, getProductPath, shouldSkipNode, SKIP_KEYS, isSpzMetaKey, isSelectableProduct } from './inventory-tree.js';
 import {
   createSubplotData, createProductCache, subplotToConfig, subplotFromConfig,
   detectPlotType, mergeSorted, mergeSortedRows, mergeIntervals, evictProductCache,
@@ -52,7 +52,9 @@ import { fetchData as apiFetchData, fetchInventory } from './api-client.js';
         const container = document.getElementById('tree-container');
         container.innerHTML = '<div class="loading-text">Loading inventory...</div>';
         try {
-            inventory = await fetchInventory(API_BASE, 'all');
+            // version 2: keeps AMDA template-argument `choices` as real JSON
+            // (see renderProductParams) instead of version 1's stringified repr.
+            inventory = await fetchInventory(API_BASE, 'all', 2);
             renderTree(inventory);
             setupSearch();
         } catch (e) {
@@ -89,7 +91,7 @@ import { fetchData as apiFetchData, fetchInventory } from './api-client.js';
         const displayName = getDisplayName(data, key);
 
         // Leaf node
-        if (data.__spz_type__ === 'ParameterIndex') {
+        if (isSelectableProduct(data)) {
             const div = document.createElement('div');
             div.style.cssText = 'padding:3px 0 3px 8px;cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-radius:4px;';
             div.textContent = displayName;
@@ -169,7 +171,117 @@ import { fetchData as apiFetchData, fetchInventory } from './api-client.js';
             setDateInput(startEl, startDate);
         }
 
+        renderProductParams(node);
         updateURL();
+    }
+
+    // ===== Per-product extra parameters (AMDA template args, SSC/3DView frames) =====
+
+    // SSCWeb trajectories accept a fixed coordinate_system, same choices for every
+    // product (see get_data.py's Query enum) -- unlike AMDA's arguments, this isn't
+    // per-product inventory metadata.
+    const SSC_COORDINATE_SYSTEMS = ['geo', 'gm', 'gse', 'gsm', 'sm', 'geitod', 'geij2000'];
+
+    let productParamSelects = {};   // key -> <select> currently shown in #product-params
+    let productParamsKind = null;   // null | 'product_inputs' (AMDA) | 'coordinate_system' (SSC/3DView)
+    let paramsGeneration = 0;       // guards a stale async frame-list fetch from clobbering a later selection
+
+    let cdpp3dviewFramesPromise = null;
+    function get3dViewFrames() {
+        if (!cdpp3dviewFramesPromise) {
+            cdpp3dviewFramesPromise = fetch(API_BASE + 'get_3dview_frames')
+                .then(r => r.ok ? r.json() : { frames: [] })
+                .then(d => d.frames || [])
+                .catch(() => []);
+            // An empty result (network hiccup, or the provider's own frame fetch
+            // failing server-side) isn't worth memoizing forever -- let the next
+            // product selection retry instead of being stuck with no frames all session.
+            cdpp3dviewFramesPromise.then(frames => {
+                if (frames.length === 0) cdpp3dviewFramesPromise = null;
+            });
+        }
+        return cdpp3dviewFramesPromise;
+    }
+
+    function addParamSelect(container, key, labelText, options, selected) {
+        const label = document.createElement('label');
+        label.textContent = labelText;
+        const select = document.createElement('select');
+        for (const [optLabel, optValue] of options) {
+            const opt = document.createElement('option');
+            opt.value = optValue;
+            opt.textContent = optLabel;
+            select.appendChild(opt);
+        }
+        select.value = selected;
+        productParamSelects[key] = select;
+        container.appendChild(label);
+        container.appendChild(select);
+    }
+
+    // AMDA's TemplatedParameterIndex carries __spz_arguments__ (an ArgumentListIndex
+    // of ArgumentIndex nodes: key/name/type/default/choices) -- render one <select>
+    // per argument. Requires inventory version 2 (see loadInventory) so `choices`
+    // survives as a real [[label, value], ...] array instead of a stringified repr.
+    function renderProductParams(node) {
+        const container = document.getElementById('product-params');
+        container.innerHTML = '';
+        productParamSelects = {};
+        productParamsKind = null;
+        const myGeneration = ++paramsGeneration;
+
+        if (node.__spz_type__ === 'TemplatedParameterIndex' && node.__spz_arguments__) {
+            productParamsKind = 'product_inputs';
+            const args = node.__spz_arguments__;
+            for (const key of Object.keys(args)) {
+                if (isSpzMetaKey(key) || key === 'name' || key === 'is_public') continue;
+                const arg = args[key];
+                if (!arg || typeof arg !== 'object') continue;
+                const choices = Array.isArray(arg.choices) && arg.choices.length > 0
+                    ? arg.choices : [[arg.default, arg.default]];
+                addParamSelect(container, arg.key || key, arg.name || arg.key || key, choices, arg.default);
+            }
+            return;
+        }
+
+        if (node.__spz_provider__ === 'ssc') {
+            productParamsKind = 'coordinate_system';
+            addParamSelect(container, 'coordinate_system', 'Coord.',
+                SSC_COORDINATE_SYSTEMS.map(c => [c, c]), 'gse');
+            return;
+        }
+
+        if (node.__spz_provider__ === 'cdpp3dview') {
+            productParamsKind = 'coordinate_system';
+            addParamSelect(container, 'coordinate_system', 'Frame', [['J2000', 'J2000']], 'J2000');
+            get3dViewFrames().then(frames => {
+                if (myGeneration !== paramsGeneration || frames.length === 0) return;
+                const select = productParamSelects['coordinate_system'];
+                if (!select) return;
+                select.innerHTML = '';
+                for (const f of frames) {
+                    const opt = document.createElement('option');
+                    opt.value = f;
+                    opt.textContent = f;
+                    select.appendChild(opt);
+                }
+                select.value = frames.includes('J2000') ? 'J2000' : frames[0];
+            });
+        }
+    }
+
+    // Read back whatever renderProductParams built, in the shape fetchData() expects.
+    function collectProductParams() {
+        if (productParamsKind === 'coordinate_system') {
+            const select = productParamSelects['coordinate_system'];
+            return select ? { coordinateSystem: select.value } : {};
+        }
+        if (productParamsKind === 'product_inputs') {
+            const inputs = {};
+            for (const key of Object.keys(productParamSelects)) inputs[key] = productParamSelects[key].value;
+            return Object.keys(inputs).length > 0 ? { productInputs: inputs } : {};
+        }
+        return {};
     }
 
     // ===== Task 5: Search/Filter =====
@@ -192,7 +304,7 @@ import { fetchData as apiFetchData, fetchInventory } from './api-client.js';
         if (!node || typeof node !== 'object') return;
         if (shouldSkipNode(node)) return;
 
-        if (node.__spz_type__ === 'ParameterIndex') {
+        if (isSelectableProduct(node)) {
             const displayName = node.__spz_name__ || node.name || '';
             const bc = breadcrumb.concat(displayName);
             leafIndex.push({
@@ -572,7 +684,7 @@ import { fetchData as apiFetchData, fetchInventory } from './api-client.js';
             return;
         }
 
-        subplot.products.push({ path: product, label: product });
+        subplot.products.push({ path: product, label: product, ...collectProductParams() });
         subplot.productData[product] = createProductCache(product);
 
         updateURL();
@@ -650,7 +762,9 @@ import { fetchData as apiFetchData, fetchInventory } from './api-client.js';
         const fetchStopMs = new Date(stopTime).getTime();
 
         try {
-            const data = await fetchData(productPath, startISO, stopISO);
+            const subplotForFetch = plotState.plots[subplotIndex];
+            const prodForFetch = subplotForFetch?.products.find(p => p.path === productPath);
+            const data = await fetchData(productPath, startISO, stopISO, undefined, prodForFetch);
             if (!data || !data.values || !data.axes || data.axes.length === 0) {
                 loadingSubplots.delete(subplotIndex);
                 setStatus('No data returned for ' + productPath);
@@ -734,7 +848,7 @@ import { fetchData as apiFetchData, fetchInventory } from './api-client.js';
         plotState.plots = [];
 
         const subplot = createSubplotData();
-        subplot.products.push({ path: product, label: product });
+        subplot.products.push({ path: product, label: product, ...collectProductParams() });
         subplot.productData[product] = createProductCache(product);
         plotState.plots.push(subplot);
 
@@ -742,12 +856,16 @@ import { fetchData as apiFetchData, fetchInventory } from './api-client.js';
         await fetchAllAndRender();
     }
 
-    async function fetchData(product, startTime, stopTime, signal) {
+    async function fetchData(product, startTime, stopTime, signal, extraParams) {
         const startISO = new Date(startTime).toISOString();
         const stopISO = new Date(stopTime).toISOString();
         const chartWidth = document.getElementById('chart')?.clientWidth || 0;
         const maxPoints = resampleTarget(chartWidth, POINTS_PER_PIXEL, BUFFER_RATIO);
-        return apiFetchData({ baseUrl: API_BASE, path: product, startISO, stopISO, maxPoints, signal });
+        return apiFetchData({
+            baseUrl: API_BASE, path: product, startISO, stopISO, maxPoints, signal,
+            coordinateSystem: extraParams?.coordinateSystem,
+            productInputs: extraParams?.productInputs,
+        });
     }
 
     // ISTP CDF variables carry a SCALETYP attribute ('linear'/'log') describing how
@@ -1673,7 +1791,7 @@ import { fetchData as apiFetchData, fetchInventory } from './api-client.js';
         for (const subplot of plotState.plots) {
             for (const prod of subplot.products) {
                 fetchPromises.push(
-                    fetchData(prod.path, startISO, stopISO)
+                    fetchData(prod.path, startISO, stopISO, undefined, prod)
                         .then(data => ({ subplot, path: prod.path, data }))
                         .catch(e => ({ subplot, path: prod.path, error: e }))
                 );
@@ -1919,4 +2037,6 @@ import { fetchData as apiFetchData, fetchInventory } from './api-client.js';
     export const __test__ = {
         plotState, initChart, bindControls, renderAllSubplots, removeProductFromSubplot,
         updateShareURL, mergeProductData, applyScaleHints, applyConfig, getChart: () => chart,
+        renderProductParams, collectProductParams, selectProduct,
+        __resetCdpp3dviewFramesCache: () => { cdpp3dviewFramesPromise = null; },
     };
