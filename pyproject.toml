@@ -32,6 +32,10 @@ classifiers = [
 dependencies = [
     "humanize",
     "speasy>=1.8.0",
+    # Explicit floor on speasy's cache backend: 0.1.10 fixes the per-get
+    # fd/mmap leak and the delete-valid-rows-on-transient-failure behavior
+    # behind the 2026-09-01 prod outage.
+    "pysciqlop-cache>=0.1.10",
     "pycdfpp>=0.7.3",
     "diskcache",
     "jinja2",
