@@ -1,47 +1,51 @@
-"""One-shot cleanup of empty provider-data cache entries poisoned by
-over-wide / near-real-time requests.
+"""One-shot cleanup of empty provider-data cache entries poisoned by the
+2026-09 cache incident.
 
-Background (2026-09 incident): speasy caches every 12h fragment of a request,
-empty slices included, as permanent version-stamped entries. A single request
-whose range ran past a product's real coverage (e.g. imf queried 1928..2048
-when data only exists 1997..now) permanently cached tens of thousands of empty
-future fragments; and any fragment queried during upstream data-processing
-latency got cached empty and never refreshed after backfill. Both serve empty
-data forever from the shared cache.
+Background: speasy (pre-1.8.1) cached empty fragments -- both zero-row and
+AMDA's all-NaN "pad" rows -- as permanent entries. An over-wide or
+open-ended request enumerated fragments past a product's real coverage and
+cached the empty tail; fragments queried during upstream backfill latency
+were cached empty and never refreshed. Both then serve empty from the shared
+cache forever. The poison writing began around 2025-12 (verified from entry
+`created` timestamps), so any *empty* fragment dated on or after that is
+suspect: either a future-dated fossil, or a recent date that upstream has
+since filled. Empty fragments dated well before the poison era are genuine
+historical data gaps and are left alone (dropping them only forces endless
+refetch of a known-empty range).
 
-This tool drops exactly those: an entry is removed when it is EMPTY and its
-fragment starts at or after ``now - window``. That single rule covers both
-failure modes -- every future-dated fragment (which can never hold data) and
-the recent backfill-latency window -- while leaving all older real data and
-genuine historical data gaps untouched. No product-coverage lookup or
-per-provider key parsing is needed: emptiness plus the fragment date is
-sufficient and robust across every provider.
+Rule: drop an entry when it is empty (zero rows, or all values non-finite)
+AND its fragment starts on or after the poison-era floor (default
+2025-11-01). Value-based emptiness so AMDA's NaN pads are caught, not just
+zero-row entries.
 
-Run ONCE after deploying the upstream speasy coverage-clamp + empty-TTL fix
-(which stops the poison recurring). It is deliberately NOT wired into the
-background scrubber. Dry-run by default:
+Run ONCE. It is deliberately NOT wired into the background scrubber; the
+durable fix is speasy's read-side self-heal (per-entry cache epoch). Dry-run
+by default:
 
     python -m speasy_proxy.backend.oneshot_scrub_empty                 # report only
     python -m speasy_proxy.backend.oneshot_scrub_empty --apply         # actually drop
-    python -m speasy_proxy.backend.oneshot_scrub_empty --window-days 90 --apply
+    python -m speasy_proxy.backend.oneshot_scrub_empty --since 2025-01-01 --apply
     python -m speasy_proxy.backend.oneshot_scrub_empty --provider amda --apply
 """
 import argparse
 import logging
 from collections import Counter
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 from typing import Optional
+
+import numpy as np
 
 from .cache_scrubber import PROVIDER_DATA_KEY_PREFIXES
 
 log = logging.getLogger(__name__)
 
-DEFAULT_WINDOW = timedelta(days=60)
+POISON_ERA_FLOOR = datetime(2025, 11, 1, tzinfo=timezone.utc)
+_EMPTY_SCAN_ROW_LIMIT = 64  # AMDA pads gaps with ~2 NaN rows; real data has many finite rows
 
 
 def fragment_datetime(key: str) -> Optional[datetime]:
-    """Parse the fragment start time (the last path segment) of a cache key as
-    a UTC datetime, or None if it does not look like an ISO timestamp."""
+    """Parse the fragment start time (last path segment) as a UTC datetime, or
+    None if it does not look like an ISO timestamp."""
     tail = key.rsplit("/", 1)[-1]
     try:
         dt = datetime.fromisoformat(tail)
@@ -50,50 +54,53 @@ def fragment_datetime(key: str) -> Optional[datetime]:
     return dt if dt.tzinfo is not None else dt.replace(tzinfo=timezone.utc)
 
 
-def should_drop(fragment_dt: Optional[datetime], now: datetime,
-                is_empty: bool, window: timedelta) -> bool:
-    """An entry is junk when it holds no data and its fragment is recent or in
-    the future -- the only fragments that get poisoned by latency or an
-    out-of-coverage request. Older empties are genuine historical gaps: keep
-    them so we do not re-fetch known-empty ranges forever."""
-    if fragment_dt is None or not is_empty:
-        return False
-    return fragment_dt >= now - window
-
-
-def _is_empty(item) -> bool:
-    from speasy.products.variable import from_dictionary
+def is_empty(data) -> bool:
+    """True when the payload holds no usable data: zero rows, or all values
+    non-finite (NaN/inf). Value-based so AMDA's all-NaN pads count as empty,
+    while finite future ephemeris (a real prediction) does not."""
     try:
-        var = from_dictionary(item.data)
-    except Exception:
-        return False  # cannot judge -> never drop
-    return var is None or len(var) == 0
+        n_rows = len(data["axes"][0]["values"])
+        values = data["values"]["values"]
+    except (KeyError, IndexError, TypeError):
+        return False  # not a SpeasyVariable dict (e.g. CacheCall) -> never drop
+    if n_rows == 0:
+        return True
+    if n_rows > _EMPTY_SCAN_ROW_LIMIT:
+        return False  # large -> real data, skip the scan
+    try:
+        if not np.issubdtype(values.dtype, np.floating):
+            return False
+        return not np.isfinite(values).any()
+    except (TypeError, AttributeError):
+        return False
 
 
-def scrub_empty(window: timedelta = DEFAULT_WINDOW, apply: bool = False,
+def should_drop(fragment_dt: Optional[datetime], item, floor: datetime) -> bool:
+    if fragment_dt is None or fragment_dt < floor:
+        return False
+    return item is not None and is_empty(getattr(item, "data", None))
+
+
+def scrub_empty(floor: datetime = POISON_ERA_FLOOR, apply: bool = False,
                 providers: Optional[tuple] = None) -> Counter:
-    """Walk the cache once; drop (or, in dry-run, count) empty recent/future
-    provider-data entries. Returns a Counter keyed by provider prefix plus
-    ``_scanned`` and ``_recent_candidates``."""
+    """Walk the cache once; drop (or, dry-run, count) empty provider-data
+    entries dated on/after `floor`. Returns a Counter keyed by provider prefix
+    plus ``_scanned`` and ``_candidates``."""
     from speasy.core import cache
 
     prefixes = providers or PROVIDER_DATA_KEY_PREFIXES
-    now = datetime.now(timezone.utc)
-    cutoff = now - window
     stats: Counter = Counter()
-
     keys = [k for k in cache.entries() if k.startswith(prefixes)]
     stats["_scanned"] = len(keys)
     for key in keys:
         fdt = fragment_datetime(key)
-        if fdt is None or fdt < cutoff:
-            continue  # cheap prefilter: skip old/unparseable without a read
-        stats["_recent_candidates"] += 1
+        if fdt is None or fdt < floor:
+            continue  # cheap prefilter: skip pre-era / unparseable without a read
+        stats["_candidates"] += 1
         item = cache.get_item(key)
-        if item is None or not should_drop(fdt, now, _is_empty(item), window):
+        if not should_drop(fdt, item, floor):
             continue
-        provider = key.split("/", 1)[0]
-        stats[provider] += 1
+        stats[key.split("/", 1)[0]] += 1
         if apply:
             cache.drop_item(key)
     return stats
@@ -103,8 +110,8 @@ def _report(stats: Counter, apply: bool):
     verb = "Dropped" if apply else "Would drop"
     per = {k: v for k, v in stats.items() if not k.startswith("_")}
     total = sum(per.values())
-    log.info("Scanned %d provider-data keys, %d recent/future candidates.",
-             stats["_scanned"], stats["_recent_candidates"])
+    log.info("Scanned %d provider-data keys, %d dated on/after the floor.",
+             stats["_scanned"], stats["_candidates"])
     for provider, n in sorted(per.items()):
         log.info("  %s %d empty entries under %s/", verb.lower(), n, provider)
     log.info("%s %d empty entries total%s.", verb, total,
@@ -116,16 +123,17 @@ def main(argv=None):
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("--apply", action="store_true",
                    help="actually drop entries (default: dry-run report only)")
-    p.add_argument("--window-days", type=int, default=DEFAULT_WINDOW.days,
-                   help=f"recent window in days (default {DEFAULT_WINDOW.days})")
+    p.add_argument("--since", default=POISON_ERA_FLOOR.date().isoformat(),
+                   help=f"floor date (YYYY-MM-DD); drop empties dated on/after it "
+                        f"(default {POISON_ERA_FLOOR.date().isoformat()})")
     p.add_argument("--provider", action="append", default=None,
                    help="limit to this key prefix (repeatable), e.g. amda/")
     args = p.parse_args(argv)
 
+    floor = datetime.fromisoformat(args.since).replace(tzinfo=timezone.utc)
     providers = tuple(pv if pv.endswith("/") else pv + "/"
                       for pv in args.provider) if args.provider else None
-    stats = scrub_empty(window=timedelta(days=args.window_days),
-                        apply=args.apply, providers=providers)
+    stats = scrub_empty(floor=floor, apply=args.apply, providers=providers)
     _report(stats, args.apply)
 
 
