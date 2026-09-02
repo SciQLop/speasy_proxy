@@ -58,10 +58,14 @@ def is_empty(data) -> bool:
     """True when the payload holds no usable data: zero rows, or all values
     non-finite (NaN/inf). Value-based so AMDA's all-NaN pads count as empty,
     while finite future ephemeris (a real prediction) does not."""
+    if not isinstance(data, dict):
+        # CacheCall payload, or a pre-"dict repr" entry storing a SpeasyVariable
+        # object directly (indexing one raises ValueError) -> can't judge, keep.
+        return False
     try:
         n_rows = len(data["axes"][0]["values"])
         values = data["values"]["values"]
-    except (KeyError, IndexError, TypeError):
+    except (KeyError, IndexError, TypeError, ValueError):
         return False  # not a SpeasyVariable dict (e.g. CacheCall) -> never drop
     if n_rows == 0:
         return True
