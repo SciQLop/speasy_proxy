@@ -4,7 +4,7 @@ requires = ["hatchling"]
 
 [project]
 name = "speasy-proxy"
-version = "0.18.2"
+version = "0.18.3"
 description = "A fast Speasy cache server."
 keywords = ["satellite", "plasma-physics", "nasa-data", "amda", "cdpp", "CDF"]
 authors = [
@@ -47,7 +47,7 @@ dependencies = [
     "fastapi[all]",
     "uvicorn",
     "uvicorn-worker",
-    "pycrdt-websocket>=0.15.4,<0.18.2",
+    "pycrdt-websocket>=0.15.4,<0.18.3",
 ]
 
 [project.optional-dependencies]
@@ -80,7 +80,7 @@ source = ["speasy_proxy"]
 omit = ["speasy_proxy/test*"]
 
 [tool.bumpversion]
-current_version = "0.18.2"
+current_version = "0.18.3"
 commit = true
 tag = true
 tag_name = "v{new_version}"
