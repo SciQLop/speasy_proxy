@@ -28,6 +28,14 @@ handlers:
     backupCount: 20
     encoding: utf8
     delay: true
+  access_filelog:
+    class: logging.handlers.RotatingFileHandler
+    formatter: access
+    filename: /log/speasy/access.log
+    maxBytes: 10485760
+    backupCount: 20
+    encoding: utf8
+    delay: true
 loggers:
   uvicorn.error:
     level: INFO
@@ -45,6 +53,12 @@ loggers:
       - console
       - filelog
     qualname: speasy_proxy
+    propagate: no
+  speasy_proxy.access:
+    level: INFO
+    handlers:
+      - access_filelog
+    qualname: speasy_proxy.access
     propagate: no
 root:
   level: INFO

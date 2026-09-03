@@ -14,6 +14,7 @@ from .frontend import frontend_router
 import logging
 from .backend.inventory_updater import InventoryManager
 from .backend.cache_scrubber import periodic_scrub_loop
+from .backend.request_logging import RequestLoggingMiddleware
 from .config import core as config
 from contextlib import asynccontextmanager
 import speasy as spz
@@ -66,6 +67,9 @@ def get_application(lifespan=None) -> FastAPI:
         allow_methods=["*"],
         allow_headers=["*"],
     )
+    # Added last so it wraps outermost (FastAPI/Starlette: last-added middleware
+    # runs first on the way in), timing the full request including CORS.
+    _app.add_middleware(RequestLoggingMiddleware)
     # No GZipMiddleware: Starlette's implementation compresses response bodies
     # synchronously on the event loop (no threadpool option), which this project
     # otherwise deliberately avoids (see api/compression.py's compress_if_asked,
