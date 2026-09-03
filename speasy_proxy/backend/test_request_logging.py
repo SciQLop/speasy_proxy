@@ -63,6 +63,47 @@ def test_response_body_reaches_the_client_unmodified():
     assert response.text == "hello world"
 
 
+def test_does_not_double_count_root_path(caplog):
+    # uvicorn's own scope construction already bakes root_path into `path`
+    # (see uvicorn/protocols/http/httptools_impl.py: `scope["path"] = root_path
+    # + path`), on top of exposing it separately as `scope["root_path"]`. A
+    # request to https://host/cache/get_version, behind SPEASY_PROXY_PREFIX=/cache,
+    # arrives with scope["path"] == "/cache/get_version" and
+    # scope["root_path"] == "/cache" already -- prepending root_path again
+    # produces "/cache/cache/get_version". Confirmed live in prod (see
+    # /DATA/log/speasy/access.log on sciqlop after the 2026-09-03 v0.19.0 deploy).
+    calls = []
+
+    async def app(scope, receive, send):
+        calls.append(scope)
+        await send({"type": "http.response.start", "status": 200, "headers": []})
+        await send({"type": "http.response.body", "body": b"", "more_body": False})
+
+    middleware = RequestLoggingMiddleware(app)
+
+    async def receive():
+        return {"type": "http.request", "body": b"", "more_body": False}
+
+    sent = []
+
+    async def send(message):
+        sent.append(message)
+
+    scope = {
+        "type": "http",
+        "method": "GET",
+        "path": "/cache/get_version",
+        "root_path": "/cache",
+    }
+
+    with caplog.at_level(logging.INFO, logger=ACCESS_LOGGER_NAME):
+        asyncio.run(middleware(scope, receive, send))
+
+    records = [r for r in caplog.records if r.name == ACCESS_LOGGER_NAME]
+    assert len(records) == 1
+    assert records[0].path == "/cache/get_version"
+
+
 def test_does_not_log_for_non_http_scopes():
     # Exercises the ASGI passthrough for scope types other than "http" (e.g.
     # "lifespan"/"websocket") without needing a real websocket handshake.

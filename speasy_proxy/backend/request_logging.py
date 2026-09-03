@@ -44,7 +44,11 @@ class RequestLoggingMiddleware:
         await self.app(scope, receive, wrapped_send)
 
         duration_ms = (time.perf_counter() - start) * 1000.0
-        path = scope.get("root_path", "") + scope["path"]
+        # scope["path"] already has root_path baked in by the ASGI server (see
+        # uvicorn's httptools_impl.py: `scope["path"] = root_path + path`) --
+        # root_path is exposed separately too, but only for apps that need it
+        # standalone (e.g. URL generation). Concatenating it here double-counts.
+        path = scope["path"]
         log.info(
             "%s %s %s %.2fms %db",
             scope["method"],
