@@ -47,7 +47,7 @@ dependencies = [
     "fastapi[all]",
     "uvicorn",
     "uvicorn-worker",
-    "pycrdt-websocket>=0.15.4,<0.19.2",
+    "pycrdt-websocket>=0.15.4,<0.16.0",
 ]
 
 [project.optional-dependencies]
@@ -87,6 +87,8 @@ tag_name = "v{new_version}"
 
 [[tool.bumpversion.files]]
 filename = "pyproject.toml"
+search = "\nversion = \"{current_version}\""
+replace = "\nversion = \"{new_version}\""
 
 [[tool.bumpversion.files]]
 filename = "speasy_proxy/__init__.py"
