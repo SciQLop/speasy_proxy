@@ -31,7 +31,7 @@ classifiers = [
 ]
 dependencies = [
     "humanize",
-    "speasy>=1.8.0",
+    "speasy>=1.8.2",
     # Explicit floor on speasy's cache backend: 0.1.11 fixes the
     # fork-inherited-PRNG file-path collision that cross-contaminated
     # file-backed cache entries (2026-09-02 incident); 0.1.10 fixed the
