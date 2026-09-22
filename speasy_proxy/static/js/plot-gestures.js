@@ -10,12 +10,20 @@ const MIN_ZOOM_SPAN_MS = 1;       // smallest time window (times are ms)
 
 // ctx: { getView(), setView(view), setY(min, max), resetY() }
 export function bindGestures(u, ctx) {
-  const inGutter = (e) => e.clientX < u.over.getBoundingClientRect().left;
+  // The Y gutter is the strip left of the plot area, at the plot area's height (not the
+  // title or legend rows above/below it).
+  const inGutter = (e) => {
+    const r = u.over.getBoundingClientRect();
+    return e.clientX < r.left && e.clientY >= r.top && e.clientY <= r.bottom;
+  };
 
+  // Wheel anywhere else (title, legend) is left alone so the subplot list can scroll.
   u.root.addEventListener('wheel', (e) => {
+    const onY = inGutter(e);
+    if (!onY && !u.over.contains(e.target)) return;
     e.preventDefault();
     const delta = normalizeWheelDelta(e.deltaY, e.deltaMode);
-    if (inGutter(e)) wheelY(u, ctx, e, delta);
+    if (onY) wheelY(u, ctx, e, delta);
     else wheelX(u, ctx, e, delta);
   }, { passive: false });
 

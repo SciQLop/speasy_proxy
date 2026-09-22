@@ -1030,7 +1030,7 @@ import { createPlotView } from './plot-view.js';
         // spectrogram images itself once a gesture settles).
         if (toFetch.length === 0) return;
 
-        // A pan/zoom fetch is already running. ECharts streams datazoom events faster
+        // A pan/zoom fetch is already running. Pan/zoom gestures stream view changes faster
         // than upstream fetches complete; firing a parallel fetch per event produced a
         // request storm. Queue exactly one rerun with the latest view instead. Abort
         // the in-flight fetch only when it is mostly useless for the current request:

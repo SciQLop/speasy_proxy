@@ -29,6 +29,12 @@ const MUTED = '#8892b0';
 const utcDate = (ts) => uPlot.tzDate(new Date(ts), 'Etc/UTC');
 const binsOf = (cache) => (Array.isArray(cache.yAxis?.[0]) ? cache.yAxis[0] : (cache.yAxis || []));
 const firstCache = (sp) => sp.productData[sp.products[0]?.path];
+// Products that contribute line series. Series and data columns must both come from
+// this one list (keyed on columns, like structureKey): a pan can trim a cache to zero
+// samples while the charts only get a data-only update.
+const lineProducts = (sp) => sp.products
+  .map((prod) => ({ prod, cache: sp.productData[prod.path] }))
+  .filter(({ cache }) => cache && cache.columnNames.length > 0);
 const fmtValue = (v) => String(Number(v.toPrecision(4)));
 
 export function createPlotView(root, { onViewChange }) {
@@ -294,9 +300,7 @@ function lineSeries(subplot, nSubplots) {
   const series = [{}];
   const meta = [null];
   let colorIdx = 0;
-  for (const prod of subplot.products) {
-    const cache = subplot.productData[prod.path];
-    if (!cache || cache.times.length === 0) continue;
+  for (const { prod, cache } of lineProducts(subplot)) {
     const prodLabel = prod.label || prod.path.split('/').pop();
     for (const cn of cache.columnNames) {
       const color = CHART_COLORS[colorIdx++ % CHART_COLORS.length];
@@ -323,10 +327,7 @@ function chartData(subplot) {
     const t = firstCache(subplot).times;
     return t.length ? [[t[0], t[t.length - 1]], [null, null]] : [[], []];
   }
-  const tables = subplot.products
-    .map((p) => subplot.productData[p.path])
-    .filter((c) => c && c.times.length > 0)
-    .map(lineTable);
+  const tables = lineProducts(subplot).map(({ cache }) => lineTable(cache));
   if (tables.length === 0) return [[]];
   return tables.length === 1 ? tables[0] : uPlot.join(tables);
 }
@@ -373,7 +374,7 @@ function tooltipHtml(t, charts, intervals, hoveredSubplot, yVal) {
     for (let i = 1; i < meta.length; i++) {
       const m = meta[i];
       const cache = subplot.productData[m.path];
-      if (!u.series[i].show || !cache) continue;
+      if (!u.series[i].show || !cache || !withinLoaded(cache.times, t)) continue;
       const idx = nearestIndex(cache.times, t);
       const v = idx < 0 ? null : cache.columns[m.column]?.[idx];
       if (v == null || Number.isNaN(v)) continue;
@@ -383,9 +384,13 @@ function tooltipHtml(t, charts, intervals, hoveredSubplot, yVal) {
   return html;
 }
 
+// Past the loaded data the nearest sample is far away; showing it would report a value
+// at a time where nothing is drawn.
+const withinLoaded = (times, t) => times.length > 0 && t >= times[0] && t <= times[times.length - 1];
+
 function heatmapLine(subplot, t, yVal) {
   const cache = firstCache(subplot);
-  if (!cache || yVal == null) return '';
+  if (!cache || yVal == null || !withinLoaded(cache.times, t)) return '';
   const v = spectrogramValueAt(cache.times, cache.rows, binsOf(cache), t, yVal);
   if (v == null) return '';
   return swatch('#91cc75', 5) + escapeHtml(cache.yAxisName || 'value') + ' ' + fmtValue(yVal)

@@ -173,6 +173,23 @@ describe('rendering subplots with uPlot', () => {
     expect(u.data).toEqual([[1000, 2000, 2500], [1, 2, 3]]);
   });
 
+  it('keeps one data column per series when a pan trims a product\'s cache empty', () => {
+    // Panning away from a sparse product's data: the refetch returns nothing for it and
+    // trimCacheWindow empties its cache, but the structure is unchanged, so the charts
+    // get a data-only update. uPlot needs exactly one data column per series.
+    initChart();
+    const cache = lineCache('cda/b', '');
+    plotState.plots = [{ products: [{ path: 'cda/b' }], y_axis: { log: false }, plotType: 'line', productData: { 'cda/b': cache } }];
+    renderAllSubplots();
+    const [u] = liveCharts();
+
+    cache.times = [];
+    cache.columns.v = [];
+    renderAllSubplots(true, true);
+
+    expect(u.data).toHaveLength(u.series.length);
+  });
+
   it('puts every product of a subplot on one joined time axis', () => {
     initChart();
     plotState.plots = [{
