@@ -1,10 +1,11 @@
 import { describe, it, expect } from 'vitest';
 import {
-  mergeSorted, mergeSortedRows, mergeIntervals, evictProductCache, buildSeriesData,
+  mergeSorted, mergeSortedRows, mergeIntervals, evictProductCache,
   detectPlotType, configToBase64, base64ToConfig, isCovered, resolutionSufficient, rangesOverlap, trimCacheWindow, cacheToCsv,
   createSubplotData, createProductCache, subplotToConfig, subplotFromConfig,
   normalizeWheelDelta, zoomRange, panRange, zoomToward, axisExtent, sharedAxisExtent, structureKey, resampleTarget,
-  axisNeedsExpansion, dataOnlyOption, plotTypeFromCache, computeValueRange, mergeValueRange, renderableRange,
+  plotTypeFromCache, computeValueRange, mergeValueRange, renderableRange,
+  nearestIndex, lineTable, yRangeFromPixels, fmtTick, sliderDomain, viewToSlider, sliderToView,
 } from '../../speasy_proxy/static/js/plot-core.js';
 
 describe('merge', () => {
@@ -21,9 +22,6 @@ describe('merge', () => {
   it('mergeIntervals coalesces overlaps and sorts', () => {
     expect(mergeIntervals([[5, 10], [1, 3], [2, 6]])).toEqual([[1, 10]]);
     expect(mergeIntervals([[1, 3], [10, 12]])).toEqual([[1, 3], [10, 12]]);
-  });
-  it('buildSeriesData zips into [t,v] pairs', () => {
-    expect(buildSeriesData([1, 2], [10, 20])).toEqual([[1, 10], [2, 20]]);
   });
 });
 
@@ -478,67 +476,77 @@ describe('factories', () => {
   });
 });
 
-describe('axisNeedsExpansion', () => {
-  it('returns null when view has room on both sides', () => {
-    expect(axisNeedsExpansion(100, 200, 0, 500)).toBeNull();
+describe('nearestIndex', () => {
+  it('returns the index of the closest sample', () => {
+    expect(nearestIndex([10, 20, 30], 24)).toBe(1);
+    expect(nearestIndex([10, 20, 30], 26)).toBe(2);
   });
-
-  it('signals expansion when view is near the left boundary', () => {
-    // viewSpan=100, proximity=50, viewStart-axisMin=10 < 50 → near left
-    expect(axisNeedsExpansion(10, 110, 0, 500)).not.toBeNull();
-    // viewSpan=100, proximity=50, viewStart-axisMin=60 > 50 → NOT near
-    expect(axisNeedsExpansion(60, 160, 0, 500)).toBeNull();
+  it('clamps outside the data', () => {
+    expect(nearestIndex([10, 20, 30], -5)).toBe(0);
+    expect(nearestIndex([10, 20, 30], 99)).toBe(2);
   });
-
-  it('signals expansion when view is near the right boundary', () => {
-    // viewSpan=100, proximity=50, axisMax-viewEnd=500-400=100 > 50 → NOT near
-    expect(axisNeedsExpansion(300, 400, 0, 500)).toBeNull();
-    // viewSpan=100, proximity=50, axisMax-viewEnd=500-460=40 < 50 → near right
-    expect(axisNeedsExpansion(360, 460, 0, 500)).not.toBeNull();
-  });
-
-  it('returns expanded axis values that give breathing room', () => {
-    const r = axisNeedsExpansion(40, 140, 0, 500);
-    expect(r.min).toBeLessThan(0);
-    expect(r.max).toBe(500);
-  });
-
-  it('expands both sides when the view touches both boundaries', () => {
-    const r = axisNeedsExpansion(50, 450, 0, 500);
-    // near-left: 50-0=50 < 400*0.5=200 → true
-    // near-right: 500-450=50 < 200 → true
-    expect(r.min).toBeLessThan(0);
-    expect(r.max).toBeGreaterThan(500);
-  });
-
-  it('returns null for undefined axis boundaries', () => {
-    expect(axisNeedsExpansion(100, 200, undefined, undefined)).toBeNull();
-    expect(axisNeedsExpansion(100, 200, null, null)).toBeNull();
+  it('returns -1 for no data', () => {
+    expect(nearestIndex([], 5)).toBe(-1);
   });
 });
 
-describe('dataOnlyOption', () => {
-  it('includes only series — xAxis update is deferred to avoid zoom-out during pan', () => {
-    const series = [{ type: 'line', data: [[1, 2]] }];
-    const opt = dataOnlyOption(series);
-    expect(opt.series).toBe(series);
-    expect(opt.xAxis).toBeUndefined();
-    expect(opt.dataZoom).toBeUndefined();
+describe('lineTable', () => {
+  it('lays out a line cache as a uPlot table: times, then one column per component', () => {
+    const cache = { times: [1, 2], columnNames: ['x', 'y'], columns: { x: [1, 2], y: [3, 4] } };
+    expect(lineTable(cache)).toEqual([[1, 2], [1, 2], [3, 4]]);
+  });
+  it('turns NaN (CDF fill values) into null so the line shows a gap', () => {
+    const cache = { times: [1, 2, 3], columnNames: ['x'], columns: { x: [1, NaN, 3] } };
+    expect(lineTable(cache)[1]).toEqual([1, null, 3]);
   });
 });
 
-describe('plot.js structureSame path regression guard', () => {
-  // Reads plot.js source and asserts the data-only (structureSame) render path uses
-  // dataOnlyOption(series) instead of the bare { series: series } that caused
-  // the pan-to-boundary stall (commit 5b72f67).
-  it('calls dataOnlyOption(series) in the structureSame branch', async () => {
-    const fs = await import('fs');
-    const src = fs.readFileSync(
-      new URL('../../speasy_proxy/static/js/plot.js', import.meta.url).pathname, 'utf8');
+describe('time slider geometry', () => {
+  it('widens the domain so the view always fits on the track', () => {
+    expect(sliderDomain({ min: 0, max: 100 }, { start: 50, end: 150 })).toEqual({ min: 0, max: 150 });
+    expect(sliderDomain({ min: undefined, max: undefined }, { start: 5, end: 9 })).toEqual({ min: 5, max: 9 });
+  });
+  it('maps a view onto track pixels and back', () => {
+    const domain = { min: 0, max: 1000 };
+    const px = viewToSlider(domain, { start: 250, end: 500 }, 400);
+    expect(px).toEqual({ left: 100, width: 100 });
+    expect(sliderToView(domain, px.left, px.width, 400)).toEqual({ start: 250, end: 500 });
+  });
+});
 
-    // The structureSame branch MUST use dataOnlyOption(series) — just series.
-    expect(src).toContain('chart.setOption(dataOnlyOption(series)');
-    // And NOT the old bare { series: series }.
-    expect(src).not.toContain('chart.setOption({ series: series }');
+describe('yRangeFromPixels', () => {
+  const lin = { min: 0, max: 100, log: false, heightPx: 200 };
+  it('maps pixel rows back to values on a linear axis (0 = top)', () => {
+    expect(yRangeFromPixels(lin, 200, 0)).toEqual({ min: 0, max: 100 });
+    expect(yRangeFromPixels(lin, 150, 50)).toEqual({ min: 25, max: 75 });
+  });
+  it('pans a log axis by whole decades per equal pixel shift', () => {
+    const log = { min: 1, max: 1000, log: true, heightPx: 300 };
+    const r = yRangeFromPixels(log, 200, -100); // shift up by one decade (100 px)
+    expect(r.min).toBeCloseTo(10, 9);
+    expect(r.max).toBeCloseTo(10000, 6);
+  });
+  it('returns null for a degenerate or inverted range', () => {
+    expect(yRangeFromPixels(lin, 50, 50)).toBeNull();
+    expect(yRangeFromPixels(lin, 0, 200)).toBeNull();
+  });
+});
+
+describe('fmtTick', () => {
+  it('keeps ordinary values short and exact', () => {
+    expect(fmtTick(0)).toBe('0');
+    expect(fmtTick(-250)).toBe('-250');
+    expect(fmtTick(0.25)).toBe('0.25');
+    expect(fmtTick(12345)).toBe('12345');
+  });
+  it('switches to exponent form for very large or very small magnitudes', () => {
+    expect(fmtTick(1e-9)).toBe('1e-9');
+    expect(fmtTick(2.5e7)).toBe('2.5e7');
+  });
+  it('drops floating-point noise', () => {
+    expect(fmtTick(0.1 + 0.2)).toBe('0.3');
+  });
+  it('leaves a tick unlabeled when uPlot passes null (skipped log-axis minors)', () => {
+    expect(fmtTick(null)).toBe('');
   });
 });

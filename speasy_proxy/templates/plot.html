@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Interactive Plot - Speasy Proxy</title>
     <link rel="icon" type="image/svg+xml" href="{{ base_url }}/static/logo_speasy.svg">
-    <script src="https://cdn.jsdelivr.net/npm/echarts@5/dist/echarts.min.js" onerror="document.getElementById('status-bar').textContent='Failed to load ECharts library — check network connection'; console.error('ECharts CDN failed to load');"></script>
+    <link rel="stylesheet" href="{{ base_url }}/static/css/uPlot.min.css">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr@4/dist/themes/dark.css">
     <script src="https://cdn.jsdelivr.net/npm/flatpickr@4" onerror="console.error('flatpickr CDN failed to load — date fields stay plain text');"></script>
     <link rel="stylesheet" href="{{ base_url }}/static/css/theme.css">
@@ -113,7 +113,34 @@
         #chart {
             width: 100%;
             height: 100%;
+            position: relative;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
         }
+
+        /* uPlot subplots (plot-view.js) */
+        .pv-plots { flex: 1; min-height: 0; overflow-y: auto; overflow-x: hidden; }
+        .pv-plots .uplot { font-family: system-ui, sans-serif; color: #e0e6f0; }
+        .pv-plots .u-title { color: #8892b0; font-size: 11px; font-weight: normal; text-align: left;
+            padding-left: 84px; height: 20px; line-height: 20px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .pv-plots .u-legend { font-size: 11px; color: #e0e6f0; padding: 2px 0 4px 64px; text-align: left; }
+        .pv-plots .u-legend .u-marker { width: 10px; height: 3px; }
+        .pv-plots .u-legend .u-series > * { padding: 1px 3px; }
+        .pv-plots .u-legend .u-off > * { opacity: 0.35; }
+        .pv-plots .u-cursor-x { border-right: 1px dashed #6b8afd; }
+        .pv-plots .u-over { cursor: grab; }
+        .pv-plots .u-over:active { cursor: grabbing; }
+        .pv-slider { position: relative; height: 18px; margin: 4px 0 8px; flex-shrink: 0;
+            background: #111627; border: 1px solid #2a3358; border-radius: 3px; box-sizing: border-box; }
+        .pv-slider-window { position: absolute; top: 0; bottom: 0; background: rgba(107,138,253,0.18);
+            border-left: 2px solid #6b8afd; border-right: 2px solid #6b8afd; cursor: grab; box-sizing: border-box; }
+        .pv-slider-handle { position: absolute; top: 0; bottom: 0; width: 8px; cursor: ew-resize; }
+        .pv-slider-handle:first-child { left: -5px; }
+        .pv-slider-handle:last-child { right: -5px; }
+        .pv-tooltip { position: absolute; display: none; pointer-events: none; z-index: 20;
+            background: #1a1f36; border: 1px solid #2a3358; border-radius: 4px; padding: 6px 8px;
+            color: #e0e6f0; font-size: 12px; line-height: 1.5; white-space: nowrap; }
 
         .status-bar {
             padding: 4px 16px;

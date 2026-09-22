@@ -1,4 +1,4 @@
-// Pure data-processing for the plot viewer. No DOM, no ECharts.
+// Pure data-processing for the plot viewer. No DOM, no chart library.
 
 export function createSubplotData() {
   return {
@@ -256,12 +256,6 @@ export function evictProductCache(cache, maxPoints) {
   cache.valueRange = null;
 }
 
-export function buildSeriesData(times, values) {
-  const data = new Array(times.length);
-  for (let i = 0; i < times.length; i++) data[i] = [times[i], values[i]];
-  return data;
-}
-
 // Serialize a line-product cache's [startMs, stopMs] slice to CSV: ISO timestamps in the
 // first column, one column per component, header carries path + column name + unit.
 // Null/undefined values become empty cells. Heatmap caches (no columnNames) yield just
@@ -368,26 +362,64 @@ export function sharedAxisExtent(plots, padRatio) {
   return lo <= hi ? axisExtent([lo, hi], padRatio) : { min: undefined, max: undefined };
 }
 
-export function axisNeedsExpansion(viewStart, viewEnd, axisMin, axisMax, thresholdRatio = 0.5) {
-  if (axisMin == null || axisMax == null) return null;
-  const viewSpan = viewEnd - viewStart;
-  const proximity = viewSpan * thresholdRatio;
-  const nearLeft = viewStart - axisMin < proximity;
-  const nearRight = axisMax - viewEnd < proximity;
-  if (!nearLeft && !nearRight) return null;
-  return {
-    min: nearLeft ? axisMin - viewSpan : axisMin,
-    max: nearRight ? axisMax + viewSpan : axisMax,
-  };
+// Index of the sample closest to t in a sorted time array, or -1 when empty.
+export function nearestIndex(times, t) {
+  const n = times ? times.length : 0;
+  if (n === 0) return -1;
+  let lo = 0, hi = n - 1;
+  while (lo < hi) {
+    const mid = (lo + hi) >> 1;
+    if (times[mid] < t) lo = mid + 1; else hi = mid;
+  }
+  return lo > 0 && t - times[lo - 1] <= times[lo] - t ? lo - 1 : lo;
 }
 
-// Build the minimal setOption payload for a data-only (structure-unchanged) chart update.
-// Only includes series — xAxis is NOT updated here because doing so during pan
-// causes ECharts to preserve dataZoom percentages, which widens the absolute window
-// (zoom-out). xAxis growth is handled separately in onMultiZoomPan after a fetch,
-// where dataZoom percentages are recomputed to preserve the absolute window width.
-export function dataOnlyOption(series) {
-  return { series };
+// A line cache as a uPlot table: [times, ...one array per column]. NaN (the CDF
+// codec's fill value) becomes null, which uPlot draws as a gap.
+export function lineTable(cache) {
+  return [cache.times, ...cache.columnNames.map((cn) =>
+    cache.columns[cn].map((v) => (v == null || Number.isNaN(v) ? null : v)))];
+}
+
+// Y range shown between two pixel rows (0 = top of the plot area), mapped through a
+// snapshot of the scale ({ min, max, log, heightPx }). Working in pixels makes pan/zoom
+// gestures behave the same on linear and log axes. Null when the result is degenerate.
+export function yRangeFromPixels(scale, bottomPx, topPx) {
+  const f = scale.log ? Math.log10 : (v) => v;
+  const inv = scale.log ? (v) => 10 ** v : (v) => v;
+  const lo = f(scale.min), hi = f(scale.max);
+  const at = (px) => inv(lo + ((scale.heightPx - px) / scale.heightPx) * (hi - lo));
+  const min = at(bottomPx), max = at(topPx);
+  return Number.isFinite(min) && Number.isFinite(max) && max > min ? { min, max } : null;
+}
+
+// Axis tick label that fits a fixed-width gutter: 6 significant digits, exponent form
+// outside [1e-3, 1e5). uPlot passes null for log-axis ticks it leaves unlabeled.
+export function fmtTick(v) {
+  if (v == null) return '';
+  if (v === 0) return '0';
+  const a = Math.abs(v);
+  if (a < 1e-3 || a >= 1e5) return v.toExponential(2).replace(/\.?0+e/, 'e').replace('e+', 'e');
+  return String(Number(v.toPrecision(6)));
+}
+
+// Time slider: the track spans the loaded-data extent, widened to include the view so
+// the window never falls off the track while panning past loaded data.
+export function sliderDomain(extent, view) {
+  const min = extent.min == null ? view.start : Math.min(extent.min, view.start);
+  const max = extent.max == null ? view.end : Math.max(extent.max, view.end);
+  return { min, max };
+}
+
+export function viewToSlider(domain, view, trackPx) {
+  const scale = trackPx / ((domain.max - domain.min) || 1);
+  return { left: (view.start - domain.min) * scale, width: (view.end - view.start) * scale };
+}
+
+export function sliderToView(domain, leftPx, widthPx, trackPx) {
+  const scale = ((domain.max - domain.min) || 1) / trackPx;
+  const start = domain.min + leftPx * scale;
+  return { start, end: start + widthPx * scale };
 }
 
 // A signature of everything that affects the chart's *structure* (component layout), so a

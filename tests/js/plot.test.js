@@ -2,11 +2,52 @@ import { describe, it, expect, vi, beforeEach, afterAll } from 'vitest';
 import { installPlotDom } from './helpers/dom-mock.js';
 
 import * as apiClient from '../../speasy_proxy/static/js/api-client.js';
+import uPlot from '../../speasy_proxy/static/js/vendor/uPlot.esm.js';
 
 vi.mock('../../speasy_proxy/static/js/api-client.js', () => ({
   fetchData: vi.fn(() => Promise.resolve(null)),
   fetchInventory: vi.fn(() => Promise.resolve({})),
 }));
+
+// Stand-in for the vendored uPlot: records construction and the calls plot-view makes.
+vi.mock('../../speasy_proxy/static/js/vendor/uPlot.esm.js', () => {
+  const node = () => ({
+    addEventListener() {}, appendChild() {}, contains: () => true, querySelector: () => null,
+    getBoundingClientRect: () => ({ left: 64, top: 0, width: 736, height: 200, bottom: 200 }),
+    clientWidth: 736, clientHeight: 200, style: {},
+  });
+  class FakeUPlot {
+    constructor(opts, data, target) {
+      this.opts = opts;
+      this.data = data;
+      this.series = opts.series.map((sr) => ({ show: true, ...sr }));
+      this.scales = { x: { min: 0, max: 1 }, y: { min: 0, max: 1, distr: opts.scales.y.distr } };
+      this.root = node();
+      this.over = node();
+      this.bbox = { left: 64, top: 0, width: 736, height: 200 };
+      this.ctx = { save() {}, restore() {}, beginPath() {}, rect() {}, clip() {}, fillRect() {}, drawImage: vi.fn(), canvas: {} };
+      this.cursor = { left: -1, top: -1 };
+      this.destroyed = false;
+      target.appendChild(this.root);
+      FakeUPlot.instances.push(this);
+    }
+    batch(fn) { fn(); }
+    setData(data) { this.data = data; }
+    setScale(key, range) { Object.assign(this.scales[key], range); }
+    setSize() {}
+    redraw() {}
+    destroy() { this.destroyed = true; }
+    valToPos(v) { return v; }
+    posToVal(p) { return p; }
+  }
+  FakeUPlot.instances = [];
+  FakeUPlot.pxRatio = 1;
+  FakeUPlot.tzDate = (d) => d;
+  FakeUPlot.rangeNum = (a, b) => [a, b];
+  FakeUPlot.rangeLog = (a, b) => [a, b];
+  FakeUPlot.join = vi.fn((tables) => [tables[0][0], ...tables.flatMap((t) => t.slice(1))]);
+  return { default: FakeUPlot };
+});
 
 // Deployed behind a reverse proxy: root_path prefix in the base URL, and the browser
 // path already carries it.
@@ -14,7 +55,7 @@ const dom = installPlotDom({ baseUrl: 'https://host/cache', pathname: '/cache/pl
 const plot = await import('../../speasy_proxy/static/js/plot.js');
 const {
   plotState, initChart, renderAllSubplots, removeProductFromSubplot,
-  updateShareURL, mergeProductData, bindControls, getChart, applyScaleHints, applyConfig,
+  updateShareURL, mergeProductData, bindControls, applyScaleHints, applyConfig,
   renderProductParams, collectProductParams, onProductParamsChanged,
 } = plot.__test__;
 
@@ -82,25 +123,66 @@ beforeEach(() => {
   plotState.time_range = { start: null, stop: null };
 });
 
-describe('cold spectrogram render', () => {
-  // The chart has no model (grids/axes) until the first setOption, so heatmap geometry
-  // must not be computed before it — that threw a TypeError and left the page spinning.
-  it('renders a heatmap on a chart that has never had setOption called', () => {
+const liveCharts = () => uPlot.instances.filter((u) => !u.destroyed);
+
+describe('rendering subplots with uPlot', () => {
+  beforeEach(() => { uPlot.instances.length = 0; });
+
+  it('paints the spectrogram image from the heatmap subplot\'s draw hook', () => {
     initChart();
     plotState.plots = [heatmapSubplot()];
+    plotState.time_range = { start: new Date(0).toISOString(), stop: new Date(4000).toISOString() };
 
     expect(() => renderAllSubplots()).not.toThrow();
 
-    const chart = getChart();
-    expect(chart.calls[0].opt.grid).toBeTruthy(); // structure applied before any geometry read
+    const [u] = liveCharts();
+    expect(plotState.plots[0].lastHeatmapImg?.canvas).toBeTruthy();
+    for (const hook of u.opts.hooks.drawClear) hook(u);
+    expect(u.ctx.drawImage).toHaveBeenCalledWith(plotState.plots[0].lastHeatmapImg.canvas,
+      expect.any(Number), expect.any(Number), expect.any(Number), expect.any(Number));
+  });
 
-    // Heatmap images are zrender elements added directly to chart.getZr(), not
-    // the ECharts `graphic` option component — see positionHeatmapZrEl in plot.js.
-    const zr = chart.getZr();
-    expect(zr.add).toHaveBeenCalled();
-    const group = zr.add.mock.calls[0][0];
-    expect(group.children[0].style.image).toBeTruthy();
-    expect(group.clipPath).toBeTruthy();
+  it('builds one chart per subplot, all on the requested time window', () => {
+    initChart();
+    plotState.plots = [
+      { ...heatmapSubplot() },
+      { products: [{ path: 'cda/b' }], y_axis: { log: false }, plotType: 'line', productData: { 'cda/b': lineCache('cda/b', '') } },
+    ];
+    plotState.time_range = { start: new Date(500).toISOString(), stop: new Date(2500).toISOString() };
+
+    renderAllSubplots();
+
+    const charts = liveCharts();
+    expect(charts).toHaveLength(2);
+    for (const u of charts) expect(u.scales.x).toMatchObject({ min: 500, max: 2500 });
+  });
+
+  it('swaps data into the existing charts on a data-only refresh instead of rebuilding', () => {
+    initChart();
+    const cache = lineCache('cda/b', '');
+    plotState.plots = [{ products: [{ path: 'cda/b' }], y_axis: { log: false }, plotType: 'line', productData: { 'cda/b': cache } }];
+    plotState.time_range = { start: new Date(0).toISOString(), stop: new Date(3000).toISOString() };
+    renderAllSubplots();
+    const [u] = liveCharts();
+
+    cache.times = [1000, 2000, 2500];
+    cache.columns.v = [1, 2, 3];
+    renderAllSubplots(true, true);
+
+    expect(liveCharts()).toEqual([u]);
+    expect(u.data).toEqual([[1000, 2000, 2500], [1, 2, 3]]);
+  });
+
+  it('puts every product of a subplot on one joined time axis', () => {
+    initChart();
+    plotState.plots = [{
+      products: [{ path: 'cda/a' }, { path: 'cda/b' }], y_axis: { log: false }, plotType: 'line',
+      productData: { 'cda/a': lineCache('cda/a', ''), 'cda/b': lineCache('cda/b', '') },
+    }];
+    renderAllSubplots();
+
+    expect(uPlot.join).toHaveBeenCalled();
+    expect(liveCharts()[0].series).toHaveLength(3); // time + one column per product
   });
 });
 
