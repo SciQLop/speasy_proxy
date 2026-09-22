@@ -67,7 +67,6 @@ function installDomMock() {
   domInstalled = true;
 
   globalThis.ResizeObserver = class { observe() {} disconnect() {} };
-  globalThis.AbortController = class { constructor() { this.signal = { aborted: false, addEventListener: vi.fn() }; } abort() {} };
   globalThis.Image = class {
     set onload(v) { this._onload = v; }
     set onerror(v) {}

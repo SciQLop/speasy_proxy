@@ -48,11 +48,6 @@ function installDomMock() {
     disconnect() {}
   }
 
-  class MockAbortController {
-    constructor() { this.signal = { aborted: false, addEventListener: vi.fn() }; }
-    abort() {}
-  }
-
   class MockImage {
     set onload(v) { this._onload = v; }
     set onerror(v) {}
@@ -71,7 +66,6 @@ function installDomMock() {
   }
 
   globalThis.ResizeObserver = MockResizeObserver;
-  globalThis.AbortController = MockAbortController;
   globalThis.Image = MockImage;
   globalThis.URL = MockURL;
   globalThis.HTMLCanvasElement = class HTMLCanvasElement {};

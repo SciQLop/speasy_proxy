@@ -1,4 +1,4 @@
-FROM fedora:42
+FROM fedora:44
 
 ARG PORT=6543
 ARG SPEASY=speasy
