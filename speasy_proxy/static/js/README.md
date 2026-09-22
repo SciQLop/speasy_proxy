@@ -15,8 +15,10 @@ TypeScript**. The FastAPI app serves these `.js` files as static assets under
 | `inventory-tree.js` | speasy `__spz_*` schema primitives: `isSpzMetaKey`, `getDisplayName`, `getProductPath`, `shouldSkipNode`, `hasVisibleChildren`, `isParameterIndex`, `SKIP_KEYS` (shared) + `SSC_METADATA_KEYS` (SSC-only, not applied on `/plot`) |
 | `magnetosphere.js` | 3D physics: `shueParams`, `bowShockParams`, `classifyPoint`, `toReData`, `computeAxisRange` |
 | `earth-texture.js` | globe albedo: `buildEarthColorLUT` (equirectangular image → lat/lon grid), `sampleEarthColor` |
-| `plot-core.js` | data merges, interval coalescing, cache eviction, `detectPlotType`/`plotTypeFromCache`, heatmap value ranges (`computeValueRange`, `mergeValueRange`, `renderableRange`), config base64, subplot/cache factories |
-| `spectrogram.js` | viridis LUT, `computeYEdges`, `renderSpectrogramImage` |
+| `plot-core.js` | data merges, interval coalescing, cache eviction, `detectPlotType`/`plotTypeFromCache`, heatmap value ranges (`computeValueRange`, `mergeValueRange`, `renderableRange`), config base64, subplot/cache factories, chart helpers (`lineTable`, `nearestIndex`, `yRangeFromPixels`, `fmtTick`, time-slider geometry) |
+| `plot-view.js` | `/plot` chart layer on **uPlot**: one uPlot per subplot on a shared time window, time slider, cursor tooltip, highlighted intervals, spectrogram image (draw hook), PNG export. Takes caches from `plot.js`, reports view changes via `onViewChange` |
+| `plot-gestures.js` | wheel zoom / Shift-pan / drag-pan on time; wheel, drag, double-click reset on a subplot's Y gutter |
+| `spectrogram.js` | viridis LUT, `ascendingSpectrogram` (flip high-to-low bin tables), `computeYEdges`, `renderSpectrogramImage`, `spectrogramValueAt` |
 | `api-client.js` | `buildDataUrl`, NaN-safe `decodeJson`, `fetchData`/`jsonCodec` (codec seam), `fetchInventory`, `enableCdfCodec` |
 | `cdf-codec.js` | `cdfCodec` — decodes `format=cdf` (application/x-cdf) into `SpeasyData` via CDFpp-WASM (`vendor/cdfpp.js` + `cdfpp.wasm`) |
 
@@ -43,9 +45,13 @@ Each template ends with:
   so they need no base URL.
 - A module that calls the API takes the base URL as a parameter (e.g.
   `fetchData({ baseUrl, ... })`), it never reads the global itself.
-- ECharts (and ECharts-GL for `/demo_3d`) are loaded as CDN globals via `<script>`
-  tags in each template's `<head>` — the page modules reference the `echarts` global
-  directly; ECharts is intentionally **not** imported/bundled.
+- `/plot` draws with **uPlot**, vendored as an ES module (`vendor/uPlot.esm.js`, CSS in
+  `static/css/uPlot.min.css`) and imported by `plot-view.js`. To update it, copy
+  `dist/uPlot.esm.js` and `dist/uPlot.min.css` of the new release over those files.
+  Gotcha: uPlot deep-copies series options, so never hang data or cache references on a
+  series — `plot-view.js` keeps them in a parallel `meta` array.
+- `/demo_3d` still uses ECharts + ECharts-GL (3D), loaded as CDN globals via `<script>`
+  tags; `demo3d.js` references the `echarts` global directly.
 
 ## The codec seam (`api-client.js`)
 
@@ -89,8 +95,8 @@ run or deploy the server.
 `plot.js` and `demo3d.js` each end with an `export const __test__ = { ... }` seam so the
 page orchestration is reachable from `tests/js/plot.test.js` and
 `tests/js/demo3d-clear.test.js`; `tests/js/helpers/dom-mock.js` supplies the browser
-globals (its ECharts stub has no model until the first `setOption`, matching the real
-one). Prefer a behavioural test through that seam over asserting on source text.
+globals (plus an ECharts stub for `/demo_3d`); `plot.test.js` mocks the vendored uPlot
+module with a recording stand-in. Prefer a behavioural test through that seam over asserting on source text.
 
 ## Not yet modularized
 
