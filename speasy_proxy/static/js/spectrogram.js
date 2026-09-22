@@ -22,6 +22,18 @@ export const VIRIDIS_LUT = (() => {
   return lut;
 })();
 
+// Energy tables often come high-to-low (AMDA/CSA ion spectrometers). Every consumer
+// (edges, image rows, cursor lookup) assumes low-to-high, so flip once at ingestion.
+export function ascendingSpectrogram(yAxis, rows) {
+  const flat = Array.isArray(yAxis?.[0]) ? yAxis[0] : (yAxis || []);
+  if (flat.length < 2 || flat[0] <= flat[flat.length - 1]) return { yAxis, rows };
+  const reversed = (a) => (a ? a.slice().reverse() : a);
+  return {
+    yAxis: Array.isArray(yAxis[0]) ? yAxis.map(reversed) : reversed(yAxis),
+    rows: rows.map(reversed),
+  };
+}
+
 export function computeYEdges(yBinsFlat) {
   const yEdges = new Array(yBinsFlat.length + 1);
   for (let i = 1; i < yBinsFlat.length; i++) yEdges[i] = (yBinsFlat[i - 1] + yBinsFlat[i]) / 2;

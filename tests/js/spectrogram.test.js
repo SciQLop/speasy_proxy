@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { VIRIDIS_LUT, computeYEdges, spectrogramValueAt, renderSpectrogramImage } from '../../speasy_proxy/static/js/spectrogram.js';
+import { VIRIDIS_LUT, computeYEdges, spectrogramValueAt, renderSpectrogramImage, ascendingSpectrogram } from '../../speasy_proxy/static/js/spectrogram.js';
 
 describe('spectrogram', () => {
   it('builds a 256-entry RGB viridis LUT with correct endpoints', () => {
@@ -138,5 +138,28 @@ describe('spectrogram', () => {
       // view range 100000ms ± 50% → 200000ms render window → indices 50..250 inclusive = 201 points
       expect(result.canvas.width).toBe(201);
     });
+  });
+});
+
+describe('ascendingSpectrogram', () => {
+  it('flips descending bins and every row so bins read low-to-high', () => {
+    const out = ascendingSpectrogram([300, 200, 100], [[3, 2, 1], [30, 20, 10]]);
+    expect(out.yAxis).toEqual([100, 200, 300]);
+    expect(out.rows).toEqual([[1, 2, 3], [10, 20, 30]]);
+  });
+  it('flips per-time (2D) bin tables too', () => {
+    const out = ascendingSpectrogram([[30, 20], [31, 21]], [[3, 2], [4, 5]]);
+    expect(out.yAxis).toEqual([[20, 30], [21, 31]]);
+    expect(out.rows).toEqual([[2, 3], [5, 4]]);
+  });
+  it('leaves ascending data untouched', () => {
+    const yAxis = [1, 2, 3];
+    const rows = [[1, 2, 3]];
+    const out = ascendingSpectrogram(yAxis, rows);
+    expect(out.yAxis).toBe(yAxis);
+    expect(out.rows).toBe(rows);
+  });
+  it('keeps missing rows missing', () => {
+    expect(ascendingSpectrogram([2, 1], [null, [1, 2]]).rows).toEqual([null, [2, 1]]);
   });
 });

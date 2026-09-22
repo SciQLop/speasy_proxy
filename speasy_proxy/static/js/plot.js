@@ -11,7 +11,7 @@ import {
   normalizeWheelDelta, zoomRange, panRange, zoomToward, axisExtent, sharedAxisExtent, structureKey, resampleTarget, axisNeedsExpansion, dataOnlyOption,
   plotTypeFromCache, computeValueRange, mergeValueRange, renderableRange,
 } from './plot-core.js';
-import { computeYEdges, renderSpectrogramImage, spectrogramValueAt } from './spectrogram.js';
+import { ascendingSpectrogram, computeYEdges, renderSpectrogramImage, spectrogramValueAt } from './spectrogram.js';
 import { fetchData as apiFetchData, fetchInventory } from './api-client.js';
 
     const BASE_URL = (window.SPEASY_BASE_URL || '').replace(/\/$/, '');
@@ -960,11 +960,14 @@ import { fetchData as apiFetchData, fetchInventory } from './api-client.js';
     function mergeProductData(cache, json, fetchStart, fetchStop) {
         const rawTimes = json.axes[0].values;
         const newTimes = rawTimes.map(t => t / 1e6);
-        const newValues = json.values.values;
         const columns = json.columns || [];
         const unit = (json.values.meta && json.values.meta.UNITS) || '';
 
         const isHeatmap = detectPlotType(json) === 'heatmap';
+        const hasYAxis = isHeatmap && json.axes.length >= 2;
+        const { yAxis, rows: newValues } = hasYAxis
+            ? ascendingSpectrogram(json.axes[1].values, json.values.values)
+            : { yAxis: null, rows: json.values.values };
 
         if (cache.times.length === 0) {
             cache.times = newTimes;
@@ -974,8 +977,8 @@ import { fetchData as apiFetchData, fetchInventory } from './api-client.js';
             cache.displayType = (json.values.meta || {}).DISPLAY_TYPE || '';
 
             if (isHeatmap) {
-                if (json.axes.length >= 2) {
-                    cache.yAxis = json.axes[1].values;
+                if (hasYAxis) {
+                    cache.yAxis = yAxis;
                     cache.yAxisName = json.axes[1].name || '';
                     cache.yAxisUnit = (json.axes[1].meta && json.axes[1].meta.UNITS) || '';
                 } else {
@@ -1270,14 +1273,7 @@ import { fetchData as apiFetchData, fetchInventory } from './api-client.js';
         // Heatmap images are positioned from the laid-out chart (grid rect, pixel
         // coordinates), which only exists once the option above has been applied —
         // building them earlier reads a model that isn't there yet.
-        const liveHeatmapGridIdxs = new Set();
-        for (const subplot of plotState.plots) {
-            if (subplot.plotType === 'heatmap') {
-                buildSubplotHeatmap(subplot);
-                liveHeatmapGridIdxs.add(subplot._gridIndex);
-            }
-        }
-        pruneHeatmapZrEls(liveHeatmapGridIdxs);
+        refreshHeatmaps();
         suppressDataZoom = false;
 
         if (!preserveView) {
@@ -1295,6 +1291,17 @@ import { fetchData as apiFetchData, fetchInventory } from './api-client.js';
 
         setupMultiZoomHandler();
         updateShareURL();
+    }
+
+    function refreshHeatmaps() {
+        const liveHeatmapGridIdxs = new Set();
+        for (const subplot of plotState.plots) {
+            if (subplot.plotType === 'heatmap') {
+                buildSubplotHeatmap(subplot);
+                liveHeatmapGridIdxs.add(subplot._gridIndex);
+            }
+        }
+        pruneHeatmapZrEls(liveHeatmapGridIdxs);
     }
 
     function buildSubplotHeatmap(subplot) {
@@ -1406,11 +1413,9 @@ import { fetchData as apiFetchData, fetchInventory } from './api-client.js';
             if (suppressDataZoom) return;
 
             const view = getVisibleRange();
-            const option = chart.getOption();
-            if (view && option?.xAxis?.[0]) {
-                const axisMin = option.xAxis[0].min;
-                const axisMax = option.xAxis[0].max;
-                const expansion = axisNeedsExpansion(view.start, view.end, axisMin, axisMax);
+            const bounds = getXAxisBounds();
+            if (view && bounds) {
+                const expansion = axisNeedsExpansion(view.start, view.end, bounds.min, bounds.max);
                 if (expansion) {
                     // Recompute dataZoom percentages from the NEW axis so the
                     // absolute window width stays constant — computing from the
@@ -1477,9 +1482,9 @@ import { fetchData as apiFetchData, fetchInventory } from './api-client.js';
         }
 
         if (toFetch.length === 0) {
-            // Everything is buffered — just re-render from cache (refreshes heatmap
-            // images for the new view without touching line series data).
-            renderAllSubplots(true, true);
+            // Everything is buffered: line series already hold this data, only the
+            // heatmap images depend on the view.
+            refreshHeatmaps();
             return;
         }
 
@@ -1592,29 +1597,18 @@ import { fetchData as apiFetchData, fetchInventory } from './api-client.js';
     const ZOOM_IN_REFETCH_RATIO = 0.5; // zooming into < half the fetched span triggers a denser refetch
     const TRIM_WINDOW_RATIO = 2.0;     // keep cached data within view ± 2x view span; older data is dropped
 
+    // Reads the ECharts model directly. chart.getOption() deep-clones the whole option,
+    // every series point included — called per datazoom event, that clone was the lag.
     function getVisibleRange() {
-        // Read the actual axis extent from the chart — most reliable source
-        const option = chart.getOption();
-        if (!option || !option.dataZoom || option.dataZoom.length === 0) return null;
-        const dz = option.dataZoom[0];
+        const dz = chart.getModel()?.getComponent('dataZoom', 0);
+        const range = dz?.getValueRange('x', 0);
+        if (!range || typeof range[0] !== 'number' || typeof range[1] !== 'number') return null;
+        return { start: range[0], end: range[1] };
+    }
 
-        // If startValue/endValue are set, use them directly
-        if (dz.startValue != null && dz.endValue != null) {
-            return { start: dz.startValue, end: dz.endValue };
-        }
-
-        // Fallback: compute from percentages relative to xAxis min/max
-        const xAxis = option.xAxis[0];
-        const axisMin = xAxis.min;
-        const axisMax = xAxis.max;
-        if (axisMin != null && axisMax != null && dz.start != null && dz.end != null) {
-            const range = axisMax - axisMin;
-            return {
-                start: axisMin + range * (dz.start / 100),
-                end: axisMin + range * (dz.end / 100)
-            };
-        }
-        return null;
+    function getXAxisBounds() {
+        const axis = chart.getModel()?.getComponent('xAxis', 0);
+        return axis ? { min: axis.option.min, max: axis.option.max } : null;
     }
 
     const ZOOM_SENSITIVITY = 0.0015;  // zoom amount per normalized wheel pixel
