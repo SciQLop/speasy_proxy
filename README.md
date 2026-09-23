@@ -24,8 +24,9 @@ Podman is recommended, but Docker works too.
 # Build the image
 ./docker/build.sh [PORT] [NAME] [SPEASY_PACKAGE]
 
-# Run with Podman
-podman run -d -p 6543:6543 \
+# Run with Podman (--stop-timeout must exceed gunicorn's 30 s graceful timeout,
+# otherwise a stop SIGKILLs requests still in flight; podman's default is 10 s)
+podman run -d -p 6543:6543 --stop-timeout 40 \
   -v speasy-cache:/data \
   -v speasy-index:/index \
   speasy_proxy

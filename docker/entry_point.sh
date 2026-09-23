@@ -6,4 +6,7 @@ mkdir -p $SPEASY_LOG_PATH/speasy $SPEASY_CDAWEB_INVENTORY_DATA_PATH
 # re-syncs the venv against uv.lock's "speasy>=1.6.0" pin before every
 # start, discarding a git-based SPEASY override back to the locked PyPI
 # version.
-uv run --no-sync gunicorn speasy_proxy:app --preload --timeout 600 --max-requests 10000 --max-requests-jitter 1000 --backlog 2048 -w ${SPEASY_PROXY_WORKERS:-$(( $(nproc) * 2 ))} -k speasy_proxy.UvicornWorker.SpeasyUvicornWorker
+# --graceful-timeout: on SIGTERM, in-flight requests and background tasks get this long to finish.
+# Must stay below the container's stop timeout (podman run --stop-timeout, 40 s on the sciqlop
+# server) or podman SIGKILLs the whole container first -- podman's default is only 10 s.
+uv run --no-sync gunicorn speasy_proxy:app --preload --timeout 600 --graceful-timeout 30 --max-requests 10000 --max-requests-jitter 1000 --backlog 2048 -w ${SPEASY_PROXY_WORKERS:-$(( $(nproc) * 2 ))} -k speasy_proxy.UvicornWorker.SpeasyUvicornWorker
