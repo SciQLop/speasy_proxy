@@ -9,7 +9,7 @@ import {
   lineTable, nearestIndex, fmtTick,
   computeValueRange, renderableRange,
 } from './plot-core.js';
-import { computeYEdges, renderSpectrogramImage, spectrogramValueAt } from './spectrogram.js';
+import { binRowRects, computeYEdges, lowestPositiveEdge, renderSpectrogramImage, spectrogramValueAt } from './spectrogram.js';
 import { bindGestures } from './plot-gestures.js';
 
 const Y_AXIS_PX = 64;      // fixed y-axis gutter so every subplot's plot area lines up
@@ -266,8 +266,8 @@ function yScale(subplot, isHeatmap) {
 
 function heatmapYRange(cache, log) {
   const edges = computeYEdges(binsOf(cache));
-  const lo = edges[0], hi = edges[edges.length - 1];
-  return [log ? Math.max(lo, hi * 1e-12, 1e-30) : lo, hi];
+  const hi = edges[edges.length - 1];
+  return [log ? (lowestPositiveEdge(edges) ?? hi / 10) : edges[0], hi];
 }
 
 function autoYRange(min, max, log) {
@@ -363,9 +363,12 @@ function heatmapImage(subplot, view) {
 function drawHeatmapImage(u, img) {
   if (!img) return;
   const x0 = u.valToPos(img.tStart, 'x', true), x1 = u.valToPos(img.tEnd, 'x', true);
-  const yTop = u.valToPos(img.yMax, 'y', true), yBottom = u.valToPos(img.yMin, 'y', true);
+  const left = Math.min(x0, x1), width = Math.abs(x1 - x0);
+  const floor = u.scales.y.distr === 3 ? lowestPositiveEdge(img.yEdges) : null;
   u.ctx.imageSmoothingEnabled = false;
-  u.ctx.drawImage(img.canvas, Math.min(x0, x1), Math.min(yTop, yBottom), Math.abs(x1 - x0), Math.abs(yBottom - yTop));
+  for (const r of binRowRects(img.yEdges, (v) => u.valToPos(v, 'y', true), floor)) {
+    if (r.height > 0) u.ctx.drawImage(img.canvas, 0, r.srcRow, img.canvas.width, 1, left, r.top, width, r.height);
+  }
 }
 
 function drawIntervals(u, intervals) {

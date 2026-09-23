@@ -142,8 +142,11 @@ describe('rendering subplots with uPlot', () => {
     const [u] = liveCharts();
     expect(plotState.plots[0].lastHeatmapImg?.canvas).toBeTruthy();
     for (const hook of u.opts.hooks.drawClear) hook(u);
-    expect(u.ctx.drawImage).toHaveBeenCalledWith(plotState.plots[0].lastHeatmapImg.canvas,
+    // one source row per bin, each drawn between that bin's own edges
+    const img = plotState.plots[0].lastHeatmapImg;
+    expect(u.ctx.drawImage).toHaveBeenCalledWith(img.canvas, 0, expect.any(Number), img.canvas.width, 1,
       expect.any(Number), expect.any(Number), expect.any(Number), expect.any(Number));
+    expect(u.ctx.drawImage).toHaveBeenCalledTimes(img.canvas.height);
   });
 
   it('builds one chart per subplot, all on the requested time window', () => {

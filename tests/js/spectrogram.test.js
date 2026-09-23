@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { VIRIDIS_LUT, computeYEdges, spectrogramValueAt, renderSpectrogramImage, ascendingSpectrogram } from '../../speasy_proxy/static/js/spectrogram.js';
+import { VIRIDIS_LUT, computeYEdges, spectrogramValueAt, renderSpectrogramImage, ascendingSpectrogram, binRowRects, lowestPositiveEdge } from '../../speasy_proxy/static/js/spectrogram.js';
 
 describe('spectrogram', () => {
   it('builds a 256-entry RGB viridis LUT with correct endpoints', () => {
@@ -161,5 +161,53 @@ describe('ascendingSpectrogram', () => {
   });
   it('keeps missing rows missing', () => {
     expect(ascendingSpectrogram([2, 1], [null, [1, 2]]).rows).toEqual([null, [2, 1]]);
+  });
+});
+
+// Each bin is drawn between its own edges, so it lands where the y axis puts it whatever
+// the bin spacing (linear, log) and the axis scale. Stretching one block of evenly spaced
+// rows was only right when both spacings matched.
+describe('binRowRects', () => {
+  const linearPos = (v) => 1000 - v;                 // canvas y grows downward
+  const logPos = (v) => 1000 - 100 * Math.log10(v);  // 100 px per decade
+
+  it('places linear bins at their true height on a log axis', () => {
+    const edges = computeYEdges([10, 20, 30, 40]);   // 5, 15, 25, 35, 45
+    const rects = binRowRects(edges, logPos);
+    for (let y = 0; y < 4; y++) {
+      expect(rects[y].top).toBe(Math.round(logPos(edges[y + 1])));
+      expect(rects[y].top + rects[y].height).toBe(Math.round(logPos(edges[y])));
+    }
+    expect(rects[0].height).toBeGreaterThan(rects[3].height); // low bins are taller on a log axis
+  });
+
+  it('tiles the bins without gaps or overlaps', () => {
+    const rects = binRowRects(computeYEdges([1, 2.5, 3, 7, 7.2, 20]), linearPos);
+    for (let y = 0; y + 1 < rects.length; y++) expect(rects[y + 1].top + rects[y + 1].height).toBe(rects[y].top);
+  });
+
+  it('maps bin y to canvas row nY-1-y (the image stores the highest bin first)', () => {
+    expect(binRowRects(computeYEdges([1, 2, 3]), linearPos).map((r) => r.srcRow)).toEqual([2, 1, 0]);
+  });
+
+  it('clamps edges at or below zero to the floor on a log axis instead of producing NaN/Infinity', () => {
+    const edges = computeYEdges([0, 10, 20]);        // -5, 5, 15, 25
+    const rects = binRowRects(edges, logPos, lowestPositiveEdge(edges));
+    for (const r of rects) {
+      expect(Number.isFinite(r.top)).toBe(true);
+      expect(Number.isFinite(r.height)).toBe(true);
+    }
+    expect(rects[0].height).toBe(0);                 // the 0 bin has no extent on a log axis
+    expect(rects[1].height).toBeGreaterThan(0);
+  });
+});
+
+describe('lowestPositiveEdge', () => {
+  it('is the smallest strictly positive edge', () => {
+    expect(lowestPositiveEdge([-5, 5, 15, 25])).toBe(5);
+    expect(lowestPositiveEdge([0.5, 1.5, 2.5])).toBe(0.5);
+  });
+  it('is null when no edge is positive', () => {
+    expect(lowestPositiveEdge([-3, -1, 0])).toBeNull();
   });
 });

@@ -43,6 +43,25 @@ export function computeYEdges(yBinsFlat) {
   return yEdges;
 }
 
+// The lowest y a log axis can show for these bins; null when every edge is <= 0.
+export function lowestPositiveEdge(edges) {
+  const positive = edges.filter((e) => e > 0);
+  return positive.length ? Math.min(...positive) : null;
+}
+
+// One destination rectangle per bin, taken from its own edges, so each bin lands where
+// the y axis puts it whatever the bin spacing (linear, log) and the axis scale.
+// toPos maps a y value to canvas px. floor (log axes) clamps edges <= 0, which have no
+// position there. Rounding to whole pixels makes neighbours share a boundary: no seams.
+export function binRowRects(edges, toPos, floor = null) {
+  const nY = edges.length - 1;
+  const pos = (v) => Math.round(toPos(floor != null ? Math.max(v, floor) : v));
+  return Array.from({ length: nY }, (_, y) => {
+    const a = pos(edges[y]), b = pos(edges[y + 1]);
+    return { srcRow: nY - 1 - y, top: Math.min(a, b), height: Math.abs(a - b) };
+  });
+}
+
 // Value lookup for cursor readout: nearest time column, then the y bin whose edges
 // (from computeYEdges) contain yValue. Returns the cell value, or null when the
 // position is outside the data or the cell is missing/NaN.
@@ -153,5 +172,6 @@ export function renderSpectrogramImage(times, rows, yBinsFlat, vMin, vMax, logSc
     tEnd: times[Math.min(iEnd, times.length) - 1],
     yMin: yBinsFlat[0],
     yMax: yBinsFlat[nY - 1],
+    yEdges: computeYEdges(yBinsFlat),
   };
 }
