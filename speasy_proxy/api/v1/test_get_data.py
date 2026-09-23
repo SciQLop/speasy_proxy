@@ -179,6 +179,53 @@ async def test_valid_range_still_reaches_get_data(monkeypatch):
     assert called is True
 
 
+
+def _parse_server_timing(header: str) -> dict:
+    return {name: float(dur.removeprefix("dur="))
+            for name, dur in (entry.strip().split(";") for entry in header.split(","))}
+
+
+async def _get_data_with_stub(monkeypatch, stub, **kwargs):
+    monkeypatch.setattr(m, "_get_data", stub)
+    return await m.get_data(
+        request=_FakeGetDataRequest(),
+        path="amda/c1_b_gsm",
+        start_time=datetime(2016, 6, 1, 0, 0, 0, tzinfo=UTC),
+        stop_time=datetime(2016, 6, 1, 0, 0, 2, tzinfo=UTC),
+        _=None,
+        **kwargs,
+    )
+
+
+@pytest.mark.anyio
+async def test_server_timing_reports_each_phase(monkeypatch):
+    """Every served /get_data response says where its time went, so nginx can log it."""
+    resp = await _get_data_with_stub(monkeypatch, lambda **kw: _var_with_byte_string_label_axis(),
+                                     format="json", max_points=1)
+
+    timings = _parse_server_timing(resp.headers["Server-Timing"])
+    assert set(timings) == {"queue", "fetch", "resample", "encode"}
+    assert all(dur >= 0 for dur in timings.values())
+
+
+@pytest.mark.anyio
+async def test_server_timing_skips_resample_when_not_asked(monkeypatch):
+    resp = await _get_data_with_stub(monkeypatch, lambda **kw: _var_with_byte_string_label_axis(), format="json")
+
+    assert set(_parse_server_timing(resp.headers["Server-Timing"])) == {"queue", "fetch", "encode"}
+
+
+@pytest.mark.anyio
+async def test_server_timing_is_set_on_upstream_failure(monkeypatch):
+    """A 502 is exactly the response whose fetch time we most want to see."""
+    def _upstream_down(**kw):
+        raise IOError("upstream down")
+
+    resp = await _get_data_with_stub(monkeypatch, _upstream_down, format="json")
+
+    assert resp.status_code == 502
+    assert set(_parse_server_timing(resp.headers["Server-Timing"])) == {"queue", "fetch"}
+
 @pytest.fixture
 def anyio_backend():
     return "asyncio"

@@ -61,6 +61,37 @@ def _get_data(product, start_time, stop_time, extra_http_headers, **extra_params
                         extra_http_headers=extra_http_headers, **extra_params)
 
 
+class _PhaseTimer:
+    """Wall time per request phase, sent as a Server-Timing header (https://www.w3.org/TR/server-timing/).
+
+    `queue` is the time spent waiting for a free threadpool thread, summed over every hop:
+    the pool is bounded, so a saturated worker shows up here instead of inflating `fetch`.
+    """
+
+    def __init__(self):
+        self.ms = {}
+
+    async def run(self, phase: str, fn, *args, **kwargs):
+        submitted = started = time.perf_counter()
+
+        def timed():
+            nonlocal started
+            started = time.perf_counter()
+            return fn(*args, **kwargs)
+
+        try:
+            return await run_in_threadpool(timed)
+        finally:
+            self._add("queue", started - submitted)
+            self._add(phase, time.perf_counter() - started)
+
+    def _add(self, phase: str, seconds: float):
+        self.ms[phase] = self.ms.get(phase, 0.) + seconds * 1000.
+
+    def headers(self) -> dict:
+        return {"Server-Timing": ", ".join(f"{phase};dur={ms:.1f}" for phase, ms in self.ms.items())}
+
+
 def _invalid_time_range_reason(start_time: datetime, stop_time: datetime) -> Optional[str]:
     # speasy does not validate ordering or span itself (DateTimeRange has no
     # such check), so an inverted or unbounded range would otherwise be
@@ -119,23 +150,26 @@ async def get_data(request: Request,
         log.debug(f'{request_id}: rejected invalid time range: {invalid_reason}')
         return JSONResponse(status_code=400, content={"error": "Invalid time range", "detail": invalid_reason})
 
+    timer = _PhaseTimer()
     try:
-        var = await run_in_threadpool(_get_data, product=product, start_time=start_time, stop_time=stop_time,
+        var = await timer.run("fetch", _get_data, product=product, start_time=start_time, stop_time=stop_time,
                                       extra_http_headers=extra_http_headers, **extra_params)
     except Exception as e:
         log.error(f'{request_id}: Failed to get data for {product}: {e}')
-        return JSONResponse(status_code=502, content={"error": f"Failed to get data for {product}", "detail": str(e)})
+        return JSONResponse(status_code=502, content={"error": f"Failed to get data for {product}", "detail": str(e)},
+                            headers=timer.headers())
 
     if var is not None and max_points is not None and len(var) > max_points:
-        var = await run_in_threadpool(resample, var, max_points, resample_strategy)
+        var = await timer.run("resample", resample, var, max_points, resample_strategy)
 
     try:
-        result, mime = await run_in_threadpool(_compress_and_encode_output, var, path, start_time, stop_time, format,
+        result, mime = await timer.run("encode", _compress_and_encode_output, var, path, start_time, stop_time, format,
                                                request, pickle_proto,
                                                zstd_compression)
     except Exception as e:
         log.error(f'{request_id}: Failed to encode data for {product}: {e}')
-        return JSONResponse(status_code=500, content={"error": f"Failed to encode data for {product}", "detail": str(e)})
+        return JSONResponse(status_code=500, content={"error": f"Failed to encode data for {product}", "detail": str(e)},
+                            headers=timer.headers())
 
     request_duration = (time.time_ns() - request_start_time) / 1000000.
 
@@ -149,7 +183,7 @@ async def get_data(request: Request,
         log.debug(f'{request_id}, duration = {request_duration}ms, Got None')
 
     return Response(media_type=mime, content=result,
-                    headers={'Content-Type': mime})
+                    headers={'Content-Type': mime, **timer.headers()})
 
 
 def encode_output(var, path: str, start_time: str, stop_time: str, fmt: str, request: Request,
