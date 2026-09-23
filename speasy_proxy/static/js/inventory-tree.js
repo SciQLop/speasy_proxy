@@ -59,3 +59,21 @@ export function isParameterIndex(node) {
 export function isSelectableProduct(node) {
   return node.__spz_type__ === 'ParameterIndex' || node.__spz_type__ === 'TemplatedParameterIndex';
 }
+
+// Child entries a tree shows for a node: object-valued, not metadata, not a catalog.
+export function browsableChildKeys(node) {
+  return Object.keys(node).filter((k) => !SKIP_KEYS.has(k) && node[k] !== null
+    && typeof node[k] === 'object' && !shouldSkipNode(node[k]));
+}
+
+// Whether a branch would show anything: some descendant is a selectable product.
+// Memoized per node, so deciding it for a whole ~100k-node inventory is one walk.
+const selectableBelow = new WeakMap();
+export function hasSelectableDescendant(node) {
+  if (!node || typeof node !== 'object') return false;
+  if (!selectableBelow.has(node)) {
+    selectableBelow.set(node, browsableChildKeys(node).some((k) =>
+      isSelectableProduct(node[k]) || hasSelectableDescendant(node[k])));
+  }
+  return selectableBelow.get(node);
+}

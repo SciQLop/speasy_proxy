@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   SKIP_KEYS, SSC_METADATA_KEYS, getDisplayName, getProductPath, shouldSkipNode,
-  isSpzMetaKey, hasVisibleChildren, isParameterIndex, isSelectableProduct,
+  isSpzMetaKey, hasVisibleChildren, isParameterIndex, isSelectableProduct, hasSelectableDescendant,
 } from '../../speasy_proxy/static/js/inventory-tree.js';
 
 describe('inventory primitives', () => {
@@ -52,5 +52,30 @@ describe('inventory primitives', () => {
     expect(isSelectableProduct({ __spz_type__: 'ParameterIndex' })).toBe(true);
     expect(isSelectableProduct({ __spz_type__: 'TemplatedParameterIndex' })).toBe(true);
     expect(isSelectableProduct({ __spz_type__: 'DatasetIndex' })).toBe(false);
+  });
+});
+
+// The /plot tree builds a branch's children only when it is opened, so whether a
+// branch shows at all must be decided without building it: exactly when some
+// descendant is a selectable product (the same rule the eager build applied).
+describe('hasSelectableDescendant', () => {
+  const param = (uid) => ({ __spz_type__: 'ParameterIndex', __spz_uid__: uid });
+
+  it('is true for a branch with a product somewhere below', () => {
+    expect(hasSelectableDescendant({ a: { b: { c: param('x') } } })).toBe(true);
+  });
+  it('is true for a templated (AMDA) product too', () => {
+    expect(hasSelectableDescendant({ a: { __spz_type__: 'TemplatedParameterIndex', __spz_uid__: 't' } })).toBe(true);
+  });
+  it('is false for a branch of empty branches', () => {
+    expect(hasSelectableDescendant({ a: { b: {} }, c: {} })).toBe(false);
+  });
+  it('ignores catalogs, time tables and metadata keys', () => {
+    const catalog = { __spz_type__: 'CatalogIndex', inner: param('hidden') };
+    expect(hasSelectableDescendant({ cat: catalog, Catalogs: { x: param('y') }, units: 'nT' })).toBe(false);
+  });
+  it('is false for scalars and null', () => {
+    expect(hasSelectableDescendant(null)).toBe(false);
+    expect(hasSelectableDescendant('x')).toBe(false);
   });
 });

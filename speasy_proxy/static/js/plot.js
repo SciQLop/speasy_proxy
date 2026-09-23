@@ -3,7 +3,7 @@ import {
   setStatus, showLoading, showFetchBar, fallbackCopy,
   installErrorBoundary,
 } from './common.js';
-import { getDisplayName, getProductPath, shouldSkipNode, SKIP_KEYS, isSpzMetaKey, isSelectableProduct } from './inventory-tree.js';
+import { getDisplayName, getProductPath, shouldSkipNode, SKIP_KEYS, isSpzMetaKey, isSelectableProduct, browsableChildKeys, hasSelectableDescendant } from './inventory-tree.js';
 import {
   createSubplotData, createProductCache, subplotToConfig, subplotFromConfig,
   detectPlotType, mergeSorted, mergeSortedRows, mergeIntervals, evictProductCache,
@@ -110,16 +110,9 @@ import { createPlotView } from './plot-view.js';
             return div;
         }
 
-        // Branch node — collect children first
-        const childKeys = Object.keys(data).filter(k => !SKIP_KEYS.has(k)).sort();
-        const childNodes = [];
-        for (const ck of childKeys) {
-            if (typeof data[ck] !== 'object' || data[ck] === null) continue;
-            if (shouldSkipNode(data[ck])) continue;
-            const child = buildTreeNode(data[ck], ck);
-            if (child) childNodes.push(child);
-        }
-        if (childNodes.length === 0) return null;
+        // Branch node: its children are only built the first time it is opened. Building the
+        // whole ~100k-node inventory up front froze the page for ~0.6 s on every load.
+        if (!hasSelectableDescendant(data)) return null;
 
         const wrapper = document.createElement('div');
         wrapper.style.cssText = 'margin-left:4px;';
@@ -134,9 +127,16 @@ import { createPlotView } from './plot-view.js';
 
         const childContainer = document.createElement('div');
         childContainer.style.cssText = 'display:none;margin-left:12px;';
-        for (const cn of childNodes) childContainer.appendChild(cn);
+        let built = false;
 
         header.addEventListener('click', () => {
+            if (!built) {
+                for (const ck of browsableChildKeys(data).sort()) {
+                    const child = buildTreeNode(data[ck], ck);
+                    if (child) childContainer.appendChild(child);
+                }
+                built = true;
+            }
             const open = childContainer.style.display !== 'none';
             childContainer.style.display = open ? 'none' : 'block';
             arrow.style.transform = open ? '' : 'rotate(90deg)';
