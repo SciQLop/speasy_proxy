@@ -15,12 +15,11 @@ const Y_AXIS_PX = 64;      // fixed y-axis gutter so every subplot's plot area l
 const Y_LABEL_PX = 16;
 const X_AXIS_PX = 46;      // time axis (two label lines), drawn under the last subplot only
 const TITLE_PX = 20;
-const LEGEND_PX = 24;
 const SLIDER_PX = 30;
 const MIN_PLOT_PX = 60;
 // Explicit [top, right, bottom, left] padding: uPlot otherwise auto-pads only the chart
 // whose time labels overflow (the last one), shifting its time axis off the others.
-const CHART_PADDING = [6, 28, 0, 0];
+const CHART_PADDING = [10, 28, 8, 0];  // top/bottom room for edge tick labels
 const SLIDER_PAD_RATIO = 0.5;
 const HEATMAP_REFRESH_MS = 200;  // re-render spectrogram images once a gesture settles
 const SYNC_KEY = 'speasy-plot';
@@ -136,7 +135,7 @@ export function createPlotView(root, { onViewChange }) {
   function createChart(subplot, index, height, loading) {
     const isLast = index === plots.length - 1;
     const isHeatmap = subplot.plotType === 'heatmap' && !!firstCache(subplot)?.yAxis;
-    const { series, meta } = isHeatmap ? heatmapSeries(subplot) : lineSeries(subplot, plots.length);
+    const { series, meta } = isHeatmap ? heatmapSeries(subplot) : lineSeries(subplot);
     const title = subplot.products.map((p) => p.label || p.path.split('/').pop()).join(', ') + (loading ? ' ●' : '');
     const opts = {
       title,
@@ -147,7 +146,8 @@ export function createPlotView(root, { onViewChange }) {
       padding: CHART_PADDING,
       cursor: { sync: { key: SYNC_KEY }, y: false, points: { show: false }, drag: { x: false, y: false, setScale: false } },
       select: { show: false },
-      legend: { show: !isHeatmap, live: false },
+      // One series: the title already names it, a legend would only repeat it.
+      legend: { show: series.length > 2, live: false },
       scales: { x: { time: true }, y: yScale(subplot, isHeatmap) },
       axes: [xAxis(isLast), yAxisOpts(subplot, isHeatmap)],
       series,
@@ -208,12 +208,12 @@ export function createPlotView(root, { onViewChange }) {
 
 // --- layout ----------------------------------------------------------------------
 
-// uPlot's height covers its canvas (plot area + axes); the title and legend are DOM
-// rows above/below it, so they are budgeted separately.
+// uPlot's height covers its canvas (plot area + axes); the header row (title + legend)
+// is DOM above it, so it is budgeted separately (fitHeights then measures it exactly).
 function layoutHeights(plots, totalPx) {
   const n = plots.length;
   if (n === 0) return [];
-  const chrome = plots.reduce((sum, sp) => sum + TITLE_PX + (sp.plotType === 'heatmap' ? 0 : LEGEND_PX), 0);
+  const chrome = plots.length * TITLE_PX;
   const plotPx = Math.max(MIN_PLOT_PX, Math.floor((totalPx - SLIDER_PX - X_AXIS_PX - chrome) / n));
   return plots.map((_, i) => plotPx + (i === n - 1 ? X_AXIS_PX : 0));
 }
@@ -258,6 +258,7 @@ function yAxisOpts(subplot, isHeatmap) {
     labelSize: Y_LABEL_PX,
     values: (u, splits) => splits.map(fmtTick),
     grid: isHeatmap ? { show: false } : { stroke: '#1e2640', width: 1, filter: decadesOnlyOnLog },
+    ticks: { ...axisBase.ticks, filter: decadesOnlyOnLog },
   };
 }
 
@@ -296,7 +297,7 @@ function autoYRange(min, max, log) {
 // uPlot deep-copies series options, so per-series lookups (which cache/column, unit,
 // color) are kept in a parallel `meta` array indexed like u.series, holding paths not
 // cache references — caches are mutated and replaced by plot.js between renders.
-function lineSeries(subplot, nSubplots) {
+function lineSeries(subplot) {
   const series = [{}];
   const meta = [null];
   let colorIdx = 0;
@@ -304,12 +305,21 @@ function lineSeries(subplot, nSubplots) {
     const prodLabel = prod.label || prod.path.split('/').pop();
     for (const cn of cache.columnNames) {
       const color = CHART_COLORS[colorIdx++ % CHART_COLORS.length];
-      const label = nSubplots > 1 || subplot.products.length > 1 ? prodLabel + ' ' + cn : cn;
+      const label = seriesLabel(prodLabel, cn, subplot.products.length, cache.columnNames.length);
       series.push({ label, stroke: color, width: 1.2, points: { show: false } });
-      meta.push({ path: prod.path, column: cn, unit: cache.unit || '', color, label });
+      // The tooltip lists every subplot at once, so it needs the product in the name.
+      const fullLabel = cache.columnNames.length === 1 ? prodLabel : prodLabel + ' ' + cn;
+      meta.push({ path: prod.path, column: cn, unit: cache.unit || '', color, label, fullLabel });
     }
   }
   return { series, meta };
+}
+
+// Column names alone inside a single-product subplot (the title names the product);
+// a lone column is named after its product, never the generated 'col_0'.
+function seriesLabel(prodLabel, column, nProducts, nColumns) {
+  if (nColumns === 1) return prodLabel;
+  return nProducts > 1 ? prodLabel + ' ' + column : column;
 }
 
 function heatmapSeries(subplot) {
@@ -378,7 +388,7 @@ function tooltipHtml(t, charts, intervals, hoveredSubplot, yVal) {
       const idx = nearestIndex(cache.times, t);
       const v = idx < 0 ? null : cache.columns[m.column]?.[idx];
       if (v == null || Number.isNaN(v)) continue;
-      html += swatch(m.color, 5) + escapeHtml(m.label) + ': ' + fmtValue(v) + (m.unit ? ' ' + escapeHtml(m.unit) : '') + '<br/>';
+      html += swatch(m.color, 5) + escapeHtml(m.fullLabel) + ': ' + fmtValue(v) + (m.unit ? ' ' + escapeHtml(m.unit) : '') + '<br/>';
     }
   }
   return html;
@@ -499,9 +509,11 @@ function exportPng(root, charts, pixelRatio, background) {
     const r = canvas.getBoundingClientRect();
     ctx.drawImage(canvas, r.left - rootRect.left, r.top - rootRect.top, r.width, r.height);
     const plotLeft = r.left - rootRect.left + u.bbox.left / uPlot.pxRatio;
+    const title = u.root.querySelector('.u-title')?.textContent || '';
+    const headerY = r.top - rootRect.top - TITLE_PX / 2;
     ctx.fillStyle = MUTED;
-    ctx.fillText(u.root.querySelector('.u-title')?.textContent || '', plotLeft, r.top - rootRect.top - TITLE_PX / 2);
-    drawLegendRow(ctx, u, meta, plotLeft, r.bottom - rootRect.top + LEGEND_PX / 2);
+    ctx.fillText(title, plotLeft, headerY);
+    if (u.series.length > 2) drawLegendRow(ctx, u, meta, plotLeft + ctx.measureText(title).width + 16, headerY);
   }
   return out.toDataURL('image/png');
 }

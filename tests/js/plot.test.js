@@ -190,6 +190,25 @@ describe('rendering subplots with uPlot', () => {
     expect(u.data).toHaveLength(u.series.length);
   });
 
+  it('names series by column, product, or both depending on the subplot', () => {
+    initChart();
+    const threeCols = { ...lineCache('amda/imf', ''), columnNames: ['bx', 'by', 'bz'], columns: { bx: [1, 2], by: [1, 2], bz: [1, 2] } };
+    const oneCol = { ...lineCache('amda/ae', ''), columnNames: ['col_0'], columns: { col_0: [1, 2] } };
+    plotState.plots = [
+      { products: [{ path: 'amda/imf', label: 'OMNI B' }], y_axis: { log: false }, plotType: 'line', productData: { 'amda/imf': threeCols } },
+      { products: [{ path: 'amda/ae', label: 'AE' }], y_axis: { log: false }, plotType: 'line', productData: { 'amda/ae': oneCol } },
+      { products: [{ path: 'amda/imf', label: 'OMNI B' }, { path: 'amda/ae', label: 'AE' }], y_axis: { log: false }, plotType: 'line',
+        productData: { 'amda/imf': threeCols, 'amda/ae': oneCol } },
+    ];
+    renderAllSubplots();
+
+    const labels = liveCharts().map((u) => u.series.slice(1).map((sr) => sr.label));
+    expect(labels[0]).toEqual(['bx', 'by', 'bz']);             // the title names the product
+    expect(labels[1]).toEqual(['AE']);                         // never the generated 'col_0'
+    expect(labels[2]).toEqual(['OMNI B bx', 'OMNI B by', 'OMNI B bz', 'AE']);
+    expect(liveCharts().map((u) => u.opts.legend.show)).toEqual([true, false, true]);
+  });
+
   it('puts every product of a subplot on one joined time axis', () => {
     initChart();
     plotState.plots = [{

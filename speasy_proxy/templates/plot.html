@@ -121,12 +121,16 @@
 
         /* uPlot subplots (plot-view.js) */
         .pv-plots { flex: 1; min-height: 0; overflow-y: auto; overflow-x: hidden; }
-        .pv-plots .uplot { font-family: system-ui, sans-serif; color: #e0e6f0; }
-        .pv-plots .u-title { color: #8892b0; font-size: 11px; font-weight: normal; text-align: left;
-            padding-left: 84px; height: 20px; line-height: 20px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-        .pv-plots .u-legend { font-size: 11px; color: #e0e6f0; padding: 2px 0 4px 64px; text-align: left; }
+        /* Header row per subplot: title then legend, above the plot area (uPlot's DOM
+           order is title, canvas, legend - the grid reorders it). */
+        .pv-plots .uplot { font-family: system-ui, sans-serif; color: #e0e6f0; width: 100%;
+            display: grid; grid-template-columns: auto 1fr; grid-template-areas: "title legend" "wrap wrap"; align-items: center; }
+        .pv-plots .u-title { grid-area: title; color: #8892b0; font-size: 11px; font-weight: normal; text-align: left;
+            padding: 4px 0 0 80px; line-height: 16px; white-space: nowrap; }  /* 80 = y axis + y label strip */
+        .pv-plots .u-legend { grid-area: legend; justify-self: start; margin: 0; font-size: 11px; color: #e0e6f0; padding: 4px 0 0 12px; text-align: left; line-height: 16px; }
+        .pv-plots .u-wrap { grid-area: wrap; }
         .pv-plots .u-legend .u-marker { width: 10px; height: 3px; }
-        .pv-plots .u-legend .u-series > * { padding: 1px 3px; }
+        .pv-plots .u-legend .u-series > * { padding: 0 3px; }
         .pv-plots .u-legend .u-off > * { opacity: 0.35; }
         .pv-plots .u-cursor-x { border-right: 1px dashed #6b8afd; }
         .pv-plots .u-over { cursor: grab; }
