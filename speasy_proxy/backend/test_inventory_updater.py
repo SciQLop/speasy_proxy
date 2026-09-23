@@ -198,25 +198,54 @@ def test_get_inventory_reads_memory_only(monkeypatch):
     assert mgr.is_current("all", "not-a-date") is False
 
 
-def test_eager_build_covers_common_variants_and_zstd():
-    """JSON (versions 1..2) + pickle protocols 3/4 (versions 1..2) are built
-    eagerly, each with a pre-compressed zstd variant; protocols 1, 2 and 5 are
-    left out."""
-    import pyzstd
+def test_eager_build_keeps_only_compressed_copies():
+    """Memory: raw variants were ~93% of the ~620 MB every gunicorn worker held (measured in prod,
+    2026-09-23). Only the zstd copy of each eager variant (JSON and pickle protocol 3, versions 1..2)
+    is kept; protocol 4, never requested in prod, joins 1, 2 and 5 in the lazy set."""
     _quiet_tree()
     mgr = InventoryManager(update_interval_seconds=3600, shared_store=SharedInventoryStore(path=None))
     built = mgr._build_all_inventories()
-    for version in (1, 2):
-        assert f"inventory/all/json_version_{version}" in built
-    for proto in (3, 4):
-        for version in (1, 2):
-            assert f"inventory/all/pickle_proto_{proto}_version_{version}" in built
-            assert f"inventory/all/pickle_proto_{proto}_version_{version}/zstd" in built
-    for version in (1, 2):
-        key = f"inventory/all/json_version_{version}"
-        assert pyzstd.decompress(built[f"{key}/zstd"]).decode() == built[key]
-    for proto in (1, 2, 5):
-        assert f"inventory/all/pickle_proto_{proto}_version_1" not in built
+
+    eager = [f"inventory/all/json_version_{v}" for v in (1, 2)] + \
+            [f"inventory/all/pickle_proto_3_version_{v}" for v in (1, 2)]
+    assert sorted(built) == sorted(f"{key}/zstd" for key in eager)
+
+
+def test_uncompressed_request_is_served_from_the_compressed_copy():
+    import pickle
+    import pyzstd
+    _quiet_tree()
+    mgr = InventoryManager(update_interval_seconds=3600, shared_store=SharedInventoryStore(path=None))
+    mgr._inventories = mgr._build_all_inventories()
+
+    json_v2 = mgr.get_inventory("all", "json", version=2)
+    pickled = mgr.get_inventory("all", "python_dict", version=2, pickle_proto=3)
+
+    assert json_v2 == pyzstd.decompress(mgr.get_inventory("all", "json", version=2, zstd=True)).decode()
+    assert pickle.loads(pickled) == pickle.loads(pyzstd.decompress(
+        mgr.get_inventory("all", "python_dict", version=2, pickle_proto=3, zstd=True)))
+
+
+def test_uncompressed_copies_are_not_kept_in_memory():
+    """Memoizing the decompressed blob would bring the memory back after the first request."""
+    _quiet_tree()
+    mgr = InventoryManager(update_interval_seconds=3600, shared_store=SharedInventoryStore(path=None))
+    mgr._inventories = mgr._build_all_inventories()
+    before = sorted(mgr._inventories)
+
+    mgr.get_inventory("all", "json", version=2)
+    mgr.get_inventory("all", "python_dict", version=1, pickle_proto=3)
+
+    assert sorted(mgr._inventories) == before
+
+
+def test_pickle_protocol_4_is_built_lazily():
+    _quiet_tree()
+    mgr = InventoryManager(update_interval_seconds=3600, shared_store=SharedInventoryStore(path=None))
+    mgr._inventories = mgr._build_all_inventories()
+
+    assert mgr.get_inventory("all", "python_dict", version=2, pickle_proto=4) is not None
+    assert "inventory/all/pickle_proto_4_version_2" in mgr._inventories
 
 
 def test_non_eager_pickle_protocol_built_lazily_and_memoized():

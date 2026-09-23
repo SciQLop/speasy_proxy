@@ -12,6 +12,8 @@ from speasy.inventories import tree
 
 import logging
 from speasy_proxy.api import pickle_data
+import pyzstd
+
 from speasy_proxy.api.compression import compress_if_asked
 from .shared_inventory_store import SharedInventoryStore
 from ..config import core as config, index as index_cfg
@@ -20,10 +22,10 @@ log = logging.getLogger(__name__)
 
 _INVENTORY_KEY = "inventory/{provider}/{fmt}"
 
-# Pickle protocols built eagerly (the ones the proxy's clients actually use).
-# Protocol 5 is excluded: the proxy never uses out-of-band buffers. Other valid
-# protocols (1, 2, 5) are built lazily on first request and memoized.
-_EAGER_PICKLE_PROTOS = (3, 4)
+# Pickle protocols built eagerly: the one the proxy's clients actually use (speasy asks
+# for the default, 3; protocol 4 was never requested in Sept 2026 prod logs). Other valid
+# protocols (1, 2, 4, 5) are built lazily on first request and memoized.
+_EAGER_PICKLE_PROTOS = (3,)
 
 
 def _default_shared_path() -> str:
@@ -118,31 +120,32 @@ class InventoryManager:
             for version in range(1, 3):
                 self._save_inventory_as_pickled_dict(inventory, provider, version, pickle_proto, target)
 
-    def _add_zstd_variants(self, target: dict):
-        """Pre-compress a zstd variant of every eagerly built blob, so requests
-        asking for zstd are served directly instead of compressing on the hot
-        path. Best effort: a failure only skips that variant — the request path
-        then falls back to compressing in the threadpool."""
-        for key, data in list(target.items()):
+    @staticmethod
+    def _compress_all(raw: dict) -> dict:
+        """Keep only a zstd copy of every eagerly built blob: every gunicorn worker holds
+        these, and the raw copies were ~93% of ~620 MB per worker (prod, 2026-09-23).
+        zstd requests are served as is, the rest decompress on demand (see get_inventory).
+        Best effort: a blob that fails to compress is kept raw."""
+        packed = {}
+        for key, data in raw.items():
             try:
-                compressed, _ = compress_if_asked(data, "", True)
-                target[f"{key}/zstd"] = compressed
+                packed[f"{key}/zstd"], _ = compress_if_asked(data, "", True)
             except Exception:
-                log.exception(f"Failed to pre-compress {key}; will compress on demand.")
+                log.exception(f"Failed to pre-compress {key}; keeping it raw.")
+                packed[key] = data
+        return packed
 
     def _build_all_inventories(self) -> dict:
-        """Eagerly build the common variants (JSON, pickle protocols 3 and 4,
-        versions 1..2) plus their zstd-compressed copies into a fresh dict and
-        return it. Other valid combinations (pickle protocols 1, 2, 5) are NOT
-        built here: they are built lazily on first request (see get_inventory)."""
+        """Eagerly build the common variants (JSON and pickle protocol 3, versions 1..2),
+        zstd-compressed, into a fresh dict and return it. Other valid combinations
+        (pickle protocols 1, 2, 4, 5) are built lazily on first request (see get_inventory)."""
         self._ensure_tree_build_date()
         result: Dict[str, bytes | str] = {}
         for provider in _available_providers():
             self._build_eager_inventories(tree.__dict__[provider], provider, result)
         _all = SpeasyIndex(name="all", provider="speasy_proxy", uid="", meta=tree.__dict__)
         self._build_eager_inventories(_all, "all", result)
-        self._add_zstd_variants(result)
-        return result
+        return self._compress_all(result)
 
     def _collect_build_dates(self) -> Dict[str, str]:
         dates: Dict[str, str] = {}
@@ -205,6 +208,12 @@ class InventoryManager:
         if zstd:
             return self._inventories.get(f"{key}/zstd")
         data = self._inventories.get(key)
+        if data is None and (packed := self._inventories.get(f"{key}/zstd")) is not None:
+            # Not memoized: keeping the raw copy is exactly the memory this avoids.
+            # simplify: decompresses under the caller's state lock (tens of ms for the largest
+            # blob, rare requests); move it out if uncompressed inventory traffic grows.
+            raw = pyzstd.decompress(packed)
+            return raw.decode() if fmt == "json" else raw
         if data is None:
             data = self._build_lazy(provider, fmt, version, pickle_proto, key)
         return data
