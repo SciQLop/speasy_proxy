@@ -124,6 +124,10 @@ beforeEach(() => {
 });
 
 const liveCharts = () => uPlot.instances.filter((u) => !u.destroyed);
+const createEmptyCache = (path) => ({
+  path, intervals: [], fetchSpan: 0, times: [], columns: {}, columnNames: [], unit: '',
+  yAxis: null, yAxisName: '', yAxisUnit: '', rows: [], displayType: '', valueRange: null,
+});
 
 describe('rendering subplots with uPlot', () => {
   beforeEach(() => { uPlot.instances.length = 0; });
@@ -207,6 +211,19 @@ describe('rendering subplots with uPlot', () => {
     expect(labels[1]).toEqual(['AE']);                         // never the generated 'col_0'
     expect(labels[2]).toEqual(['OMNI B bx', 'OMNI B by', 'OMNI B bz', 'AE']);
     expect(liveCharts().map((u) => u.opts.legend.show)).toEqual([true, false, true]);
+  });
+
+  it('labels each subplot with a badge carrying the unit (no rotated axis label)', () => {
+    initChart();
+    plotState.plots = [
+      { products: [{ path: 'cda/b', label: 'OMNI B' }], y_axis: { log: false }, plotType: 'line', productData: { 'cda/b': lineCache('cda/b', '') } },
+      heatmapSubplot(),
+    ];
+    renderAllSubplots();
+
+    const titles = dom.created.filter((e) => e.className === 'pv-header-title').slice(-2).map((e) => e.textContent);
+    expect(titles).toEqual(['OMNI B (nT)', 'flux · energy (eV)']);
+    for (const u of liveCharts()) expect(u.opts.axes[1].label).toBeFalsy();
   });
 
   it('puts every product of a subplot on one joined time axis', () => {
@@ -545,6 +562,16 @@ describe('heatmap value range across refetches', () => {
     mergeProductData(cache, spectrogramResponse([[0.5, 0.5, 0.5]], 4e9), 4000, 5000);
 
     expect(cache.valueRange).toEqual({ vMin: 0.5, vMax: 9 });
+  });
+
+  it('drops the NUL padding AMDA leaves in unit strings (unitless products)', () => {
+    const cache = createEmptyCache('amda/omni_sw_beta');
+    mergeProductData(cache, {
+      axes: [{ values: [1e6, 2e6] }],
+      values: { values: [[1], [2]], meta: { UNITS: '\u0000' } },
+      columns: [],
+    }, 0, 3);
+    expect(cache.unit).toBe('');
   });
 
   it('ignores an all-gap slice instead of dropping the floor to a sentinel', () => {

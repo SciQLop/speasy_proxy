@@ -1,26 +1,24 @@
 // Chart layer of the /plot viewer: one uPlot per subplot stacked on a shared time
-// window, a time slider, a cursor tooltip, highlighted intervals and spectrogram images.
+// window, a title/legend badge over each plot, a cursor tooltip, highlighted intervals and
+// spectrogram images.
 // plot.js owns the data (subplot caches) and calls render/update; this module only
 // draws it and reports time-window changes back through onViewChange.
 import uPlot from './vendor/uPlot.esm.js';
 import { CHART_COLORS } from './common.js';
 import {
-  lineTable, nearestIndex, fmtTick, sharedAxisExtent, sliderDomain, viewToSlider, sliderToView,
+  lineTable, nearestIndex, fmtTick,
   computeValueRange, renderableRange,
 } from './plot-core.js';
 import { computeYEdges, renderSpectrogramImage, spectrogramValueAt } from './spectrogram.js';
 import { bindGestures } from './plot-gestures.js';
 
 const Y_AXIS_PX = 64;      // fixed y-axis gutter so every subplot's plot area lines up
-const Y_LABEL_PX = 16;
 const X_AXIS_PX = 46;      // time axis (two label lines), drawn under the last subplot only
-const TITLE_PX = 20;
-const SLIDER_PX = 30;
 const MIN_PLOT_PX = 60;
 // Explicit [top, right, bottom, left] padding: uPlot otherwise auto-pads only the chart
 // whose time labels overflow (the last one), shifting its time axis off the others.
-const CHART_PADDING = [10, 28, 8, 0];  // top/bottom room for edge tick labels
-const SLIDER_PAD_RATIO = 0.5;
+const CHART_PADDING = [6, 28, 6, 0];  // top/bottom room for edge tick labels
+const BADGE_INSET_PX = 6;              // title/legend badge offset inside the plot area
 const HEATMAP_REFRESH_MS = 200;  // re-render spectrogram images once a gesture settles
 const SYNC_KEY = 'speasy-plot';
 const MUTED = '#8892b0';
@@ -38,10 +36,8 @@ const fmtValue = (v) => String(Number(v.toPrecision(4)));
 
 export function createPlotView(root, { onViewChange }) {
   const plotsEl = el('div', 'pv-plots');
-  const slider = createSlider(root, (view) => { setView(view); onViewChange(view); });
   const tooltip = el('div', 'pv-tooltip');
   root.appendChild(plotsEl);
-  root.appendChild(slider.el);
   root.appendChild(tooltip);
 
   let charts = [];          // [{ u, subplot }]
@@ -62,7 +58,6 @@ export function createPlotView(root, { onViewChange }) {
     charts = plots.map((sp, i) => createChart(sp, i, heights[i], opts.loading?.has(i)));
     fitHeights();
     refreshHeatmaps();
-    slider.update(plots, view, charts[0]?.u);
   }
 
   function update(nextPlots) {
@@ -75,13 +70,11 @@ export function createPlotView(root, { onViewChange }) {
       });
     }
     refreshHeatmaps();
-    slider.update(plots, view, charts[0]?.u);
   }
 
   function setView(next) {
     view = { start: next.start, end: next.end };
     for (const c of charts) c.u.setScale('x', { min: view.start, max: view.end });
-    slider.update(plots, view, charts[0]?.u);
     clearTimeout(heatmapTimer);
     heatmapTimer = setTimeout(refreshHeatmaps, HEATMAP_REFRESH_MS);
   }
@@ -96,7 +89,6 @@ export function createPlotView(root, { onViewChange }) {
 
   function resize() {
     fitHeights();
-    slider.update(plots, view, charts[0]?.u);
   }
 
   // Titles and legends are DOM rows whose height depends on fonts and wrapping, so
@@ -112,7 +104,6 @@ export function createPlotView(root, { onViewChange }) {
   function clear() {
     destroyCharts();
     plots = [];
-    slider.update([], view, null);
   }
 
   function toDataURL(pixelRatio = 2, background = '#0b0e17') {
@@ -136,9 +127,7 @@ export function createPlotView(root, { onViewChange }) {
     const isLast = index === plots.length - 1;
     const isHeatmap = subplot.plotType === 'heatmap' && !!firstCache(subplot)?.yAxis;
     const { series, meta } = isHeatmap ? heatmapSeries(subplot) : lineSeries(subplot);
-    const title = subplot.products.map((p) => p.label || p.path.split('/').pop()).join(', ') + (loading ? ' ●' : '');
     const opts = {
-      title,
       width: plotWidth(),
       height,
       ms: 1,
@@ -149,7 +138,7 @@ export function createPlotView(root, { onViewChange }) {
       // One series: the title already names it, a legend would only repeat it.
       legend: { show: series.length > 2, live: false },
       scales: { x: { time: true }, y: yScale(subplot, isHeatmap) },
-      axes: [xAxis(isLast), yAxisOpts(subplot, isHeatmap)],
+      axes: [xAxis(isLast), yAxisOpts(isHeatmap)],
       series,
       hooks: {
         drawClear: [(u) => drawBackdrop(u, subplot, isHeatmap)],
@@ -157,6 +146,7 @@ export function createPlotView(root, { onViewChange }) {
       },
     };
     const u = new uPlot(opts, chartData(subplot), plotsEl);
+    u.root.appendChild(createBadge(u, badgeTitle(subplot, isHeatmap, loading)));
     u.batch(() => {
       u.setScale('x', { min: view.start, max: view.end });
       if (subplot._yOverride) u.setScale('y', subplot._yOverride);
@@ -208,13 +198,12 @@ export function createPlotView(root, { onViewChange }) {
 
 // --- layout ----------------------------------------------------------------------
 
-// uPlot's height covers its canvas (plot area + axes); the header row (title + legend)
-// is DOM above it, so it is budgeted separately (fitHeights then measures it exactly).
+// uPlot's height covers its canvas (plot area + axes); the title/legend badge floats over
+// the plot, so the canvases share all the height (fitHeights then measures exactly).
 function layoutHeights(plots, totalPx) {
   const n = plots.length;
   if (n === 0) return [];
-  const chrome = plots.length * TITLE_PX;
-  const plotPx = Math.max(MIN_PLOT_PX, Math.floor((totalPx - SLIDER_PX - X_AXIS_PX - chrome) / n));
+  const plotPx = Math.max(MIN_PLOT_PX, Math.floor((totalPx - X_AXIS_PX) / n));
   return plots.map((_, i) => plotPx + (i === n - 1 ? X_AXIS_PX : 0));
 }
 
@@ -246,16 +235,10 @@ function xAxis(isLast) {
     : { ...axisBase, show: false, grid: { show: false } };
 }
 
-function yAxisOpts(subplot, isHeatmap) {
-  const cache = firstCache(subplot);
-  const label = isHeatmap
-    ? (cache?.yAxisName || '') + (cache?.yAxisUnit ? ' (' + cache.yAxisUnit + ')' : '')
-    : (cache?.unit || '');
+function yAxisOpts(isHeatmap) {
   return {
     ...axisBase,
     size: Y_AXIS_PX,
-    label,
-    labelSize: Y_LABEL_PX,
     values: (u, splits) => splits.map(fmtTick),
     grid: isHeatmap ? { show: false } : { stroke: '#1e2640', width: 1, filter: decadesOnlyOnLog },
     ticks: { ...axisBase.ticks, filter: decadesOnlyOnLog },
@@ -320,6 +303,32 @@ function lineSeries(subplot) {
 function seriesLabel(prodLabel, column, nProducts, nColumns) {
   if (nColumns === 1) return prodLabel;
   return nProducts > 1 ? prodLabel + ' ' + column : column;
+}
+
+// Badge text: the products, then the unit (lines) or the y quantity and its unit
+// (spectrograms) — replaces a rotated axis label that cost a strip of width per plot.
+function badgeTitle(subplot, isHeatmap, loading) {
+  const names = subplot.products.map((p) => p.label || p.path.split('/').pop()).join(', ');
+  const cache = firstCache(subplot);
+  const unit = (u) => (u ? ' (' + u + ')' : '');
+  const suffix = isHeatmap
+    ? ' · ' + (cache?.yAxisName || '') + unit(cache?.yAxisUnit)
+    : unit(cache?.unit);
+  return names + suffix + (loading ? ' ●' : '');
+}
+
+// The legend moves into the badge; only its entries take clicks (toggle a series), the
+// rest lets the cursor and drag gestures through to the plot underneath.
+function createBadge(u, title) {
+  const badge = el('div', 'pv-header');
+  badge.style.left = (Y_AXIS_PX + BADGE_INSET_PX) + 'px';
+  badge.style.top = (CHART_PADDING[0] + BADGE_INSET_PX) + 'px';
+  const text = el('span', 'pv-header-title');
+  text.textContent = title;
+  badge.appendChild(text);
+  const legend = u.root.querySelector('.u-legend');
+  if (legend) badge.appendChild(legend);
+  return badge;
 }
 
 function heatmapSeries(subplot) {
@@ -426,70 +435,6 @@ function escapeHtml(s) {
   return String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 }
 
-// --- time slider ---------------------------------------------------------------------
-
-// A track spanning the loaded data (padded) with a draggable window for the current view:
-// drag the window to pan, drag an edge to resize. Aligned under the plot areas.
-function createSlider(root, onChange) {
-  const track = el('div', 'pv-slider');
-  const win = el('div', 'pv-slider-window');
-  const leftHandle = el('div', 'pv-slider-handle');
-  const rightHandle = el('div', 'pv-slider-handle');
-  win.appendChild(leftHandle);
-  win.appendChild(rightHandle);
-  track.appendChild(win);
-
-  let domain = { min: 0, max: 1 };
-  let trackPx = 1;
-  let current = { start: 0, end: 1 };
-
-  function update(plots, view, firstU) {
-    // visibility, not display: the track must keep its height so the charts are sized
-    // around it before it first shows.
-    track.style.visibility = plots.length > 0 && view.start != null ? 'visible' : 'hidden';
-    if (!firstU || view.start == null) return;
-    const left = firstU.bbox.left / uPlot.pxRatio;
-    trackPx = Math.max(1, firstU.bbox.width / uPlot.pxRatio);
-    track.style.marginLeft = left + 'px';
-    track.style.width = trackPx + 'px';
-    current = view;
-    if (!dragging) domain = sliderDomain(sharedAxisExtent(plots, SLIDER_PAD_RATIO), view);
-    const px = viewToSlider(domain, view, trackPx);
-    win.style.left = px.left + 'px';
-    win.style.width = Math.max(4, px.width) + 'px';
-  }
-
-  let dragging = false;
-  function startDrag(e, mode) {
-    e.preventDefault();
-    e.stopPropagation();
-    dragging = true;
-    const x0 = e.clientX;
-    const start = viewToSlider(domain, current, trackPx);
-    const move = (m) => {
-      const dx = m.clientX - x0;
-      let left = start.left, width = start.width;
-      if (mode === 'move') left += dx;
-      else if (mode === 'left') { left += dx; width -= dx; }
-      else width += dx;
-      if (width < 2) return;
-      onChange(sliderToView(domain, left, width, trackPx));
-    };
-    const up = () => {
-      dragging = false;
-      window.removeEventListener('mousemove', move);
-      window.removeEventListener('mouseup', up);
-    };
-    window.addEventListener('mousemove', move);
-    window.addEventListener('mouseup', up);
-  }
-  win.addEventListener('mousedown', (e) => startDrag(e, 'move'));
-  leftHandle.addEventListener('mousedown', (e) => startDrag(e, 'left'));
-  rightHandle.addEventListener('mousedown', (e) => startDrag(e, 'right'));
-
-  return { el: track, update };
-}
-
 // --- PNG export -------------------------------------------------------------------------
 
 // Each subplot is its own canvas: stitch them, with titles and legends, into one image.
@@ -508,12 +453,12 @@ function exportPng(root, charts, pixelRatio, background) {
     const canvas = u.ctx.canvas;
     const r = canvas.getBoundingClientRect();
     ctx.drawImage(canvas, r.left - rootRect.left, r.top - rootRect.top, r.width, r.height);
-    const plotLeft = r.left - rootRect.left + u.bbox.left / uPlot.pxRatio;
-    const title = u.root.querySelector('.u-title')?.textContent || '';
-    const headerY = r.top - rootRect.top - TITLE_PX / 2;
+    const x = r.left - rootRect.left + Y_AXIS_PX + BADGE_INSET_PX;
+    const y = r.top - rootRect.top + CHART_PADDING[0] + BADGE_INSET_PX + 8;
+    const title = u.root.querySelector('.pv-header-title')?.textContent || '';
     ctx.fillStyle = MUTED;
-    ctx.fillText(title, plotLeft, headerY);
-    if (u.series.length > 2) drawLegendRow(ctx, u, meta, plotLeft + ctx.measureText(title).width + 16, headerY);
+    ctx.fillText(title, x, y);
+    if (u.series.length > 2) drawLegendRow(ctx, u, meta, x + ctx.measureText(title).width + 12, y);
   }
   return out.toDataURL('image/png');
 }

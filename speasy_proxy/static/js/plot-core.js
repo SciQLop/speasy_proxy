@@ -333,35 +333,6 @@ export function resampleTarget(widthPx, pointsPerPixel, bufferRatio) {
   return Math.max(MIN_RESAMPLE_POINTS, Math.ceil(w * pointsPerPixel * fetchSpanFactor));
 }
 
-// X-axis domain padded symmetrically around the loaded time span by padRatio of the span,
-// giving the dataZoom room to pan beyond the loaded data without hitting a hard wall.
-export function axisExtent(times, padRatio) {
-  if (!times || times.length === 0) return { min: undefined, max: undefined };
-  const lo = times[0];
-  const hi = times[times.length - 1];
-  const pad = (hi - lo) * padRatio;
-  return { min: lo - pad, max: hi + pad };
-}
-
-// Union time extent across every product cache of every subplot, padded by padRatio.
-// Stacked subplots must share one x domain: the dataZoom window is shared, and if each
-// axis has its own extent (caches merge asynchronously, so they drift) the window
-// clamps differently per axis — panels end up time-shifted against each other.
-export function sharedAxisExtent(plots, padRatio) {
-  let lo = Infinity;
-  let hi = -Infinity;
-  for (const subplot of plots || []) {
-    for (const prod of subplot.products || []) {
-      const t = subplot.productData?.[prod.path]?.times;
-      if (t && t.length > 0) {
-        if (t[0] < lo) lo = t[0];
-        if (t[t.length - 1] > hi) hi = t[t.length - 1];
-      }
-    }
-  }
-  return lo <= hi ? axisExtent([lo, hi], padRatio) : { min: undefined, max: undefined };
-}
-
 // Index of the sample closest to t in a sorted time array, or -1 when empty.
 export function nearestIndex(times, t) {
   const n = times ? times.length : 0;
@@ -393,6 +364,12 @@ export function yRangeFromPixels(scale, bottomPx, topPx) {
   return Number.isFinite(min) && Number.isFinite(max) && max > min ? { min, max } : null;
 }
 
+// Metadata text from CDF attributes: fixed-width strings come NUL-padded, and a
+// "unitless" AMDA product sends UNITS as a lone NUL.
+export function cleanText(s) {
+  return String(s ?? '').replace(/\0/g, '').trim();
+}
+
 // Axis tick label that fits a fixed-width gutter: 6 significant digits, exponent form
 // outside [1e-3, 1e5). uPlot passes null for log-axis ticks it leaves unlabeled.
 export function fmtTick(v) {
@@ -401,25 +378,6 @@ export function fmtTick(v) {
   const a = Math.abs(v);
   if (a < 1e-3 || a >= 1e5) return v.toExponential(2).replace(/\.?0+e/, 'e').replace('e+', 'e');
   return String(Number(v.toPrecision(6)));
-}
-
-// Time slider: the track spans the loaded-data extent, widened to include the view so
-// the window never falls off the track while panning past loaded data.
-export function sliderDomain(extent, view) {
-  const min = extent.min == null ? view.start : Math.min(extent.min, view.start);
-  const max = extent.max == null ? view.end : Math.max(extent.max, view.end);
-  return { min, max };
-}
-
-export function viewToSlider(domain, view, trackPx) {
-  const scale = trackPx / ((domain.max - domain.min) || 1);
-  return { left: (view.start - domain.min) * scale, width: (view.end - view.start) * scale };
-}
-
-export function sliderToView(domain, leftPx, widthPx, trackPx) {
-  const scale = ((domain.max - domain.min) || 1) / trackPx;
-  const start = domain.min + leftPx * scale;
-  return { start, end: start + widthPx * scale };
 }
 
 // A signature of everything that affects the chart's *structure* (component layout), so a

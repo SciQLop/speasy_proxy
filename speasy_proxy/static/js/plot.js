@@ -8,7 +8,7 @@ import {
   createSubplotData, createProductCache, subplotToConfig, subplotFromConfig,
   detectPlotType, mergeSorted, mergeSortedRows, mergeIntervals, evictProductCache,
   configToBase64, base64ToConfig, isCovered, resolutionSufficient, rangesOverlap, trimCacheWindow, cacheToCsv,
-  structureKey, resampleTarget, plotTypeFromCache, computeValueRange, mergeValueRange,
+  structureKey, resampleTarget, plotTypeFromCache, computeValueRange, mergeValueRange, cleanText,
 } from './plot-core.js';
 import { ascendingSpectrogram } from './spectrogram.js';
 import { fetchData as apiFetchData, fetchInventory } from './api-client.js';
@@ -899,7 +899,7 @@ import { createPlotView } from './plot-view.js';
         const rawTimes = json.axes[0].values;
         const newTimes = rawTimes.map(t => t / 1e6);
         const columns = json.columns || [];
-        const unit = (json.values.meta && json.values.meta.UNITS) || '';
+        const unit = cleanText(json.values.meta && json.values.meta.UNITS);
 
         const isHeatmap = detectPlotType(json) === 'heatmap';
         const hasYAxis = isHeatmap && json.axes.length >= 2;
@@ -917,8 +917,8 @@ import { createPlotView } from './plot-view.js';
             if (isHeatmap) {
                 if (hasYAxis) {
                     cache.yAxis = yAxis;
-                    cache.yAxisName = json.axes[1].name || '';
-                    cache.yAxisUnit = (json.axes[1].meta && json.axes[1].meta.UNITS) || '';
+                    cache.yAxisName = cleanText(json.axes[1].name);
+                    cache.yAxisUnit = cleanText(json.axes[1].meta && json.axes[1].meta.UNITS);
                 } else {
                     cache.yAxis = newValues[0] ? newValues[0].map((_, i) => i) : [];
                 }

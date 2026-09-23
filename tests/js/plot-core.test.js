@@ -3,9 +3,9 @@ import {
   mergeSorted, mergeSortedRows, mergeIntervals, evictProductCache,
   detectPlotType, configToBase64, base64ToConfig, isCovered, resolutionSufficient, rangesOverlap, trimCacheWindow, cacheToCsv,
   createSubplotData, createProductCache, subplotToConfig, subplotFromConfig,
-  normalizeWheelDelta, zoomRange, panRange, zoomToward, axisExtent, sharedAxisExtent, structureKey, resampleTarget,
+  normalizeWheelDelta, zoomRange, panRange, zoomToward, structureKey, resampleTarget,
   plotTypeFromCache, computeValueRange, mergeValueRange, renderableRange,
-  nearestIndex, lineTable, yRangeFromPixels, fmtTick, sliderDomain, viewToSlider, sliderToView,
+  nearestIndex, lineTable, yRangeFromPixels, fmtTick, cleanText,
 } from '../../speasy_proxy/static/js/plot-core.js';
 
 describe('merge', () => {
@@ -339,35 +339,6 @@ describe('zoomToward', () => {
   });
 });
 
-describe('axisExtent', () => {
-  it('pads the loaded span symmetrically', () => {
-    expect(axisExtent([10, 20], 0.5)).toEqual({ min: 5, max: 25 });
-  });
-  it('returns undefined bounds for empty data', () => {
-    expect(axisExtent([], 0.5)).toEqual({ min: undefined, max: undefined });
-  });
-});
-
-describe('sharedAxisExtent', () => {
-  const mkSubplot = (spans) => ({
-    products: spans.map((_, i) => ({ path: 'p' + i })),
-    productData: Object.fromEntries(spans.map(([lo, hi], i) => ['p' + i, { times: hi > lo ? [lo, hi] : [] }])),
-  });
-  it('unions times across subplots and products, then pads', () => {
-    const plots = [mkSubplot([[10, 50]]), mkSubplot([[20, 90], [0, 30]])];
-    // union is [0, 90], pad 0.5 × 90 = 45 on each side
-    expect(sharedAxisExtent(plots, 0.5)).toEqual({ min: -45, max: 135 });
-  });
-  it('ignores empty caches', () => {
-    const plots = [mkSubplot([[0, 0], [10, 20]])];
-    expect(sharedAxisExtent(plots, 0.5)).toEqual({ min: 5, max: 25 });
-  });
-  it('returns undefined bounds when nothing has data', () => {
-    expect(sharedAxisExtent([mkSubplot([[0, 0]])], 0.5)).toEqual({ min: undefined, max: undefined });
-    expect(sharedAxisExtent([], 0.5)).toEqual({ min: undefined, max: undefined });
-  });
-});
-
 describe('resampleTarget', () => {
   it('scales the budget by the fetch span so the visible third hits the density', () => {
     // 1500px wide, 2 pts/px visible, 1x buffer each side (fetch span = 3x visible).
@@ -501,19 +472,6 @@ describe('lineTable', () => {
   });
 });
 
-describe('time slider geometry', () => {
-  it('widens the domain so the view always fits on the track', () => {
-    expect(sliderDomain({ min: 0, max: 100 }, { start: 50, end: 150 })).toEqual({ min: 0, max: 150 });
-    expect(sliderDomain({ min: undefined, max: undefined }, { start: 5, end: 9 })).toEqual({ min: 5, max: 9 });
-  });
-  it('maps a view onto track pixels and back', () => {
-    const domain = { min: 0, max: 1000 };
-    const px = viewToSlider(domain, { start: 250, end: 500 }, 400);
-    expect(px).toEqual({ left: 100, width: 100 });
-    expect(sliderToView(domain, px.left, px.width, 400)).toEqual({ start: 250, end: 500 });
-  });
-});
-
 describe('yRangeFromPixels', () => {
   const lin = { min: 0, max: 100, log: false, heightPx: 200 };
   it('maps pixel rows back to values on a linear axis (0 = top)', () => {
@@ -548,5 +506,13 @@ describe('fmtTick', () => {
   });
   it('leaves a tick unlabeled when uPlot passes null (skipped log-axis minors)', () => {
     expect(fmtTick(null)).toBe('');
+  });
+});
+
+describe('cleanText', () => {
+  it('strips CDF NUL padding and surrounding blanks', () => {
+    expect(cleanText('\u0000')).toBe('');
+    expect(cleanText('nT\u0000\u0000 ')).toBe('nT');
+    expect(cleanText(undefined)).toBe('');
   });
 });
