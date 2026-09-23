@@ -31,11 +31,13 @@ just version identity.
 """
 import asyncio
 import logging
+import os
 
 from datetime import UTC, datetime, timedelta
 
 from starlette.concurrency import run_in_threadpool
 
+from speasy.config import index as speasy_index
 from speasy.core import cache
 from speasy.products.variable import from_dictionary
 
@@ -103,6 +105,13 @@ def scrub_all(batch_size: int) -> int:
         log.debug(f"Cache scrub: {min(i + batch_size, len(keys))}/{len(keys)} keys checked, "
                   f"{dropped} dropped so far.")
     return dropped
+
+
+def scrub_state_path() -> str:
+    """Where the sweep schedule lives: under speasy's own index path, a persistent volume in prod
+    (/index/data), so the weekly clock survives redeploys. The proxy's own index defaults to /tmp,
+    which is wiped with the container."""
+    return config.cache_scrub_state_path.get() or os.path.join(speasy_index.path(), "speasy_proxy_scrub")
 
 
 def _sweep(batch_size: int):

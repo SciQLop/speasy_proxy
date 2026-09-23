@@ -13,7 +13,8 @@ from .api.v1 import api_router as v1_api_router
 from .frontend import frontend_router
 import logging
 from .backend.inventory_updater import InventoryManager
-from .backend.cache_scrubber import periodic_scrub_loop
+from .backend.cache_scrubber import periodic_scrub_loop, scrub_state_path
+from .backend.shared_inventory_store import SharedInventoryStore
 from .backend.request_logging import RequestLoggingMiddleware
 from .config import core as config
 from contextlib import asynccontextmanager
@@ -90,7 +91,7 @@ async def lifespan(app: FastAPI):
     scrub_task = asyncio.create_task(periodic_scrub_loop(
         interval_seconds=config.cache_scrub_interval.get(),
         batch_size=config.cache_scrub_batch_size.get(),
-        store=mgr.shared_store,
+        store=SharedInventoryStore(scrub_state_path()),
     ))
     yield
     task.cancel()

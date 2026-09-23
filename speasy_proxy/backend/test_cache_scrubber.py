@@ -326,6 +326,22 @@ async def test_periodic_scrub_loop_survives_a_failing_check(tmp_path, monkeypatc
     assert len(calls) >= 2
 
 
+def test_scrub_state_survives_container_recreation(monkeypatch):
+    """The proxy's own index defaults to /tmp, which lives in the container and is wiped on every redeploy:
+    with weekly-or-faster deploys the sweep clock would restart forever and never fire. speasy's index path
+    is a persistent volume in prod (/index/data), so the scrub state goes there."""
+    monkeypatch.setattr(m.speasy_index, "path", lambda: "/index/data")
+    monkeypatch.setattr(m.config.cache_scrub_state_path, "get", lambda: "")
+
+    assert m.scrub_state_path() == "/index/data/speasy_proxy_scrub"
+
+
+def test_scrub_state_path_can_be_configured(monkeypatch):
+    monkeypatch.setattr(m.config.cache_scrub_state_path, "get", lambda: "/somewhere/else")
+
+    assert m.scrub_state_path() == "/somewhere/else"
+
+
 @pytest.fixture
 def anyio_backend():
     return "asyncio"
