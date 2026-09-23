@@ -24,6 +24,7 @@ _BUILD_DATES = "inventory/build_dates"
 _LAST_REFRESH = "inventory/last_refresh"
 _LAST_ATTEMPT = "inventory/last_attempt"
 _LEASE = "inventory/lease"
+_LAST_SCRUB = "cache_scrub/last"
 
 
 class SharedInventoryStore:
@@ -56,6 +57,9 @@ class SharedInventoryStore:
 
     def last_attempt(self) -> Optional[datetime]:
         return self._get_dt(_LAST_ATTEMPT)
+
+    def last_scrub(self) -> Optional[datetime]:
+        return self._get_dt(_LAST_SCRUB)
 
     def _get_dt(self, key: str) -> Optional[datetime]:
         if not self.enabled:
@@ -91,12 +95,18 @@ class SharedInventoryStore:
 
     # --- writes ------------------------------------------------------------
     def set_last_attempt(self, when: datetime) -> None:
+        self._set_dt(_LAST_ATTEMPT, when)
+
+    def set_last_scrub(self, when: datetime) -> None:
+        self._set_dt(_LAST_SCRUB, when)
+
+    def _set_dt(self, key: str, when: datetime) -> None:
         if not self.enabled:
             return
         try:
-            self._cache.set(_LAST_ATTEMPT, when.isoformat())
+            self._cache.set(key, when.isoformat())
         except Exception:
-            log.exception("Failed to record shared inventory attempt.")
+            log.exception(f"Failed to record shared {key}.")
 
     def publish(self, payload: dict, build_dates: dict) -> Optional[int]:
         """Atomically publish a new generation. `generation` is written last as the
@@ -131,21 +141,21 @@ class SharedInventoryStore:
             return None
 
     # --- lease -------------------------------------------------------------
-    def try_acquire_lease(self, ttl: int) -> bool:
+    def try_acquire_lease(self, ttl: int, key: str = _LEASE) -> bool:
         """Atomically claim the refresh lease. Returns True if acquired. When the
         store is disabled, returns True so the worker acts as sole leader."""
         if not self.enabled:
             return True
         try:
-            return bool(self._cache.add(_LEASE, os.getpid(), expire=ttl))
+            return bool(self._cache.add(key, os.getpid(), expire=ttl))
         except Exception:
             log.exception("Failed to acquire inventory refresh lease.")
             return False
 
-    def release_lease(self) -> None:
+    def release_lease(self, key: str = _LEASE) -> None:
         if not self.enabled:
             return
         try:
-            self._cache.delete(_LEASE)
+            self._cache.delete(key)
         except Exception:
             log.exception("Failed to release inventory refresh lease.")

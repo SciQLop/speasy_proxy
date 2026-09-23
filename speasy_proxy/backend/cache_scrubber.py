@@ -32,7 +32,7 @@ just version identity.
 import asyncio
 import logging
 
-from datetime import datetime
+from datetime import UTC, datetime, timedelta
 
 from starlette.concurrency import run_in_threadpool
 
@@ -40,8 +40,12 @@ from speasy.core import cache
 from speasy.products.variable import from_dictionary
 
 from ..config import core as config
+from .shared_inventory_store import SharedInventoryStore
 
 log = logging.getLogger(__name__)
+
+SCRUB_LEASE = "cache_scrub/lease"
+SCRUB_LEASE_TTL = 24 * 3600  # longer than any full sweep; frees the lease if its holder died mid-sweep
 
 # Allowlist of provider data-cache key prefixes -- the @Cacheable /
 # @UnversionedProviderCache prefixes in speasy.data_providers.* -- the only
@@ -101,31 +105,59 @@ def scrub_all(batch_size: int) -> int:
     return dropped
 
 
-async def _scrub_tick(batch_size: int):
+def _sweep(batch_size: int):
     try:
-        dropped = await run_in_threadpool(scrub_all, batch_size)
+        dropped = scrub_all(batch_size)
         log.info(f"Cache scrub: swept the cache, dropped {dropped} fossil entries.")
     except Exception:
         log.exception("Cache scrub failed.")
 
 
-async def periodic_scrub_loop(interval_seconds: int, batch_size: int):
-    """Background task: sweeps the whole cache once per interval (default
-    weekly). Never lets an error break the loop.
+def _scrub_due(store: SharedInventoryStore, interval: timedelta, now: datetime) -> bool:
+    last = store.last_scrub()
+    if last is None:
+        # First check ever: start the clock instead of sweeping. A full sweep right away
+        # floods the logs (2026-09-01 incident), see periodic_scrub_loop.
+        store.set_last_scrub(now)
+        return False
+    return now - last >= interval
 
-    Deliberately does NOT scrub immediately on startup (reverted 2026-09-01,
-    see incident memory): cache.entries() + cache.get_item() per key means a
-    full sweep touches every one of the (multi-million) entries in a
-    production cache synchronously, in one burst. A meaningful fraction of a
-    years-old cache is apparently unreadable off disk for reasons unrelated to
-    this scrubber (memory-mapped file open failures -- pre-existing, seen
-    trickling in at ~300/day before this code ever ran) -- walking the whole
-    cache at once touches all of them simultaneously instead of the normal
-    slow trickle, which live-incident-confirmed floods logs and looks
-    (feels) like mass cache deletion on every single restart, forever, since
-    a restart re-triggers the same immediate sweep every time. Scrubbing
-    only on the slower periodic cadence keeps the fossil/stale-AMDA cleanup
-    this module exists for, without that burst blast radius."""
+
+def scrub_if_due(store: SharedInventoryStore, interval: timedelta, batch_size: int, now: datetime) -> bool:
+    """Sweep the cache if a full interval passed since the last sweep by ANY worker.
+    Returns True when this call swept. Without a shared store there is no sweep at all:
+    better no hygiene than every gunicorn worker walking the whole cache at once."""
+    if not store.enabled or not _scrub_due(store, interval, now):
+        return False
+    if not store.try_acquire_lease(SCRUB_LEASE_TTL, key=SCRUB_LEASE):
+        return False
+    try:
+        if not _scrub_due(store, interval, now):  # another worker swept between our check and the lease
+            return False
+        store.set_last_scrub(now)  # before sweeping: a sweep that crashes must not be retried every poll
+        _sweep(batch_size)
+        return True
+    finally:
+        store.release_lease(SCRUB_LEASE)
+
+
+async def periodic_scrub_loop(interval_seconds: int, batch_size: int, store: SharedInventoryStore,
+                              poll_seconds: int = 3600):
+    """Background task, one per gunicorn worker: every poll_seconds, asks whether a sweep is due.
+    The schedule and a lease live in the shared store, so across all workers -- and across
+    worker recycling and restarts -- the whole cache is swept once per interval (default weekly).
+    Never lets an error break the loop.
+
+    Deliberately never sweeps on startup (reverted 2026-09-01, see incident memory):
+    cache.entries() + cache.get_item() per key means a full sweep touches every one of
+    the (multi-million) entries in a production cache in one burst. A meaningful fraction
+    of a years-old cache is unreadable off disk for reasons unrelated to this scrubber
+    (memory-mapped file open failures, ~300/day before this code ever ran); touching all of
+    them at once floods the logs and looks like mass cache deletion."""
+    interval = timedelta(seconds=interval_seconds)
     while True:
-        await asyncio.sleep(interval_seconds)
-        await _scrub_tick(batch_size)
+        await asyncio.sleep(poll_seconds)
+        try:
+            await run_in_threadpool(scrub_if_due, store, interval, batch_size, datetime.now(UTC))
+        except Exception:
+            log.exception("Cache scrub check failed.")

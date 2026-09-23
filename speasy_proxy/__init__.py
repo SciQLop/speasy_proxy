@@ -90,6 +90,7 @@ async def lifespan(app: FastAPI):
     scrub_task = asyncio.create_task(periodic_scrub_loop(
         interval_seconds=config.cache_scrub_interval.get(),
         batch_size=config.cache_scrub_batch_size.get(),
+        store=mgr.shared_store,
     ))
     yield
     task.cancel()

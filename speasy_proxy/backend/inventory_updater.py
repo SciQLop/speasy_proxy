@@ -74,6 +74,10 @@ class InventoryManager:
         self._shared = shared_store if shared_store is not None else SharedInventoryStore(_default_shared_path())
 
     @property
+    def shared_store(self) -> SharedInventoryStore:
+        return self._shared
+
+    @property
     def last_update(self) -> datetime:
         return self._last_update
 

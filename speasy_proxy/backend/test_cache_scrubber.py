@@ -6,6 +6,8 @@ import numpy as np
 import pytest
 
 from speasy.core.cache.cache import CacheItem
+
+from speasy_proxy.backend.shared_inventory_store import SharedInventoryStore
 from speasy.products.variable import DataContainer, SpeasyVariable, VariableTimeAxis, to_dictionary
 
 m = importlib.import_module("speasy_proxy.backend.cache_scrubber")
@@ -204,47 +206,115 @@ def test_scrub_all_covers_every_key_across_multiple_batches(monkeypatch):
     assert sorted(dropped_keys) == sorted(expected)
 
 
-@pytest.mark.anyio
-async def test_periodic_scrub_loop_does_not_scrub_immediately_on_startup(monkeypatch):
-    """Reverted 2026-09-01 (live incident): scrub_all() touches every key in
-    the cache via cache.entries()/get_item(), which at production scale
-    (millions of entries) means an immediate-on-startup sweep hits every
-    unreadable legacy entry in the whole cache in one synchronous burst --
-    live-confirmed to flood logs and look like mass cache deletion, on every
-    single restart. Must wait for the first interval like any other tick."""
+WEEK = timedelta(days=7)
+NOW = datetime(2026, 9, 23, 12, tzinfo=timezone.utc)
+
+
+@pytest.fixture
+def scrub_calls(monkeypatch):
     calls = []
     monkeypatch.setattr(m, "scrub_all", lambda batch_size: calls.append(batch_size) or 0)
+    return calls
 
-    async def _run():
-        await m.periodic_scrub_loop(interval_seconds=3600, batch_size=5)
 
-    task = asyncio.create_task(_run())
-    await asyncio.sleep(0.05)  # give a wrongly-immediate call every chance to happen
+def _store(tmp_path):
+    return SharedInventoryStore(path=str(tmp_path / "shared"))
+
+
+def test_first_check_ever_only_starts_the_clock(tmp_path, scrub_calls):
+    """No sweep on a fresh deployment either (2026-09-01 incident: a full sweep in one burst
+    floods the logs). The first check records 'now'; the first sweep comes one interval later."""
+    store = _store(tmp_path)
+
+    assert m.scrub_if_due(store, WEEK, batch_size=5, now=NOW) is False
+    assert scrub_calls == []
+    assert store.last_scrub() == NOW
+
+
+def test_one_sweep_per_interval_across_all_workers(tmp_path, scrub_calls):
+    """Every gunicorn worker polls; exactly one of them sweeps, once per interval."""
+    workers = [_store(tmp_path) for _ in range(3)]
+    workers[0].set_last_scrub(NOW - WEEK - timedelta(seconds=1))
+
+    swept = [m.scrub_if_due(w, WEEK, batch_size=5, now=NOW) for w in workers]
+
+    assert swept == [True, False, False]
+    assert scrub_calls == [5]
+    assert workers[2].last_scrub() == NOW
+
+
+def test_not_due_means_no_sweep(tmp_path, scrub_calls):
+    store = _store(tmp_path)
+    store.set_last_scrub(NOW - timedelta(days=6))
+
+    assert m.scrub_if_due(store, WEEK, batch_size=5, now=NOW) is False
+    assert scrub_calls == []
+
+
+def test_no_sweep_while_another_worker_holds_the_scrub_lease(tmp_path, scrub_calls):
+    store, other = _store(tmp_path), _store(tmp_path)
+    store.set_last_scrub(NOW - 2 * WEEK)
+    assert other.try_acquire_lease(ttl=60, key=m.SCRUB_LEASE)
+
+    assert m.scrub_if_due(store, WEEK, batch_size=5, now=NOW) is False
+    assert scrub_calls == []
+
+
+def test_scrub_lease_is_independent_of_the_inventory_lease(tmp_path, scrub_calls):
+    """A long inventory refresh must not block the weekly sweep, nor the reverse."""
+    store = _store(tmp_path)
+    store.set_last_scrub(NOW - 2 * WEEK)
+    assert store.try_acquire_lease(ttl=60)  # inventory refresh lease
+
+    assert m.scrub_if_due(store, WEEK, batch_size=5, now=NOW) is True
+
+
+def test_unavailable_shared_store_never_sweeps(scrub_calls):
+    """Degrade to no hygiene rather than to 12 workers sweeping the whole cache at once."""
+    store = SharedInventoryStore(path=None)
+
+    assert [m.scrub_if_due(store, WEEK, batch_size=5, now=NOW + i * WEEK) for i in range(3)] == [False] * 3
+    assert scrub_calls == []
+
+
+def test_a_failing_sweep_is_not_retried_every_poll(tmp_path, monkeypatch):
+    """A crash mid-sweep must not turn into a full sweep attempt every hour."""
+    def _boom(batch_size):
+        raise RuntimeError("boom")
+
+    monkeypatch.setattr(m, "scrub_all", _boom)
+    store = _store(tmp_path)
+    store.set_last_scrub(NOW - 2 * WEEK)
+
+    assert m.scrub_if_due(store, WEEK, batch_size=5, now=NOW) is True
+    assert m.scrub_if_due(store, WEEK, batch_size=5, now=NOW + timedelta(hours=1)) is False
+    assert store.try_acquire_lease(ttl=60, key=m.SCRUB_LEASE)  # lease released despite the failure
+
+
+@pytest.mark.anyio
+async def test_periodic_scrub_loop_does_not_scrub_on_startup(tmp_path, scrub_calls):
+    """Polling many times on a fresh deployment must only start the clock, never sweep."""
+    task = asyncio.create_task(m.periodic_scrub_loop(interval_seconds=3600, batch_size=5, store=_store(tmp_path),
+                                                     poll_seconds=0))
+    await asyncio.sleep(0.05)
     task.cancel()
     with pytest.raises(asyncio.CancelledError):
         await task
 
-    assert calls == []
+    assert scrub_calls == []
 
 
 @pytest.mark.anyio
-async def test_periodic_scrub_loop_survives_tick_exception(monkeypatch):
-    """A failing tick must be logged and swallowed, not kill the loop -- verified
-    by getting past a first raising tick to a second call before cancellation."""
+async def test_periodic_scrub_loop_survives_a_failing_check(tmp_path, monkeypatch):
     calls = []
 
-    def _boom(batch_size):
-        calls.append(batch_size)
+    def _boom(*args, **kwargs):
+        calls.append(1)
         raise RuntimeError("boom")
 
-    monkeypatch.setattr(m, "scrub_all", _boom)
-
-    task = None
-
-    async def _run():
-        await m.periodic_scrub_loop(interval_seconds=0, batch_size=5)
-
-    task = asyncio.create_task(_run())
+    monkeypatch.setattr(m, "scrub_if_due", _boom)
+    task = asyncio.create_task(m.periodic_scrub_loop(interval_seconds=0, batch_size=5, store=_store(tmp_path),
+                                                     poll_seconds=0))
     for _ in range(50):
         if len(calls) >= 2:
             break
