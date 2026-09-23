@@ -47,13 +47,13 @@ Build system: **hatchling** (pyproject.toml), managed with **uv**. Version bumps
 - **`config/`** — Configuration via speasy's `ConfigSection`. Settings controlled by environment variables (see below).
 - **`index/`** — Persistent key-value state using `diskcache.Index` (tracks `up_since`).
 - **`api/pickle.py`** — Shared pickle serialization utility (clamps requested protocol to `pickle.HIGHEST_PROTOCOL`).
-- **`api/compression.py`** — `compress_if_asked` (zstd via pyzstd).
+- **`api/compression.py`** — `compress_if_asked` (zstd via pyzstd) and `blosc_arrays` (`compression=blosc`: each numeric numpy array of a `python_dict` payload becomes `{"__blosc__": chunk, "dtype", "shape"}`, byte-shuffle + zstd1 via numcodecs, mime `application/x-speasy-blosc-pickle`; takes precedence over `zstd_compression`, unknown values ignored). Client side: SciQLop/speasy#373.
 
 ### Key Data Flow
 1. Client requests data via `GET /get_data?path=provider/product&start_time=...&stop_time=...`
 2. Request is dispatched to speasy's `get_data()` in a thread pool (speasy is synchronous)
 3. If `max_points` is set and the result is larger, it is resampled (in a thread pool) via `backend/resample.py`
-4. Response is encoded in the requested `format` (`python_dict`/pickle, `speasy_variable`/pickle, `cdf`, `json`, `html_bokeh`) and optionally zstd-compressed
+4. Response is encoded in the requested `format` (`python_dict`/pickle, `speasy_variable`/pickle, `cdf`, `json`, `html_bokeh`) and optionally zstd-compressed (or blosc-compressed per array); `/get_data` also sends a `Server-Timing` header (`queue`/`fetch`/`resample`/`encode` ms)
 5. Inventory updates happen on a background timer and are also triggered lazily on requests
 
 Error codes: upstream fetch failure → **502**, encode failure → **500** (both as JSON `{"error", "detail"}`).

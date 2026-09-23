@@ -226,6 +226,43 @@ async def test_server_timing_is_set_on_upstream_failure(monkeypatch):
     assert resp.status_code == 502
     assert set(_parse_server_timing(resp.headers["Server-Timing"])) == {"queue", "fetch"}
 
+@pytest.mark.anyio
+async def test_blosc_compression_encodes_arrays_and_wins_over_zstd(monkeypatch):
+    """compression=blosc is sent together with zstd_compression=true by new clients: blosc must win."""
+    import pickle
+    from speasy.products.variable import to_dictionary
+    from speasy_proxy.api.compression import BLOSC_MIME
+    from speasy_proxy.api.test_compression import _unblosc
+
+    var = _var_with_byte_string_label_axis()
+    resp = await _get_data_with_stub(monkeypatch, lambda **kw: var, format="python_dict",
+                                     zstd_compression=True, compression="blosc")
+
+    assert resp.headers["Content-Type"] == BLOSC_MIME
+    decoded, expected = _unblosc(pickle.loads(resp.body)), to_dictionary(var)
+    np.testing.assert_array_equal(decoded["values"]["values"], expected["values"]["values"])
+    np.testing.assert_array_equal(decoded["axes"][0]["values"], expected["axes"][0]["values"])
+    np.testing.assert_array_equal(decoded["axes"][1]["values"], expected["axes"][1]["values"])
+    assert decoded["columns"] == expected["columns"]
+
+
+@pytest.mark.anyio
+async def test_blosc_compression_leaves_other_formats_alone(monkeypatch):
+    resp = await _get_data_with_stub(monkeypatch, lambda **kw: _var_with_byte_string_label_axis(),
+                                     format="json", compression="blosc")
+
+    assert "json" in resp.headers["Content-Type"]
+
+
+@pytest.mark.anyio
+async def test_unknown_compression_falls_back_to_zstd(monkeypatch):
+    """A future client asking for a codec this server lacks must still get a usable answer, not a 422."""
+    resp = await _get_data_with_stub(monkeypatch, lambda **kw: _var_with_byte_string_label_axis(),
+                                     format="python_dict", zstd_compression=True, compression="brotli-2031")
+
+    assert resp.headers["Content-Type"] == "application/x-zstd-compressed"
+
+
 @pytest.fixture
 def anyio_backend():
     return "asyncio"

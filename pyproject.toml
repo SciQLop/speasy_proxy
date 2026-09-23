@@ -48,6 +48,7 @@ dependencies = [
     "uvicorn",
     "uvicorn-worker",
     "pycrdt-websocket>=0.15.4,<0.16.0",
+    "numcodecs>=0.13.1",
 ]
 
 [project.optional-dependencies]

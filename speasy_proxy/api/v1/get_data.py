@@ -19,8 +19,8 @@ from speasy.products.variable import to_dictionary
 from speasy.core.codecs import get_codec
 
 from speasy_proxy.api import pickle_data
-from .query_parameters import ZstdCompression, PickleProtocol, DataFormat, MaxPoints, ResampleStrategy
-from speasy_proxy.api.compression import compress_if_asked
+from .query_parameters import ZstdCompression, Compression, PickleProtocol, DataFormat, MaxPoints, ResampleStrategy
+from speasy_proxy.api.compression import compress_if_asked, blosc_arrays, BLOSC_MIME
 from speasy_proxy.backend.bokeh_backend import plot_data
 from speasy_proxy.backend.resample import resample
 from speasy_proxy.config import core as core_config
@@ -111,6 +111,7 @@ async def get_data(request: Request,
                    stop_time: datetime = Query(examples=["2018-10-24T02:00:00"]),
                    format: DataFormat = "python_dict",
                    zstd_compression: ZstdCompression = False,
+                   compression: Compression = None,
                    output_format: Optional[str] = Query(None, enum=["CDF_ISTP"],
                                                         description="Data format used to retrieve data from remote server (such as AMDA), not the data format of the current request. Only available with AMDA."),
                    coordinate_system: Optional[str] = Query(None, enum=["geo", "gm", "gse", "gsm", "sm", "geitod",
@@ -165,7 +166,7 @@ async def get_data(request: Request,
     try:
         result, mime = await timer.run("encode", _compress_and_encode_output, var, path, start_time, stop_time, format,
                                                request, pickle_proto,
-                                               zstd_compression)
+                                               zstd_compression, compression)
     except Exception as e:
         log.error(f'{request_id}: Failed to encode data for {product}: {e}')
         return JSONResponse(status_code=500, content={"error": f"Failed to encode data for {product}", "detail": str(e)},
@@ -221,6 +222,8 @@ def encode_output(var, path: str, start_time: str, stop_time: str, fmt: str, req
 
 
 def _compress_and_encode_output(var, path, start_time, stop_time, fmt, request, pickle_proto,
-                                      zstd_compression: bool = False):
+                                      zstd_compression: bool = False, compression: Optional[str] = None):
+    if compression == "blosc" and fmt == "python_dict" and var is not None:
+        return pickle_data(blosc_arrays(to_dictionary(var)), pickle_proto), BLOSC_MIME
     return compress_if_asked(*encode_output(var, path, start_time, stop_time, fmt, request, pickle_proto),
                              zstd_compression=zstd_compression)

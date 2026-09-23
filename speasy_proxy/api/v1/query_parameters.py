@@ -5,6 +5,10 @@ import speasy as spz
 
 Provider = Annotated[str, Query(enum=spz.list_providers(), examples=["ssc"])]
 ZstdCompression = Annotated[bool, Query(examples=[False])]
+Compression = Annotated[Optional[str], Query(
+    examples=["blosc"],
+    description="Per-array codec for format=python_dict, takes precedence over zstd_compression. "
+                "'blosc': byte-shuffle + zstd per numpy array. Unknown values are ignored.")]
 InventoryFormat = Annotated[str, Query(examples=["json"], enum=["json", "python_dict"])]
 PickleProtocol = Annotated[int, Query(examples=[3], ge=1, le=5)]
 DataFormat = Annotated[str, Query(
