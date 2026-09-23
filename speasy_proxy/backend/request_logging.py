@@ -49,16 +49,19 @@ class RequestLoggingMiddleware:
         # root_path is exposed separately too, but only for apps that need it
         # standalone (e.g. URL generation). Concatenating it here double-counts.
         path = scope["path"]
+        query = scope.get("query_string", b"").decode("latin-1")
         log.info(
-            "%s %s %s %.2fms %db",
+            "%s %s%s %s %.2fms %db",
             scope["method"],
             path,
+            f"?{query}" if query else "",
             status["code"],
             duration_ms,
             bytes_sent,
             extra={
                 "method": scope["method"],
                 "path": path,
+                "query": query,
                 "status": status["code"],
                 "duration_ms": duration_ms,
                 "bytes": bytes_sent,

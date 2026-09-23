@@ -21,19 +21,17 @@ handlers:
     formatter: default
     stream: ext://sys.stdout
   filelog:
-    class: logging.handlers.RotatingFileHandler
+    # Never a rotating handler: every gunicorn worker would rotate the shared file on its own.
+    # Rotation is the host's logrotate job; this handler reopens the file once it has been moved.
+    class: logging.handlers.WatchedFileHandler
     formatter: default
     filename: /log/speasy/speasy.log
-    maxBytes: 10485760
-    backupCount: 20
     encoding: utf8
     delay: true
   access_filelog:
-    class: logging.handlers.RotatingFileHandler
+    class: logging.handlers.WatchedFileHandler
     formatter: access
     filename: /log/speasy/access.log
-    maxBytes: 10485760
-    backupCount: 20
     encoding: utf8
     delay: true
 loggers:

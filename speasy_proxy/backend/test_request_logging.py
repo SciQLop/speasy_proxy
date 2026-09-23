@@ -46,6 +46,17 @@ def test_logs_one_info_record_with_method_path_status_duration_and_bytes(caplog)
     assert record.duration_ms >= 0
 
 
+def test_logs_the_query_string(caplog):
+    """/get_data's product and time range live in the query string; without it the line is useless."""
+    client = _build_client()
+    with caplog.at_level(logging.INFO, logger=ACCESS_LOGGER_NAME):
+        client.get("/fixed?path=amda/imf&start_time=2016-06-02")
+
+    record = next(r for r in caplog.records if r.name == ACCESS_LOGGER_NAME)
+    assert record.query == "path=amda/imf&start_time=2016-06-02"
+    assert "GET /fixed?path=amda/imf&start_time=2016-06-02 200" in record.getMessage()
+
+
 def test_sums_bytes_across_streamed_chunks(caplog):
     client = _build_client()
     with caplog.at_level(logging.INFO, logger=ACCESS_LOGGER_NAME):
