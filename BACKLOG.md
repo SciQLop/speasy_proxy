@@ -263,5 +263,23 @@ fixed test-first (reproducer red → fix → green). Offline suite 97 → 122 te
 > Global was published before `started.wait()` completed; double-checked locking with an
 > `asyncio.Lock`. `test_concurrent_first_connections_share_one_started_server` red→green.
 
+### BL-34 · NEW · prod container is not supervised by systemd · TODO
+**Severity:** High (availability) · **Where:** sciqlop server, `/usr/bin/update-cache-stable` (not in this repo)
+
+Found 2026-09-23 while deploying v0.20.1. `speasy-proxy.service` (sciqlop user unit) has been
+`failed` since 2026-08-30. `update-cache-stable` ends with `systemctl --user enable speasy-proxy`
+**without `--now`** (`update-cache-dev` has `enable --now`), so prod runs as a bare `podman run -d`
+container that systemd never adopts. Since the podman `--restart` flag was removed (2026-08-19,
+systemd was meant to own restarts alone), nothing restarts prod if the container dies; only a
+reboot would bring it back.
+
+**Fix:** add `--now` to that line in `update-cache-stable`; adopt the running container once with
+`systemctl --user reset-failed speasy-proxy && systemctl --user start speasy-proxy` (runs
+`podman start` on an already-running container: a no-op). Expect the same transient
+"did not take the steps required by its unit configuration" message dev prints on every redeploy.
+
+**Acceptance:** `systemctl --user is-active speasy-proxy` → `active` after a redeploy; killing the
+container's conmon brings it back via `Restart=on-failure`.
+
 ### Accepted as-is (no change)
 BL-18, BL-19, BL-21, BL-25 (observations) · BL-28 (deferred) · BL-30 (desktop-only policy).
