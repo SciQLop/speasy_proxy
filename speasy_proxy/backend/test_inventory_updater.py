@@ -204,7 +204,9 @@ def test_eager_build_keeps_only_compressed_copies():
     is kept; protocol 4, never requested in prod, joins 1, 2 and 5 in the lazy set."""
     _quiet_tree()
     mgr = InventoryManager(update_interval_seconds=3600, shared_store=SharedInventoryStore(path=None))
-    built = mgr._build_all_inventories()
+    # Only the "all" keys: speasy may load a populated tree from its disk cache at import,
+    # which adds the same variants per provider.
+    built = [k for k in mgr._build_all_inventories() if k.startswith("inventory/all/")]
 
     eager = [f"inventory/all/json_version_{v}" for v in (1, 2)] + \
             [f"inventory/all/pickle_proto_3_version_{v}" for v in (1, 2)]
@@ -212,7 +214,6 @@ def test_eager_build_keeps_only_compressed_copies():
 
 
 def test_uncompressed_request_is_served_from_the_compressed_copy():
-    import pickle
     import pyzstd
     _quiet_tree()
     mgr = InventoryManager(update_interval_seconds=3600, shared_store=SharedInventoryStore(path=None))
@@ -222,8 +223,9 @@ def test_uncompressed_request_is_served_from_the_compressed_copy():
     pickled = mgr.get_inventory("all", "python_dict", version=2, pickle_proto=3)
 
     assert json_v2 == pyzstd.decompress(mgr.get_inventory("all", "json", version=2, zstd=True)).decode()
-    assert pickle.loads(pickled) == pickle.loads(pyzstd.decompress(
-        mgr.get_inventory("all", "python_dict", version=2, pickle_proto=3, zstd=True)))
+    # Bytes, not unpickled dicts: a real inventory can hold NaN, and NaN != NaN.
+    assert pickled == pyzstd.decompress(
+        mgr.get_inventory("all", "python_dict", version=2, pickle_proto=3, zstd=True))
 
 
 def test_uncompressed_copies_are_not_kept_in_memory():
