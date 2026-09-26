@@ -5,7 +5,7 @@ import {
   createSubplotData, createProductCache, subplotToConfig, subplotFromConfig,
   normalizeWheelDelta, wheelIntent, zoomRange, panRange, zoomToward, structureKey, resampleTarget,
   plotTypeFromCache, computeValueRange, mergeValueRange, renderableRange,
-  nearestIndex, lineTable, yRangeFromPixels, fmtTick, cleanText,
+  nearestIndex, lineTable, yRangeFromPixels, fmtTick, cleanText, productTitle,
 } from '../../speasy_proxy/static/js/plot-core.js';
 
 describe('merge', () => {
@@ -537,5 +537,20 @@ describe('cleanText', () => {
     expect(cleanText('\u0000')).toBe('');
     expect(cleanText('nT\u0000\u0000 ')).toBe('nT');
     expect(cleanText(undefined)).toBe('');
+  });
+});
+
+describe('productTitle', () => {
+  const cache = { title: 'sw density' };
+  it('prefers a label set on purpose (preset, shared config)', () => {
+    expect(productTitle({ path: 'amda/sw_n', label: 'Density' }, cache)).toBe('Density');
+  });
+  it('uses the ISTP name when the label is just the path', () => {
+    expect(productTitle({ path: 'amda/sw_n', label: 'amda/sw_n' }, cache)).toBe('sw density');
+    expect(productTitle({ path: 'amda/sw_n' }, cache)).toBe('sw density');
+  });
+  it('falls back to the last path segment before the data arrives', () => {
+    expect(productTitle({ path: 'amda/sw_n' }, undefined)).toBe('sw_n');
+    expect(productTitle({ path: 'amda/sw_n' }, { title: '' })).toBe('sw_n');
   });
 });

@@ -8,10 +8,10 @@
 import uPlot from './vendor/uPlot.esm.js';
 import { CHART_COLORS } from './common.js';
 import {
-  lineTable, nearestIndex, fmtTick,
+  lineTable, nearestIndex, fmtTick, productTitle,
   computeValueRange, renderableRange,
 } from './plot-core.js';
-import { binRowRects, computeYEdges, lowestPositiveEdge, renderSpectrogramImage, spectrogramValueAt } from './spectrogram.js';
+import { binRowRects, computeYEdges, lowestPositiveEdge, renderSpectrogramImage, spectrogramValueAt, VIRIDIS_LUT } from './spectrogram.js';
 import { bindGestures } from './plot-gestures.js';
 
 const Y_AXIS_PX = 64;      // fixed y-axis gutter so every subplot's plot area lines up
@@ -21,6 +21,7 @@ const MIN_PLOT_PX = 60;
 // whose time labels overflow (the last one), shifting its time axis off the others.
 const CHART_PADDING = [6, 28, 6, 0];  // top/bottom room for edge tick labels
 const BADGE_INSET_PX = 6;              // title/legend badge offset inside the plot area
+const COLORBAR_W = 80, COLORBAR_H = 8;  // spectrogram colour bar, drawn inside the badge
 const HEATMAP_REFRESH_MS = 200;  // re-render spectrogram images once a gesture settles
 const SYNC_KEY = 'speasy-plot';
 const MUTED = '#8892b0';
@@ -92,6 +93,7 @@ export function createPlotView(root, { onViewChange, onAction = () => {} }) {
     for (const c of charts) {
       if (c.subplot.plotType !== 'heatmap') continue;
       c.subplot.lastHeatmapImg = heatmapImage(c.subplot, view);
+      c.colorbar?.update();
       c.u.redraw(false);
     }
   }
@@ -174,7 +176,8 @@ export function createPlotView(root, { onViewChange, onAction = () => {} }) {
     };
     const toggleAutoY = () => setY(subplot._yOverride ? null : { min: u.scales.y.min, max: u.scales.y.max });
     const tools = createTools(subplot, isHeatmap, (type) => (type === 'autoY' ? toggleAutoY() : act(type)));
-    u.root.appendChild(createBadge(u, createTitle(subplot, isHeatmap, loading, (path) => act('removeProduct', path))));
+    const colorbar = isHeatmap ? createColorbar(subplot) : null;
+    u.root.appendChild(createBadge(u, createTitle(subplot, isHeatmap, loading, (path) => act('removeProduct', path)), colorbar));
     u.root.appendChild(tools.bar);
     bindDropTarget(u.root, (path) => act('addProduct', path));
     u.batch(() => {
@@ -189,7 +192,7 @@ export function createPlotView(root, { onViewChange, onAction = () => {} }) {
       setY: (min, max) => setY({ min, max }),
       resetY: () => setY(null),
     });
-    return { u, subplot, meta };
+    return { u, subplot, meta, colorbar };
   }
 
   function resetY(u, subplot) {
@@ -315,7 +318,7 @@ function lineSeries(subplot) {
   const meta = [null];
   let colorIdx = 0;
   for (const { prod, cache } of lineProducts(subplot)) {
-    const prodLabel = prod.label || prod.path.split('/').pop();
+    const prodLabel = productTitle(prod, cache);
     for (const cn of cache.columnNames) {
       const color = CHART_COLORS[colorIdx++ % CHART_COLORS.length];
       const label = seriesLabel(prodLabel, cn, subplot.products.length, cache.columnNames.length);
@@ -335,7 +338,16 @@ function seriesLabel(prodLabel, column, nProducts, nColumns) {
   return nProducts > 1 ? prodLabel + ' ' + column : column;
 }
 
-const productName = (p) => p.label || p.path.split('/').pop();
+// Every distinct unit of a line subplot: products with different units can share one.
+const lineUnits = (subplot) => [...new Set(lineProducts(subplot).map(({ cache }) => cache.unit).filter(Boolean))].join(', ');
+
+const productName = (subplot, p) => productTitle(p, subplot.productData[p.path]);
+
+// Hover text: the exact product path, plus its ISTP description when there is one.
+function productHover(subplot, p) {
+  const desc = subplot.productData[p.path]?.description;
+  return p.path + (desc ? ' — ' + desc : '');
+}
 
 // Badge text after the products: the unit (lines) or the y quantity and its unit
 // (spectrograms) — replaces a rotated axis label that cost a strip of width per plot.
@@ -344,7 +356,7 @@ function badgeSuffix(subplot, isHeatmap, loading) {
   const unit = (u) => (u ? ' (' + u + ')' : '');
   const suffix = isHeatmap
     ? ' · ' + (cache?.yAxisName || '') + unit(cache?.yAxisUnit)
-    : unit(cache?.unit);
+    : unit(lineUnits(subplot));
   return suffix + (loading ? ' ●' : '');
 }
 
@@ -353,17 +365,18 @@ function badgeSuffix(subplot, isHeatmap, loading) {
 function createTitle(subplot, isHeatmap, loading, removeProduct) {
   const title = el('span', 'pv-header-title');
   const suffix = badgeSuffix(subplot, isHeatmap, loading);
-  title.dataset.text = subplot.products.map(productName).join(', ') + suffix;
+  title.dataset.text = subplot.products.map((p) => productName(subplot, p)).join(', ') + suffix;
+  title.title = subplot.products.map((p) => productHover(subplot, p)).join('\n');
   if (subplot.products.length < 2) {
     title.textContent = title.dataset.text;
     return title;
   }
   subplot.products.forEach((p, i) => {
     if (i > 0) title.appendChild(document.createTextNode(', '));
-    title.appendChild(document.createTextNode(productName(p)));
+    title.appendChild(document.createTextNode(productName(subplot, p)));
     const x = el('button', 'pv-chip-x');
     x.textContent = '✕';
-    x.title = 'Remove ' + productName(p) + ' from this subplot';
+    x.title = 'Remove ' + productName(subplot, p) + ' from this subplot';
     x.addEventListener('click', () => removeProduct(p.path));
     title.appendChild(x);
   });
@@ -373,14 +386,62 @@ function createTitle(subplot, isHeatmap, loading, removeProduct) {
 
 // The legend moves into the badge; only its entries take clicks (toggle a series), the
 // rest lets the cursor and drag gestures through to the plot underneath.
-function createBadge(u, title) {
+function createBadge(u, title, colorbar) {
   const badge = el('div', 'pv-header');
   badge.style.left = (Y_AXIS_PX + BADGE_INSET_PX) + 'px';
   badge.style.top = (CHART_PADDING[0] + BADGE_INSET_PX) + 'px';
   badge.appendChild(title);
+  if (colorbar) badge.appendChild(colorbar.node);
   const legend = u.root.querySelector('.u-legend');
   if (legend) badge.appendChild(legend);
   return badge;
+}
+
+// Compact horizontal colour bar: low value, viridis gradient, high value, value unit.
+// Lives in the badge so spectrograms don't need a wider right gutter than line plots
+// (every subplot shares one plot-area width, or the time axes misalign).
+// update() re-reads the range: refetches widen it without rebuilding the chart.
+function createColorbar(subplot) {
+  const node = el('span', 'pv-colorbar');
+  const lo = el('span', 'pv-colorbar-label');
+  const canvas = gradientCanvas();
+  const hi = el('span', 'pv-colorbar-label');
+  const unit = el('span', 'pv-colorbar-label');
+  node.appendChild(lo);
+  node.appendChild(canvas);
+  node.appendChild(hi);
+  node.appendChild(unit);
+  const colorbar = {
+    node, canvas,
+    labels: () => [lo.textContent, hi.textContent, unit.textContent],
+    update() {
+      const cache = firstCache(subplot);
+      const { vMin, vMax } = renderableRange(cache?.valueRange || computeValueRange(cache?.rows || []));
+      lo.textContent = colorbarTick(vMin);
+      hi.textContent = colorbarTick(vMax);
+      unit.textContent = cache?.unit || '';
+      node.title = (subplot.logScale ? 'Logarithmic' : 'Linear') + ' colour scale';
+    },
+  };
+  colorbar.update();
+  return colorbar;
+}
+
+// Three significant digits: the bar is a rough guide, the tooltip gives exact values.
+const colorbarTick = (v) => fmtTick(Number(v.toPrecision(3)));
+
+function gradientCanvas() {
+  const canvas = document.createElement('canvas');
+  canvas.className = 'pv-colorbar-gradient';
+  canvas.width = 256;
+  canvas.height = 1;
+  const ctx = canvas.getContext('2d');
+  const img = ctx.createImageData(256, 1);
+  for (let i = 0; i < 256; i++) {
+    img.data.set([VIRIDIS_LUT[i * 3], VIRIDIS_LUT[i * 3 + 1], VIRIDIS_LUT[i * 3 + 2], 255], i * 4);
+  }
+  ctx.putImageData(img, 0, 0);
+  return canvas;
 }
 
 // Controls in the plot's top-right corner. Each acts on its own subplot only.
@@ -555,7 +616,7 @@ function exportPng(root, charts, pixelRatio, background) {
   ctx.fillRect(0, 0, rootRect.width, rootRect.height);
   ctx.font = '12px system-ui, sans-serif';
   ctx.textBaseline = 'middle';
-  for (const { u, meta } of charts) {
+  for (const { u, meta, colorbar } of charts) {
     const canvas = u.ctx.canvas;
     const r = canvas.getBoundingClientRect();
     ctx.drawImage(canvas, r.left - rootRect.left, r.top - rootRect.top, r.width, r.height);
@@ -564,9 +625,22 @@ function exportPng(root, charts, pixelRatio, background) {
     const title = u.root.querySelector('.pv-header-title')?.dataset.text || '';
     ctx.fillStyle = MUTED;
     ctx.fillText(title, x, y);
-    if (u.series.length > 2) drawLegendRow(ctx, u, meta, x + ctx.measureText(title).width + 12, y);
+    const after = x + ctx.measureText(title).width + 12;
+    if (colorbar) drawColorbar(ctx, colorbar, after, y);
+    else if (u.series.length > 2) drawLegendRow(ctx, u, meta, after, y);
   }
   return out.toDataURL('image/png');
+}
+
+function drawColorbar(ctx, colorbar, x, y) {
+  const [lo, hi, unit] = colorbar.labels();
+  ctx.fillStyle = '#e0e6f0';
+  ctx.fillText(lo, x, y);
+  x += ctx.measureText(lo).width + 4;
+  ctx.imageSmoothingEnabled = true;
+  ctx.drawImage(colorbar.canvas, x, y - COLORBAR_H / 2, COLORBAR_W, COLORBAR_H);
+  x += COLORBAR_W + 4;
+  ctx.fillText(hi + (unit ? ' ' + unit : ''), x, y);
 }
 
 function drawLegendRow(ctx, u, meta, x, y) {

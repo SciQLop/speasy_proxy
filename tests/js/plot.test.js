@@ -685,3 +685,85 @@ describe('heatmap value range across refetches', () => {
     expect(cache.valueRange).toEqual({ vMin: 1, vMax: 9 });
   });
 });
+
+describe('ISTP names and descriptions', () => {
+  const response = (meta) => ({
+    axes: [{ values: [1e6, 2e6] }], columns: ['v'],
+    values: { values: [[1], [2]], meta: { UNITS: 'cm-3', ...meta } },
+  });
+
+  it('keeps FIELDNAM as the product name and CATDESC as its description', () => {
+    const cache = { ...createEmptyCache('cda/x') };
+    mergeProductData(cache, response({ FIELDNAM: 'flow speed, GSE', LABLAXIS: 'V', CATDESC: 'Flow Speed (km/s), GSE' }), 0, 3000);
+    expect(cache.title).toBe('flow speed, GSE');
+    expect(cache.description).toBe('Flow Speed (km/s), GSE');
+  });
+
+  it('drops a CATDESC that only repeats the product id (AMDA)', () => {
+    const cache = { ...createEmptyCache('amda/omni_sw_n') };
+    mergeProductData(cache, response({ FIELDNAM: 'sw density', CATDESC: 'omni_sw_n' }), 0, 3000);
+    expect(cache.description).toBe('');
+  });
+
+  it('labels a spectrogram Y axis with its LABLAXIS, not the variable name', () => {
+    const cache = { ...createEmptyCache('cda/spec') };
+    const json = spectrogramResponse([[1, 2, 3]]);
+    json.axes[1] = { values: [1, 2, 3], name: 'mms1_dis_energy_fast', meta: { LABLAXIS: 'energy', FIELDNAM: 'MMS1 FPI/DIS energy', UNITS: 'eV' } };
+    mergeProductData(cache, json, 0, 3000);
+    expect(cache.yAxisName).toBe('energy');
+  });
+
+  it('falls back to LABLAXIS when there is no FIELDNAM', () => {
+    const cache = { ...createEmptyCache('cda/x') };
+    mergeProductData(cache, response({ LABLAXIS: 'sw density' }), 0, 3000);
+    expect(cache.title).toBe('sw density');
+  });
+
+  it('titles the badge with the ISTP name, and keeps the path and description on hover', () => {
+    initChart();
+    const cache = { ...lineCache('amda/omni_sw_n', ''), title: 'sw density', description: 'Solar wind density' };
+    plotState.plots = [{ products: [{ path: 'amda/omni_sw_n', label: 'amda/omni_sw_n' }], y_axis: { log: false }, plotType: 'line', productData: { 'amda/omni_sw_n': cache } }];
+    const before = dom.created.length;
+
+    renderAllSubplots();
+
+    const title = dom.created.slice(before).find((e) => e.className === 'pv-header-title');
+    expect(title.textContent).toBe('sw density (nT)');
+    expect(title.title).toBe('amda/omni_sw_n — Solar wind density');
+  });
+});
+
+describe('units in a mixed subplot', () => {
+  it('lists every distinct unit, not just the first product\'s', () => {
+    initChart();
+    const speed = { ...lineCache('cda/v', ''), unit: 'km/s' };
+    const dens = { ...lineCache('cda/n', ''), unit: 'cm-3' };
+    const dens2 = { ...lineCache('cda/n2', ''), unit: 'cm-3' };
+    plotState.plots = [{ products: [{ path: 'cda/n', label: 'n' }, { path: 'cda/n2', label: 'n2' }, { path: 'cda/v', label: 'v' }], y_axis: { log: false }, plotType: 'line',
+      productData: { 'cda/n': dens, 'cda/n2': dens2, 'cda/v': speed } }];
+    const before = dom.created.length;
+
+    renderAllSubplots();
+
+    const title = dom.created.slice(before).find((e) => e.className === 'pv-header-title');
+    expect(title.dataset.text).toBe('n, n2, v (cm-3, km/s)');
+  });
+});
+
+describe('spectrogram colour bar', () => {
+  it('shows the colour range and the value unit in the badge', () => {
+    initChart();
+    const sp = heatmapSubplot();
+    sp.productData['cda/flux'].unit = 'keV/(cm^2 s sr keV)';
+    sp.productData['cda/flux'].valueRange = { vMin: 23.8022, vMax: 7.6812e7 };
+    plotState.plots = [sp];
+    const before = dom.created.length;
+
+    renderAllSubplots();
+
+    const made = dom.created.slice(before);
+    expect(made.some((e) => e.className === 'pv-colorbar')).toBe(true);
+    expect(made.filter((e) => e.className === 'pv-colorbar-label').map((e) => e.textContent))
+      .toEqual(['23.8', '7.68e7', 'keV/(cm^2 s sr keV)']);
+  });
+});

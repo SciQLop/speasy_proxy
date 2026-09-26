@@ -787,11 +787,18 @@ import { createPlotView, PRODUCT_MIME } from './plot-view.js';
         }
     }
 
+    // AMDA fills CATDESC with the parameter id, which the hover text already shows.
+    function istpDescription(meta, path) {
+        const desc = cleanText(meta.CATDESC);
+        return desc === path.split('/').pop() ? '' : desc;
+    }
+
     function mergeProductData(cache, json, fetchStart, fetchStop) {
         const rawTimes = json.axes[0].values;
         const newTimes = rawTimes.map(t => t / 1e6);
         const columns = json.columns || [];
-        const unit = cleanText(json.values.meta && json.values.meta.UNITS);
+        const meta = json.values.meta || {};
+        const unit = cleanText(meta.UNITS);
 
         const isHeatmap = detectPlotType(json) === 'heatmap';
         const hasYAxis = isHeatmap && json.axes.length >= 2;
@@ -802,14 +809,17 @@ import { createPlotView, PRODUCT_MIME } from './plot-view.js';
         if (cache.times.length === 0) {
             cache.times = newTimes;
             cache.unit = unit;
+            cache.title = cleanText(meta.FIELDNAM || meta.LABLAXIS);
+            cache.description = istpDescription(meta, cache.path);
             cache.intervals = [[fetchStart, fetchStop]];
             cache.fetchSpan = fetchStop - fetchStart;
-            cache.displayType = (json.values.meta || {}).DISPLAY_TYPE || '';
+            cache.displayType = meta.DISPLAY_TYPE || '';
 
             if (isHeatmap) {
                 if (hasYAxis) {
                     cache.yAxis = yAxis;
-                    cache.yAxisName = cleanText(json.axes[1].name);
+                    const axisMeta = json.axes[1].meta || {};
+                    cache.yAxisName = cleanText(axisMeta.LABLAXIS || axisMeta.FIELDNAM || json.axes[1].name);
                     cache.yAxisUnit = cleanText(json.axes[1].meta && json.axes[1].meta.UNITS);
                 } else {
                     cache.yAxis = newValues[0] ? newValues[0].map((_, i) => i) : [];

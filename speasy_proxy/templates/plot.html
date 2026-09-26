@@ -137,7 +137,13 @@
         .pv-header { position: absolute; z-index: 5; display: flex; align-items: center; gap: 8px;
             padding: 1px 6px; border-radius: 3px; background: rgba(11, 14, 23, 0.72);
             font-size: 11px; line-height: 16px; white-space: nowrap; pointer-events: none; }
-        .pv-header-title { color: #8892b0; }
+        /* The title takes the mouse so its hover text (path + ISTP description) shows */
+        .pv-header-title { color: #8892b0; pointer-events: auto; cursor: help; }
+        .pv-colorbar { display: flex; align-items: center; gap: 4px; pointer-events: auto; }
+        /* .pv-header prefix: outranks uPlot's own ".uplot canvas" sizing rule */
+        .pv-header .pv-colorbar-gradient { width: 80px; height: 8px; border-radius: 1px; image-rendering: auto; }
+        .pv-colorbar-label { color: #e0e6f0; font-variant-numeric: tabular-nums; }
+        .pv-colorbar-label:last-child { color: #8892b0; }
         .pv-header .u-legend { margin: 0; padding: 0; color: #e0e6f0; font-size: 11px; pointer-events: auto; }
         .pv-header .u-legend .u-marker { width: 10px; height: 3px; }
         .pv-header .u-legend .u-series > * { padding: 0 3px; }

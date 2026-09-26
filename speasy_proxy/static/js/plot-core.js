@@ -24,6 +24,8 @@ export function createProductCache(path) {
     columns: {},
     columnNames: [],
     unit: '',
+    title: '',       // ISTP FIELDNAM (or LABLAXIS): a readable product name
+    description: '', // ISTP CATDESC, shown on hover
     yAxis: null,
     yAxisName: '',
     yAxisUnit: '',
@@ -379,6 +381,13 @@ export function yRangeFromPixels(scale, bottomPx, topPx) {
 // "unitless" AMDA product sends UNITS as a lone NUL.
 export function cleanText(s) {
   return String(s ?? '').replace(/\0/g, '').trim();
+}
+
+// A label set on purpose (preset, shared config) wins; a label that is just the path
+// (what adding from the tree stores) gives way to the ISTP name once data has arrived.
+export function productTitle(product, cache) {
+  if (product.label && product.label !== product.path) return product.label;
+  return cache?.title || product.path.split('/').pop();
 }
 
 // Axis tick label that fits a fixed-width gutter: 6 significant digits, exponent form
