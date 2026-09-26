@@ -12,7 +12,7 @@ import {
 } from './plot-core.js';
 import { ascendingSpectrogram } from './spectrogram.js';
 import { fetchData as apiFetchData, fetchInventory } from './api-client.js';
-import { createPlotView } from './plot-view.js';
+import { createPlotView, PRODUCT_MIME } from './plot-view.js';
 
     const BASE_URL = (window.SPEASY_BASE_URL || '').replace(/\/$/, '');
     const API_BASE = BASE_URL + '/';
@@ -54,11 +54,10 @@ import { createPlotView } from './plot-view.js';
             // resolves (a ?config=/?path= URL applies before the inventory fetch
             // finishes) -- otherwise a page refresh with e.g. a chosen coordinate_system
             // silently loses the visible box, even though the data itself round-trips.
-            const activeProduct = document.getElementById('product-path').value;
-            if (activeProduct) {
-                const leaf = leafIndex.find(l => l.path === activeProduct);
+            if (selectedProduct) {
+                const leaf = leafIndex.find(l => l.path === selectedProduct);
                 if (leaf) {
-                    const prod = plotState.plots.flatMap(sp => sp.products).find(p => p.path === activeProduct);
+                    const prod = plotState.plots.flatMap(sp => sp.products).find(p => p.path === selectedProduct);
                     renderProductParams(leaf.node, prod);
                 }
             }
@@ -95,18 +94,9 @@ import { createPlotView } from './plot-view.js';
 
         const displayName = getDisplayName(data, key);
 
-        // Leaf node
         if (isSelectableProduct(data)) {
-            const div = document.createElement('div');
-            div.style.cssText = 'padding:3px 0 3px 8px;cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-radius:4px;';
-            div.textContent = displayName;
-            div.title = getProductPath(data);
-            div.addEventListener('mouseenter', () => { div.style.background = '#1e2640'; });
-            div.addEventListener('mouseleave', () => {
-                if (!div.classList.contains('selected')) div.style.background = '';
-            });
-            div.addEventListener('click', () => selectProduct(data, div));
-            div.addEventListener('dblclick', () => { selectProduct(data, div); doPlot(); });
+            const div = productLeaf(data);
+            div.appendChild(document.createTextNode(displayName));
             return div;
         }
 
@@ -147,23 +137,44 @@ import { createPlotView } from './plot-view.js';
         return wrapper;
     }
 
+    // A product row in the tree or the search results. Click selects it (its params show
+    // under the search box), double-click or "+" adds it as a new subplot, dragging it onto
+    // a subplot overlays it there.
+    function productLeaf(node) {
+        const div = document.createElement('div');
+        div.className = 'tree-leaf';
+        div.title = getProductPath(node);
+        div.draggable = true;
+        const add = document.createElement('button');
+        add.className = 'tree-add';
+        add.textContent = '+';
+        add.title = 'Add as a new subplot';
+        div.appendChild(add);
+
+        const addAsNewSubplot = () => {
+            selectProduct(node, div);
+            addProductToPlot(selectedProduct, null);
+        };
+        div.addEventListener('click', () => selectProduct(node, div));
+        div.addEventListener('dblclick', addAsNewSubplot);
+        add.addEventListener('click', (e) => { e.stopPropagation(); addAsNewSubplot(); });
+        div.addEventListener('dragstart', (e) => {
+            selectProduct(node, div);
+            e.dataTransfer.setData(PRODUCT_MIME, selectedProduct);
+            e.dataTransfer.effectAllowed = 'copy';
+        });
+        return div;
+    }
+
     let previousSelectedLabel = null;
 
     function selectProduct(node, labelEl) {
-        // Un-highlight previous
-        if (previousSelectedLabel) {
-            previousSelectedLabel.classList.remove('selected');
-            previousSelectedLabel.style.background = '';
-        }
-        // Highlight new
+        if (previousSelectedLabel) previousSelectedLabel.classList.remove('selected');
         labelEl.classList.add('selected');
-        labelEl.style.background = '#1e2640';
         previousSelectedLabel = labelEl;
 
         selectedProduct = getProductPath(node);
-        document.getElementById('product-path').value = selectedProduct;
-        document.getElementById('btn-plot').disabled = false;
-        document.getElementById('btn-add').disabled = false;
+        showProductPanel(selectedProduct);
 
         // Pre-fill date inputs only if they're empty — clicking a product to
         // inspect it shouldn't clobber a time window the user already set.
@@ -178,6 +189,11 @@ import { createPlotView } from './plot-view.js';
 
         renderProductParams(node);
         updateURL();
+    }
+
+    function showProductPanel(path) {
+        document.getElementById('product-panel').style.display = path ? '' : 'none';
+        document.getElementById('product-path').textContent = path || '';
     }
 
     // ===== Per-product extra parameters (AMDA template args, SSC/3DView frames) =====
@@ -226,14 +242,14 @@ import { createPlotView } from './plot-view.js';
     }
 
     // A param select (coordinate_system, an AMDA argument, ...) only takes effect
-    // once collectProductParams() is read again -- which otherwise only happens at
-    // the next Plot/Add-to-plot click. If the product is already plotted, changing
+    // once collectProductParams() is read again -- which otherwise only happens the
+    // next time the product is added. If the product is already plotted, changing
     // a dropdown must re-fetch it live instead of silently doing nothing. The old
     // cache is dropped, not just refreshed: merging e.g. a GSE fetch into a cache
     // that already holds J2000 samples for the same product would silently mix
     // two coordinate frames in one series.
     function onProductParamsChanged() {
-        const product = document.getElementById('product-path').value;
+        const product = selectedProduct;
         if (!product) return;
         const newParams = collectProductParams();
         let changed = false;
@@ -394,9 +410,7 @@ import { createPlotView } from './plot-view.js';
         const max = Math.min(results.length, 100);
         for (let i = 0; i < max; i++) {
             const leaf = results[i];
-            const div = document.createElement('div');
-            div.style.cssText = 'padding:4px 4px;cursor:pointer;border-radius:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;';
-
+            const div = productLeaf(leaf.node);
             const prefix = leaf.breadcrumb.slice(0, -1).join(' / ');
             if (prefix) {
                 const span = document.createElement('span');
@@ -405,14 +419,6 @@ import { createPlotView } from './plot-view.js';
                 div.appendChild(span);
             }
             div.appendChild(document.createTextNode(leaf.displayName));
-            div.title = leaf.path;
-
-            div.addEventListener('mouseenter', () => { div.style.background = '#1e2640'; });
-            div.addEventListener('mouseleave', () => {
-                if (!div.classList.contains('selected')) div.style.background = '';
-            });
-            div.addEventListener('click', () => selectProduct(leaf.node, div));
-            div.addEventListener('dblclick', () => { selectProduct(leaf.node, div); doPlot(); });
             container.appendChild(div);
         }
 
@@ -428,7 +434,7 @@ import { createPlotView } from './plot-view.js';
 
     function initChart() {
         const el = document.getElementById('chart');
-        plotView = createPlotView(el, { onViewChange });
+        plotView = createPlotView(el, { onViewChange, onAction: subplotAction });
         let resizeRaf = 0;
         new ResizeObserver(() => {
             if (resizeRaf) return;
@@ -440,25 +446,11 @@ import { createPlotView } from './plot-view.js';
         attachDatePicker(document.getElementById('start-time'));
         attachDatePicker(document.getElementById('stop-time'));
 
-        document.getElementById('btn-plot').addEventListener('click', doPlot);
-        // Plain Enter replots; Shift+Enter is the add-to-plot shortcut below, so it must
-        // not fall through to doPlot() — that would wipe the other subplots first.
-        document.getElementById('start-time').addEventListener('keydown', (e) => {
-            if (e.key === 'Enter' && !e.shiftKey) doPlot();
-        });
-        document.getElementById('stop-time').addEventListener('keydown', (e) => {
-            if (e.key === 'Enter' && !e.shiftKey) doPlot();
-        });
-        // Shift+Enter adds to plot instead of replacing, when a product is selected.
-        document.addEventListener('keydown', (e) => {
-            if (e.key !== 'Enter' || !e.shiftKey) return;
-            const tag = (e.target.tagName || '').toLowerCase();
-            if (tag !== 'input' && tag !== 'textarea') return;
-            if (!document.getElementById('btn-add').disabled) {
-                e.preventDefault();
-                document.getElementById('btn-add').click();
-            }
-        });
+        for (const id of ['start-time', 'stop-time']) {
+            document.getElementById(id).addEventListener('keydown', (e) => {
+                if (e.key === 'Enter') applyTypedRange();
+            });
+        }
 
         document.getElementById('range-chips').addEventListener('click', (e) => {
             const btn = e.target.closest('button');
@@ -479,19 +471,6 @@ import { createPlotView } from './plot-view.js';
             if (tag === 'input' || tag === 'textarea' || tag === 'select') return;
             if (e.key === 'ArrowLeft') { e.preventDefault(); panTime(-1); }
             else if (e.key === 'ArrowRight') { e.preventDefault(); panTime(1); }
-        });
-        document.getElementById('btn-log-scale').addEventListener('click', () => {
-            const heatmapPlots = plotState.plots.filter(sp => sp.plotType === 'heatmap');
-            if (heatmapPlots.length === 0) return;
-            for (const sp of heatmapPlots) { sp.logScale = !sp.logScale; sp._zScaleAuto = false; }
-            document.getElementById('btn-log-scale').textContent = heatmapPlots[0].logScale ? 'Log Z' : 'Linear Z';
-            renderAllSubplots(true);
-        });
-        document.getElementById('btn-log-y').addEventListener('click', () => {
-            if (plotState.plots.length === 0) return;
-            for (const sp of plotState.plots) { sp.y_axis.log = !sp.y_axis.log; sp._yScaleAuto = false; }
-            document.getElementById('btn-log-y').textContent = plotState.plots[0].y_axis.log ? 'Log Y' : 'Linear Y';
-            renderAllSubplots(true);
         });
         document.getElementById('btn-clear').addEventListener('click', clearAllPlots);
 
@@ -530,24 +509,8 @@ import { createPlotView } from './plot-view.js';
             setStatus(msg);
         });
 
-        // Add to plot dropdown
-        document.getElementById('btn-add').addEventListener('click', () => {
-            const dropdown = document.getElementById('add-dropdown');
-            if (dropdown.style.display === 'none') {
-                populateAddDropdown();
-                dropdown.style.display = 'block';
-            } else {
-                dropdown.style.display = 'none';
-            }
-        });
-
-        // Close dropdown/popover on outside click
+        // Close the share popover on outside click
         document.addEventListener('click', (e) => {
-            const addBtn = document.getElementById('btn-add');
-            const dropdown = document.getElementById('add-dropdown');
-            if (!addBtn.contains(e.target) && !dropdown.contains(e.target)) {
-                dropdown.style.display = 'none';
-            }
             const shareBtn = document.getElementById('btn-share');
             const popover = document.getElementById('share-popover');
             if (!shareBtn.contains(e.target) && !popover.contains(e.target)) {
@@ -583,106 +546,57 @@ import { createPlotView } from './plot-view.js';
         });
     }
 
-    function populateAddDropdown() {
-        const dropdown = document.getElementById('add-dropdown');
-        dropdown.innerHTML = '';
+    // Per-subplot edits reported by the chart (its toolbar, title chips and drop targets).
+    const subplotActions = {
+        logY: ({ index }) => toggleScale(index, (sp) => {
+            sp.y_axis.log = !sp.y_axis.log;
+            sp._yScaleAuto = false;
+            delete sp._yOverride;  // a manual linear range can start at <= 0, invalid on log
+        }),
+        logZ: ({ index }) => toggleScale(index, (sp) => {
+            sp.logScale = !sp.logScale;
+            sp._zScaleAuto = false;
+        }),
+        remove: ({ index }) => removeSubplot(index),
+        removeProduct: ({ index, path }) => removeProductFromSubplot(index, path),
+        addProduct: ({ index, path }) => addProductToPlot(path, index),
+    };
 
-        const newItem = document.createElement('div');
-        newItem.className = 'add-dropdown-item';
-        newItem.textContent = '+ New subplot';
-        newItem.addEventListener('click', () => {
-            addProductToPlot(null);
-            dropdown.style.display = 'none';
-        });
-        dropdown.appendChild(newItem);
-
-        for (let i = 0; i < plotState.plots.length; i++) {
-            const sp = plotState.plots[i];
-
-            const header = document.createElement('div');
-            header.className = 'add-dropdown-item';
-            header.style.cssText = 'display:flex;justify-content:space-between;align-items:center;font-weight:600;color:#8892b0;';
-
-            const textSpan = document.createElement('span');
-            textSpan.textContent = 'Subplot ' + (i + 1);
-            textSpan.style.cssText = 'flex:1;overflow:hidden;text-overflow:ellipsis;';
-            header.appendChild(textSpan);
-
-            const removeBtn = document.createElement('span');
-            removeBtn.textContent = '✕';
-            removeBtn.title = 'Remove subplot';
-            removeBtn.style.cssText = 'margin-left:8px;color:#ee6666;cursor:pointer;padding:0 4px;';
-            const idx = i;
-            removeBtn.addEventListener('click', (e) => {
-                e.stopPropagation();
-                removeSubplot(idx);
-                dropdown.style.display = 'none';
-            });
-            header.appendChild(removeBtn);
-
-            header.addEventListener('click', () => {
-                addProductToPlot(idx);
-                dropdown.style.display = 'none';
-            });
-            dropdown.appendChild(header);
-
-            for (const prod of sp.products) {
-                const prodItem = document.createElement('div');
-                prodItem.className = 'add-dropdown-item';
-                prodItem.style.cssText = 'display:flex;justify-content:space-between;align-items:center;padding-left:16px;';
-
-                const prodLabel = document.createElement('span');
-                prodLabel.textContent = '  ' + (prod.label || prod.path.split('/').pop());
-                prodLabel.style.cssText = 'flex:1;overflow:hidden;text-overflow:ellipsis;';
-                prodItem.appendChild(prodLabel);
-
-                const prodRemove = document.createElement('span');
-                prodRemove.textContent = '✕';
-                prodRemove.title = 'Remove product';
-                prodRemove.style.cssText = 'margin-left:8px;color:#ee6666;cursor:pointer;padding:0 4px;';
-                const prodPath = prod.path;
-                prodRemove.addEventListener('click', (e) => {
-                    e.stopPropagation();
-                    removeProductFromSubplot(idx, prodPath);
-                    dropdown.style.display = 'none';
-                });
-                prodItem.appendChild(prodRemove);
-
-                prodItem.addEventListener('click', () => {
-                    addProductToPlot(idx);
-                    dropdown.style.display = 'none';
-                });
-                dropdown.appendChild(prodItem);
-            }
-        }
+    function subplotAction(action) {
+        subplotActions[action.type]?.(action);
     }
 
-    function addProductToPlot(subplotIndex) {
+    function toggleScale(index, flip) {
+        const subplot = plotState.plots[index];
+        if (!subplot) return;
+        flip(subplot);
+        renderAllSubplots(true);
+        updateURL();
+    }
+
+    // subplotIndex null = a new subplot at the bottom. Params (coordinate system, AMDA
+    // arguments) come from the sidebar panel, which describes the selected product only.
+    function addProductToPlot(product, subplotIndex) {
         if (!plotView) { setStatus('Chart not available — check network connection.'); return; }
-        const product = document.getElementById('product-path').value;
         const startDate = parseDateInput(document.getElementById('start-time').value);
         const stopDate = parseDateInput(document.getElementById('stop-time').value);
 
         if (!product) { setStatus('No product selected.'); return; }
         if (!startDate || !stopDate) { setStatus('Please set valid start and stop times (DD-MM-YYYY HH:MM).'); return; }
 
-        plotState.time_range.start = startDate.toISOString();
-        plotState.time_range.stop = stopDate.toISOString();
-
-        let subplot;
-        if (subplotIndex === null) {
-            subplot = createSubplotData();
-            plotState.plots.push(subplot);
-        } else {
-            subplot = plotState.plots[subplotIndex];
-        }
-
-        if (subplot.products.some(p => p.path === product)) {
+        const existing = subplotIndex === null ? null : plotState.plots[subplotIndex];
+        if (existing && existing.products.some(p => p.path === product)) {
             setStatus('Product already in this subplot.');
             return;
         }
 
-        subplot.products.push({ path: product, label: product, ...collectProductParams() });
+        plotState.time_range.start = startDate.toISOString();
+        plotState.time_range.stop = stopDate.toISOString();
+
+        const subplot = existing || createSubplotData();
+        if (!existing) plotState.plots.push(subplot);
+        const params = product === selectedProduct ? collectProductParams() : {};
+        subplot.products.push({ path: product, label: product, ...params });
         subplot.productData[product] = createProductCache(product);
 
         updateURL();
@@ -692,17 +606,10 @@ import { createPlotView } from './plot-view.js';
     function removeSubplot(index) {
         plotState.plots.splice(index, 1);
         if (plotState.plots.length === 0) {
-            plotView.clear();
-            document.getElementById('btn-clear').style.display = 'none';
-            document.getElementById('btn-export-png').style.display = 'none';
-            document.getElementById('btn-export-csv').style.display = 'none';
-            document.getElementById('btn-log-scale').style.display = 'none';
-            document.getElementById('btn-log-y').style.display = 'none';
-            document.getElementById('btn-share').disabled = true;
-            setStatus('Ready');
-        } else {
-            renderAllSubplots();
+            clearAllPlots();
+            return;
         }
+        renderAllSubplots(true);
         updateURL();
     }
 
@@ -718,7 +625,7 @@ import { createPlotView } from './plot-view.js';
             if (subplot.products[0]) {
                 subplot.plotType = plotTypeFromCache(subplot.productData[subplot.products[0].path]);
             }
-            renderAllSubplots();
+            renderAllSubplots(true);
             updateURL();
         }
     }
@@ -726,14 +633,18 @@ import { createPlotView } from './plot-view.js';
     function clearAllPlots() {
         plotState.plots = [];
         plotView.clear();
-        document.getElementById('btn-clear').style.display = 'none';
-        document.getElementById('btn-log-scale').style.display = 'none';
-        document.getElementById('btn-log-y').style.display = 'none';
-        document.getElementById('btn-export-png').style.display = 'none';
-        document.getElementById('btn-export-csv').style.display = 'none';
-        document.getElementById('btn-share').disabled = true;
+        syncBarActions();
         history.replaceState(null, '', window.location.pathname);
         setStatus('Ready');
+    }
+
+    // The top bar's actions need something plotted; disabling (not hiding) them keeps
+    // the bar from reflowing as subplots come and go.
+    function syncBarActions() {
+        const none = plotState.plots.length === 0;
+        for (const id of ['btn-export-png', 'btn-export-csv', 'btn-share', 'btn-clear']) {
+            document.getElementById(id).disabled = none;
+        }
     }
 
     function updateShareURL() {
@@ -758,26 +669,21 @@ import { createPlotView } from './plot-view.js';
         const fetchStartMs = new Date(startTime).getTime();
         const fetchStopMs = new Date(stopTime).getTime();
 
+        // Held by reference: the subplot's index shifts if another one is removed mid-fetch.
+        const subplot = plotState.plots[subplotIndex];
         try {
-            const subplotForFetch = plotState.plots[subplotIndex];
-            const prodForFetch = subplotForFetch?.products.find(p => p.path === productPath);
-            const data = await fetchData(productPath, startISO, stopISO, undefined, prodForFetch);
+            const prod = subplot?.products.find(p => p.path === productPath);
+            const data = await fetchData(productPath, startISO, stopISO, undefined, prod);
+            if (!plotState.plots.includes(subplot) || !subplot.productData[productPath]) return;
             if (!data || !data.values || !data.axes || data.axes.length === 0) {
-                loadingSubplots.delete(subplotIndex);
                 setStatus('No data returned for ' + productPath);
                 return;
             }
-
-            const subplot = plotState.plots[subplotIndex];
-            const cache = subplot.productData[productPath];
-            mergeProductData(cache, data, fetchStartMs, fetchStopMs);
-
+            mergeProductData(subplot.productData[productPath], data, fetchStartMs, fetchStopMs);
             if (subplot.products[0].path === productPath) {
                 subplot.plotType = detectPlotType(data);
                 applyScaleHints(subplot, data);
             }
-
-            renderAllSubplots();
             setStatus('Added ' + productPath);
         } catch (e) {
             setStatus('Error fetching ' + productPath + ': ' + e.message);
@@ -785,6 +691,8 @@ import { createPlotView } from './plot-view.js';
         } finally {
             showLoading(false);
             loadingSubplots.delete(subplotIndex);
+            // Also on failure: the subplot is drawn empty, with its ✕, instead of lingering unseen.
+            if (plotState.plots.length > 0) renderAllSubplots(true);
         }
     }
 
@@ -808,10 +716,7 @@ import { createPlotView } from './plot-view.js';
         plotState.time_range.start = new Date(startMs).toISOString();
         plotState.time_range.stop = new Date(stopMs).toISOString();
 
-        if (plotState.plots.length === 0) {
-            if (document.getElementById('product-path').value) doPlot();
-            return;
-        }
+        if (plotState.plots.length === 0) return;
         for (const sp of plotState.plots) {
             for (const prod of sp.products) sp.productData[prod.path] = createProductCache(prod.path);
         }
@@ -830,27 +735,14 @@ import { createPlotView } from './plot-view.js';
         replotOverRange(start + dir * width, stop + dir * width);
     }
 
-    async function doPlot() {
-        if (!plotView) { setStatus('Chart not available — check network connection.'); return; }
-        const product = document.getElementById('product-path').value;
-        const startDate = parseDateInput(document.getElementById('start-time').value);
-        const stopDate = parseDateInput(document.getElementById('stop-time').value);
-
-        if (!product) { setStatus('No product selected.'); return; }
-        if (!startDate || !stopDate) { setStatus('Please set valid start and stop times (DD-MM-YYYY HH:MM).'); return; }
-
-        // Reset: clear all subplots, create one with this product
-        plotState.time_range.start = startDate.toISOString();
-        plotState.time_range.stop = stopDate.toISOString();
-        plotState.plots = [];
-
-        const subplot = createSubplotData();
-        subplot.products.push({ path: product, label: product, ...collectProductParams() });
-        subplot.productData[product] = createProductCache(product);
-        plotState.plots.push(subplot);
-
-        updateURL();
-        await fetchAllAndRender();
+    function applyTypedRange() {
+        const start = parseDateInput(document.getElementById('start-time').value);
+        const stop = parseDateInput(document.getElementById('stop-time').value);
+        if (!start || !stop || stop <= start) {
+            setStatus('Please set valid start and stop times (DD-MM-YYYY HH:MM).');
+            return;
+        }
+        replotOverRange(start.getTime(), stop.getTime());
     }
 
     async function fetchData(product, startTime, stopTime, signal, extraParams) {
@@ -967,13 +859,7 @@ import { createPlotView } from './plot-view.js';
             lastStructureKey = structureKey(plotState.plots);
         }
 
-        const hasHeatmap = plotState.plots.some(sp => sp.plotType === 'heatmap');
-        document.getElementById('btn-log-scale').style.display = hasHeatmap ? '' : 'none';
-        document.getElementById('btn-log-y').style.display = n > 0 ? '' : 'none';
-        document.getElementById('btn-clear').style.display = n > 0 ? '' : 'none';
-        document.getElementById('btn-export-png').style.display = n > 0 ? '' : 'none';
-        document.getElementById('btn-export-csv').style.display = n > 0 ? '' : 'none';
-        document.getElementById('btn-share').disabled = n === 0;
+        syncBarActions();
         updateShareURL();
     }
 
@@ -1220,9 +1106,10 @@ import { createPlotView } from './plot-view.js';
         plotState.plots = config.plots.map(subplotFromConfig);
         updateEventsPanel();
 
+        // Selects the first product so loadInventory can restore its params panel.
         if (plotState.plots.length > 0 && plotState.plots[0].products.length > 0) {
-            document.getElementById('product-path').value = plotState.plots[0].products[0].path;
-            document.getElementById('btn-plot').disabled = false;
+            selectedProduct = plotState.plots[0].products[0].path;
+            showProductPanel(selectedProduct);
         }
 
         // initChart() runs synchronously earlier in the DOMContentLoaded handler, so
@@ -1484,5 +1371,6 @@ import { createPlotView } from './plot-view.js';
         plotState, initChart, bindControls, renderAllSubplots, removeProductFromSubplot,
         updateShareURL, mergeProductData, applyScaleHints, applyConfig, getPlotView: () => plotView,
         renderProductParams, collectProductParams, selectProduct, onProductParamsChanged, loadInventory,
+        subplotAction, setSelectedProduct: (path) => { selectedProduct = path; },
         __resetCdpp3dviewFramesCache: () => { cdpp3dviewFramesPromise = null; },
     };

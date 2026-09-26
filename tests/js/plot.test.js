@@ -361,7 +361,7 @@ describe('changing a param select on an already-plotted product', () => {
   });
 
   it('does nothing if the product is not part of the current plot yet', () => {
-    dom.getById('product-path').value = 'ssc/ace';
+    plot.__test__.setSelectedProduct('ssc/ace');
     renderProductParams({ __spz_type__: 'ParameterIndex', __spz_provider__: 'ssc' });
     plotState.plots = [];
 
@@ -371,7 +371,7 @@ describe('changing a param select on an already-plotted product', () => {
   });
 
   it('drops the stale cache and re-fetches with the new coordinate_system', async () => {
-    dom.getById('product-path').value = 'ssc/ace';
+    plot.__test__.setSelectedProduct('ssc/ace');
     renderProductParams({ __spz_type__: 'ParameterIndex', __spz_provider__: 'ssc' });
 
     const staleCache = { path: 'ssc/ace', marker: 'stale-gse-data' };
@@ -414,7 +414,7 @@ describe('restoring the params box after a page refresh', () => {
 
   beforeEach(() => {
     apiClient.fetchInventory.mockReset();
-    dom.getById('product-path').value = '';
+    plot.__test__.setSelectedProduct(null);
     plotState.plots = [];
     // productParamSelects/productParamsKind are module-private and only reset by
     // renderProductParams itself -- clear any state a previous test left behind.
@@ -424,7 +424,7 @@ describe('restoring the params box after a page refresh', () => {
   it('re-renders the params box, restored to the config-loaded value, once inventory arrives', async () => {
     // Simulates the state right after applyConfig() runs on a page load, before
     // loadInventory()'s fetch (fired in parallel, not awaited) has resolved.
-    dom.getById('product-path').value = 'ssc/ace';
+    plot.__test__.setSelectedProduct('ssc/ace');
     plotState.plots = [{
       products: [{ path: 'ssc/ace', label: 'ace', coordinateSystem: 'gsm' }],
       productData: {}, y_axis: { log: false },
@@ -477,26 +477,126 @@ describe('removing a product from a subplot', () => {
   });
 });
 
-describe('Shift+Enter in a time field', () => {
-  it('adds to the plot instead of replotting from scratch', () => {
+describe('Enter in a time field', () => {
+  it('applies the typed window to every subplot instead of replotting from scratch', () => {
     initChart();
     bindControls();
     plotState.plots = [heatmapSubplot(), heatmapSubplot()];
-    dom.getById('product-path').value = 'cda/flux';
-    dom.getById('start-time').tagName = 'INPUT';
     dom.getById('start-time').value = '01-01-2024 00:00';
     dom.getById('stop-time').value = '02-01-2024 00:00';
-    dom.getById('btn-add').disabled = false;
 
     const keydown = dom.getById('start-time').addEventListener.mock.calls
       .filter(([type]) => type === 'keydown').map(([, fn]) => fn);
-    expect(keydown.length).toBeGreaterThan(0);
-    const event = { key: 'Enter', shiftKey: true, target: dom.getById('start-time'), preventDefault: vi.fn() };
-    for (const fn of keydown) fn(event);
-    dom.fireDocument('keydown', event);
+    for (const fn of keydown) fn({ key: 'Enter', preventDefault: vi.fn() });
 
-    expect(dom.getById('btn-add').click).toHaveBeenCalled();
-    expect(plotState.plots).toHaveLength(2); // doPlot would have reset this to 1
+    expect(plotState.plots).toHaveLength(2);
+    // The inputs are read in local time.
+    expect(plotState.time_range.start).toBe(new Date(2024, 0, 1).toISOString());
+    expect(plotState.time_range.stop).toBe(new Date(2024, 0, 2).toISOString());
+  });
+});
+
+describe('per-subplot actions (the toolbar on each subplot)', () => {
+  const lineSubplot = (path) => ({
+    products: [{ path }], y_axis: { log: false }, plotType: 'line', _yScaleAuto: true, _zScaleAuto: true,
+    productData: { [path]: lineCache(path, '') },
+  });
+
+  beforeEach(() => {
+    initChart();
+    plotState.time_range = { start: '2020-01-01T00:00:00.000Z', stop: '2020-01-02T00:00:00.000Z' };
+    dom.getById('start-time').value = '01-01-2020 00:00';
+    dom.getById('stop-time').value = '02-01-2020 00:00';
+  });
+
+  it('log Y flips only the subplot it belongs to, and drops a manual Y range', () => {
+    plotState.plots = [lineSubplot('cda/a'), lineSubplot('cda/b')];
+    plotState.plots[1]._yOverride = { min: -5, max: 5 };
+
+    plot.__test__.subplotAction({ type: 'logY', index: 1 });
+
+    expect(plotState.plots.map((sp) => sp.y_axis.log)).toEqual([false, true]);
+    expect(plotState.plots[1]._yOverride).toBeUndefined();
+    expect(plotState.plots[1]._yScaleAuto).toBe(false);
+  });
+
+  it('log Z flips only the spectrogram it belongs to', () => {
+    plotState.plots = [heatmapSubplot(), heatmapSubplot()];
+
+    plot.__test__.subplotAction({ type: 'logZ', index: 0 });
+
+    expect(plotState.plots.map((sp) => sp.logScale)).toEqual([false, true]);
+  });
+
+  it('remove drops that subplot', () => {
+    plotState.plots = [lineSubplot('cda/a'), lineSubplot('cda/b')];
+
+    plot.__test__.subplotAction({ type: 'remove', index: 0 });
+
+    expect(plotState.plots.map((sp) => sp.products[0].path)).toEqual(['cda/b']);
+  });
+
+  it('a product dropped on a subplot is overlaid there', () => {
+    plotState.plots = [lineSubplot('cda/a'), lineSubplot('cda/b')];
+
+    plot.__test__.subplotAction({ type: 'addProduct', index: 1, path: 'cda/c' });
+
+    expect(plotState.plots).toHaveLength(2);
+    expect(plotState.plots[1].products.map((p) => p.path)).toEqual(['cda/b', 'cda/c']);
+  });
+
+  it('a product added without a target gets a new subplot at the bottom', () => {
+    plotState.plots = [lineSubplot('cda/a')];
+
+    plot.__test__.subplotAction({ type: 'addProduct', index: null, path: 'cda/c' });
+
+    expect(plotState.plots.map((sp) => sp.products[0].path)).toEqual(['cda/a', 'cda/c']);
+  });
+
+  it('a product already in the target subplot is not added twice', () => {
+    plotState.plots = [lineSubplot('cda/a')];
+
+    plot.__test__.subplotAction({ type: 'addProduct', index: 0, path: 'cda/a' });
+
+    expect(plotState.plots[0].products).toHaveLength(1);
+  });
+});
+
+describe('subplot toolbar', () => {
+  beforeEach(() => { uPlot.instances.length = 0; });
+
+  it('offers log Z only on spectrograms and marks the active scales', () => {
+    initChart();
+    const line = { products: [{ path: 'cda/b' }], y_axis: { log: true }, plotType: 'line', productData: { 'cda/b': lineCache('cda/b', '') } };
+    plotState.plots = [line, heatmapSubplot()];
+    const before = dom.created.length;
+
+    renderAllSubplots();
+
+    const made = dom.created.slice(before).filter((e) => e.tagName === 'BUTTON' && e.className.startsWith('pv-tool'));
+    expect(made.map((b) => [b.textContent, b.className])).toEqual([
+      ['auto Y', 'pv-tool active'], ['log Y', 'pv-tool active'], ['✕', 'pv-tool'],
+      ['auto Y', 'pv-tool active'], ['log Y', 'pv-tool'], ['log Z', 'pv-tool active'], ['✕', 'pv-tool'],
+    ]);
+  });
+
+  it('auto Y off freezes the current Y range, back on lets it refit', () => {
+    initChart();
+    plotState.plots = [{ products: [{ path: 'cda/b' }], y_axis: { log: false }, plotType: 'line', productData: { 'cda/b': lineCache('cda/b', '') } }];
+    const before = dom.created.length;
+    renderAllSubplots();
+    const autoY = dom.created.slice(before).find((e) => e.textContent === 'auto Y');
+    const click = autoY.addEventListener.mock.calls.find(([type]) => type === 'click')[1];
+    const [u] = liveCharts();
+    u.scales.y.min = -3; u.scales.y.max = 7;
+
+    click();
+    expect(plotState.plots[0]._yOverride).toEqual({ min: -3, max: 7 });
+    expect(autoY.className).toBe('pv-tool');
+
+    click();
+    expect(plotState.plots[0]._yOverride).toBeUndefined();
+    expect(autoY.className).toBe('pv-tool active');
   });
 });
 

@@ -34,8 +34,8 @@
         .controls-bar {
             display: flex;
             align-items: center;
-            gap: 12px;
-            padding: 10px 16px;
+            gap: 10px;
+            padding: 8px 16px;
             background: #111627;
             border-bottom: 1px solid #1e2640;
             flex-wrap: wrap;
@@ -52,10 +52,24 @@
             outline: none;
         }
 
-        .controls-bar #product-path {
-            flex: 1;
-            min-width: 180px;
-        }
+        .time-range { display: flex; align-items: center; gap: 6px; color: #555e7e; }
+        .bar-spacer { flex: 1; }
+        .bar-actions { display: flex; align-items: center; gap: 6px; }
+
+        /* Selected product (sidebar): its path and per-product params */
+        .product-panel { padding: 8px 16px; border-bottom: 1px solid #1e2640; font-size: 0.8rem; }
+        .product-panel-path { color: #aeb6d4; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .product-panel .product-params { margin-top: 6px; }
+        .product-panel-hint { color: #555e7e; margin-top: 4px; font-size: 0.75rem; }
+
+        /* Tree product rows: "+" adds a new subplot, drag onto a subplot overlays */
+        .tree-leaf { position: relative; padding: 3px 22px 3px 8px; cursor: pointer; white-space: nowrap;
+            overflow: hidden; text-overflow: ellipsis; border-radius: 4px; }
+        .tree-leaf:hover, .tree-leaf.selected { background: #1e2640; }
+        .tree-add { position: absolute; right: 2px; top: 50%; transform: translateY(-50%); display: none;
+            width: 18px; height: 18px; padding: 0; border: none; border-radius: 4px; background: #6b8afd;
+            color: #fff; font-size: 14px; line-height: 18px; cursor: pointer; }
+        .tree-leaf:hover .tree-add { display: block; }
 
         .product-params {
             display: flex;
@@ -88,27 +102,22 @@
             border-color: #6b8afd;
         }
 
-        .controls-bar button {
-            padding: 6px 20px;
-            border: none;
+        .bar-actions button {
+            padding: 5px 12px;
+            border: 1px solid #2a3358;
             border-radius: 6px;
-            background: #6b8afd;
-            color: #fff;
-            font-size: 0.85rem;
-            font-weight: 600;
+            background: transparent;
+            color: #aeb6d4;
+            font-size: 0.8rem;
+            font-weight: 500;
             cursor: pointer;
-            transition: background 0.2s;
+            transition: background 0.15s, border-color 0.15s, color 0.15s;
         }
 
-        .controls-bar button:disabled {
-            background: #2a3358;
-            color: #555e7e;
-            cursor: not-allowed;
-        }
-
-        .controls-bar button:not(:disabled):hover {
-            background: #5a7bf7;
-        }
+        .bar-actions button:disabled { color: #3a4468; border-color: #1e2640; cursor: default; }
+        .bar-actions button:not(:disabled):hover { background: #1a2138; color: #e0e6f0; border-color: #6b8afd; }
+        .bar-actions #btn-clear:not(:disabled):hover { border-color: #ee6666; color: #ee6666; }
+        .bar-actions #btn-copy-url { background: #6b8afd; border: none; color: #fff; font-weight: 600; }
 
         #chart {
             width: 100%;
@@ -136,6 +145,26 @@
         .pv-plots .u-cursor-x { border-right: 1px dashed #6b8afd; }
         .pv-plots .u-over { cursor: grab; }
         .pv-plots .u-over:active { cursor: grabbing; }
+        /* Per-subplot toolbar, top-right of each plot (plot-view.js createTools) */
+        .pv-tools { position: absolute; z-index: 6; display: flex; gap: 3px; opacity: 0.6; transition: opacity 0.15s; }
+        .pv-plots .uplot:hover .pv-tools { opacity: 1; }
+        .pv-tool { padding: 1px 6px; border: 1px solid #2a3358; border-radius: 3px; background: rgba(11, 14, 23, 0.8);
+            color: #8892b0; font-size: 11px; line-height: 14px; cursor: pointer; }
+        .pv-tool:hover { color: #e0e6f0; border-color: #6b8afd; }
+        .pv-tool.active { color: #fff; background: #3b4f9e; border-color: #6b8afd; }
+        .pv-tool:last-child:hover { color: #ee6666; border-color: #ee6666; }
+        /* Remove-product buttons in a multi-product title, shown on hover */
+        .pv-chip-x { display: none; margin: 0 2px 0 3px; padding: 0 3px; border: none; border-radius: 3px;
+            background: transparent; color: #ee6666; font-size: 10px; cursor: pointer; pointer-events: auto; }
+        .pv-plots .uplot:hover .pv-chip-x { display: inline; }
+        /* Drop targets for products dragged from the tree */
+        .pv-plots .uplot.pv-drop-target { outline: 2px dashed #6b8afd; outline-offset: -2px; }
+        .pv-drop-new { display: none; position: absolute; left: 0; right: 0; bottom: 0; height: 40px; z-index: 15;
+            align-items: center; justify-content: center; background: rgba(26, 31, 54, 0.92);
+            border: 2px dashed #2a3358; color: #8892b0; font-size: 0.85rem; }
+        #chart.pv-dragging .pv-drop-new { display: flex; }
+        #chart.pv-empty .pv-drop-new { display: flex; top: 0; height: auto; background: transparent; border-color: #1e2640; margin: 16px; }
+        .pv-drop-new.pv-drop-target { border-color: #6b8afd; color: #e0e6f0; }
         .pv-tooltip { position: absolute; display: none; pointer-events: none; z-index: 20;
             background: #1a1f36; border: 1px solid #2a3358; border-radius: 4px; padding: 6px 8px;
             color: #e0e6f0; font-size: 12px; line-height: 1.5; white-space: nowrap; }
@@ -212,18 +241,6 @@
             font-size: 0.7rem;
         }
 
-        .add-dropdown-item {
-            padding: 6px 12px;
-            cursor: pointer;
-            white-space: nowrap;
-            color: #e0e6f0;
-            font-size: 0.85rem;
-        }
-
-        .add-dropdown-item:hover {
-            background: #2a3358;
-        }
-
         .range-chips #btn-now {
             font-size: 0.78rem;
         }
@@ -252,6 +269,11 @@
         <h2 style="font-size:1.1rem;font-weight:600;margin-bottom:8px;">Products</h2>
         <input type="text" id="search-box" placeholder="Search products..." style="width:100%;padding:8px 10px;border:1px solid #2a3358;border-radius:6px;background:#0b0e17;color:#e0e6f0;font-size:0.9rem;outline:none;">
     </div>
+    <div class="product-panel" id="product-panel" style="display:none;">
+        <div class="product-panel-path" id="product-path"></div>
+        <div class="product-params" id="product-params"></div>
+        <div class="product-panel-hint">+ or double-click: new subplot · drag onto a subplot: overlay</div>
+    </div>
     <div class="tree-container" id="tree-container">
         <div class="loading-text">Loading inventory...</div>
     </div>
@@ -263,17 +285,6 @@
 <!-- Main area -->
 <div class="main">
     <div class="controls-bar">
-        <label for="product-path">Product</label>
-        <input type="text" id="product-path" readonly placeholder="Select a product from the tree">
-
-        <div class="product-params" id="product-params"></div>
-
-        <label for="start-time">Start</label>
-        <input type="text" class="dt-input" id="start-time" placeholder="DD-MM-YYYY HH:MM" autocomplete="off" spellcheck="false">
-
-        <label for="stop-time">Stop</label>
-        <input type="text" class="dt-input" id="stop-time" placeholder="DD-MM-YYYY HH:MM" autocomplete="off" spellcheck="false">
-
         <div class="range-chips" id="range-chips">
             <button class="pan" data-pan="-1" title="Pan earlier (←)">&#9664;</button>
             <button data-ms="3600000" title="Last hour of the window">1h</button>
@@ -286,26 +297,25 @@
             <button id="btn-now" title="Set stop to now, keep window width">Now</button>
         </div>
 
-        <button id="btn-plot" disabled>Plot</button>
-
-        <div style="position:relative;display:inline-block;">
-            <button id="btn-add" disabled>Add to plot ▾</button>
-            <div id="add-dropdown" style="display:none;position:absolute;top:100%;left:0;z-index:100;background:#1a1f36;border:1px solid #2a3358;border-radius:6px;min-width:200px;padding:4px 0;box-shadow:0 4px 12px rgba(0,0,0,0.4);">
-            </div>
+        <div class="time-range">
+            <input type="text" class="dt-input" id="start-time" aria-label="Start" title="Start (Enter to apply)" placeholder="DD-MM-YYYY HH:MM" autocomplete="off" spellcheck="false">
+            <span>→</span>
+            <input type="text" class="dt-input" id="stop-time" aria-label="Stop" title="Stop (Enter to apply)" placeholder="DD-MM-YYYY HH:MM" autocomplete="off" spellcheck="false">
         </div>
 
-        <button id="btn-clear" style="display:none;" title="Remove all subplots">Clear</button>
-        <button id="btn-log-scale" style="display:none;" title="Toggle log/linear color scale">Log Z</button>
-        <button id="btn-log-y" style="display:none;" title="Toggle log/linear Y axis">Log Y</button>
-        <button id="btn-export-png" style="display:none;" title="Download the chart as a PNG image">PNG</button>
-        <button id="btn-export-csv" style="display:none;" title="Download visible-range data as CSV">CSV</button>
+        <div class="bar-spacer"></div>
 
-        <div style="position:relative;display:inline-block;">
-            <button id="btn-share" disabled>Share</button>
-            <div id="share-popover" style="display:none;position:absolute;top:100%;right:0;z-index:100;background:#1a1f36;border:1px solid #2a3358;border-radius:6px;padding:10px;box-shadow:0 4px 12px rgba(0,0,0,0.4);min-width:300px;">
-                <input type="text" id="share-url" readonly style="width:100%;background:#0b0e17;border:1px solid #2a3358;color:#e0e6f0;padding:6px 8px;border-radius:4px;font-size:0.8rem;margin-bottom:6px;">
-                <button id="btn-copy-url" style="width:100%;">Copy URL</button>
+        <div class="bar-actions">
+            <button id="btn-export-png" disabled title="Download the chart as a PNG image">PNG</button>
+            <button id="btn-export-csv" disabled title="Download visible-range data as CSV">CSV</button>
+            <div style="position:relative;display:inline-block;">
+                <button id="btn-share" disabled>Share</button>
+                <div id="share-popover" style="display:none;position:absolute;top:100%;right:0;z-index:100;background:#1a1f36;border:1px solid #2a3358;border-radius:6px;padding:10px;box-shadow:0 4px 12px rgba(0,0,0,0.4);min-width:300px;">
+                    <input type="text" id="share-url" readonly style="width:100%;background:#0b0e17;border:1px solid #2a3358;color:#e0e6f0;padding:6px 8px;border-radius:4px;font-size:0.8rem;margin-bottom:6px;">
+                    <button id="btn-copy-url" style="width:100%;">Copy URL</button>
+                </div>
             </div>
+            <button id="btn-clear" disabled title="Remove all subplots">Clear</button>
         </div>
     </div>
     <button class="controls-collapse-btn" id="controls-collapse-btn" title="Toggle controls">&#9650;</button>

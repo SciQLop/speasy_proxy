@@ -1,8 +1,10 @@
 // Chart layer of the /plot viewer: one uPlot per subplot stacked on a shared time
-// window, a title/legend badge over each plot, a cursor tooltip, highlighted intervals and
-// spectrogram images.
+// window, a title/legend badge over each plot, a per-subplot toolbar, a cursor tooltip,
+// highlighted intervals, spectrogram images and drop targets for products dragged from
+// the tree.
 // plot.js owns the data (subplot caches) and calls render/update; this module only
-// draws it and reports time-window changes back through onViewChange.
+// draws it and reports back: time-window changes through onViewChange, subplot edits
+// (log toggles, removals, dropped products) through onAction({ type, index, path }).
 import uPlot from './vendor/uPlot.esm.js';
 import { CHART_COLORS } from './common.js';
 import {
@@ -22,6 +24,7 @@ const BADGE_INSET_PX = 6;              // title/legend badge offset inside the p
 const HEATMAP_REFRESH_MS = 200;  // re-render spectrogram images once a gesture settles
 const SYNC_KEY = 'speasy-plot';
 const MUTED = '#8892b0';
+export const PRODUCT_MIME = 'application/x-speasy-product';  // drag payload: a product path
 
 const utcDate = (ts) => uPlot.tzDate(new Date(ts), 'Etc/UTC');
 const binsOf = (cache) => (Array.isArray(cache.yAxis?.[0]) ? cache.yAxis[0] : (cache.yAxis || []));
@@ -34,11 +37,16 @@ const lineProducts = (sp) => sp.products
   .filter(({ cache }) => cache && cache.columnNames.length > 0);
 const fmtValue = (v) => String(Number(v.toPrecision(4)));
 
-export function createPlotView(root, { onViewChange }) {
+export function createPlotView(root, { onViewChange, onAction = () => {} }) {
   const plotsEl = el('div', 'pv-plots');
   const tooltip = el('div', 'pv-tooltip');
+  const dropNew = el('div', 'pv-drop-new');
   root.appendChild(plotsEl);
   root.appendChild(tooltip);
+  root.appendChild(dropNew);
+  bindDropTarget(dropNew, (path) => onAction({ type: 'addProduct', index: null, path }));
+  watchProductDrags(root);
+  setEmpty(true);
 
   let charts = [];          // [{ u, subplot }]
   let plots = [];
@@ -51,6 +59,7 @@ export function createPlotView(root, { onViewChange }) {
 
   function render(nextPlots, nextView, opts = {}) {
     destroyCharts();
+    setEmpty(nextPlots.length === 0);
     plots = nextPlots;
     view = { ...nextView };
     intervals = (opts.intervals || []).map((iv) => ({ ...iv, t0: Date.parse(iv.start), t1: Date.parse(iv.stop) }));
@@ -104,6 +113,16 @@ export function createPlotView(root, { onViewChange }) {
   function clear() {
     destroyCharts();
     plots = [];
+    setEmpty(true);
+  }
+
+  // Empty, the whole chart area is one big drop target with a hint; otherwise a strip
+  // at the bottom takes drops for a new subplot while a product is being dragged.
+  function setEmpty(empty) {
+    root.classList.toggle('pv-empty', empty);
+    dropNew.textContent = empty
+      ? 'Drag a product here, or double-click it in the tree'
+      : '+ New subplot';
   }
 
   function toDataURL(pixelRatio = 2, background = '#0b0e17') {
@@ -146,7 +165,18 @@ export function createPlotView(root, { onViewChange }) {
       },
     };
     const u = new uPlot(opts, chartData(subplot), plotsEl);
-    u.root.appendChild(createBadge(u, badgeTitle(subplot, isHeatmap, loading)));
+    const act = (type, path) => onAction({ type, index, path });
+    // A manual Y range (_yOverride) is what turns auto-scaling off, whether it came from
+    // the auto Y button or a zoom/pan in the Y gutter; the button always reflects it.
+    const setY = (range) => {
+      if (range) { subplot._yOverride = range; u.setScale('y', range); } else resetY(u, subplot);
+      tools.show('autoY', !subplot._yOverride);
+    };
+    const toggleAutoY = () => setY(subplot._yOverride ? null : { min: u.scales.y.min, max: u.scales.y.max });
+    const tools = createTools(subplot, isHeatmap, (type) => (type === 'autoY' ? toggleAutoY() : act(type)));
+    u.root.appendChild(createBadge(u, createTitle(subplot, isHeatmap, loading, (path) => act('removeProduct', path))));
+    u.root.appendChild(tools.bar);
+    bindDropTarget(u.root, (path) => act('addProduct', path));
     u.batch(() => {
       u.setScale('x', { min: view.start, max: view.end });
       if (subplot._yOverride) u.setScale('y', subplot._yOverride);
@@ -156,8 +186,8 @@ export function createPlotView(root, { onViewChange }) {
     bindGestures(u, {
       getView: () => view,
       setView: (next) => { setView(next); onViewChange(view); },
-      setY: (min, max) => { subplot._yOverride = { min, max }; u.setScale('y', { min, max }); },
-      resetY: () => resetY(u, subplot),
+      setY: (min, max) => setY({ min, max }),
+      resetY: () => setY(null),
     });
     return { u, subplot, meta };
   }
@@ -305,16 +335,40 @@ function seriesLabel(prodLabel, column, nProducts, nColumns) {
   return nProducts > 1 ? prodLabel + ' ' + column : column;
 }
 
-// Badge text: the products, then the unit (lines) or the y quantity and its unit
+const productName = (p) => p.label || p.path.split('/').pop();
+
+// Badge text after the products: the unit (lines) or the y quantity and its unit
 // (spectrograms) — replaces a rotated axis label that cost a strip of width per plot.
-function badgeTitle(subplot, isHeatmap, loading) {
-  const names = subplot.products.map((p) => p.label || p.path.split('/').pop()).join(', ');
+function badgeSuffix(subplot, isHeatmap, loading) {
   const cache = firstCache(subplot);
   const unit = (u) => (u ? ' (' + u + ')' : '');
   const suffix = isHeatmap
     ? ' · ' + (cache?.yAxisName || '') + unit(cache?.yAxisUnit)
     : unit(cache?.unit);
-  return names + suffix + (loading ? ' ●' : '');
+  return suffix + (loading ? ' ●' : '');
+}
+
+// With several products, each name gets its own remove button (shown on hover). The
+// plain text is kept in data-text for the PNG export.
+function createTitle(subplot, isHeatmap, loading, removeProduct) {
+  const title = el('span', 'pv-header-title');
+  const suffix = badgeSuffix(subplot, isHeatmap, loading);
+  title.dataset.text = subplot.products.map(productName).join(', ') + suffix;
+  if (subplot.products.length < 2) {
+    title.textContent = title.dataset.text;
+    return title;
+  }
+  subplot.products.forEach((p, i) => {
+    if (i > 0) title.appendChild(document.createTextNode(', '));
+    title.appendChild(document.createTextNode(productName(p)));
+    const x = el('button', 'pv-chip-x');
+    x.textContent = '✕';
+    x.title = 'Remove ' + productName(p) + ' from this subplot';
+    x.addEventListener('click', () => removeProduct(p.path));
+    title.appendChild(x);
+  });
+  title.appendChild(document.createTextNode(suffix));
+  return title;
 }
 
 // The legend moves into the badge; only its entries take clicks (toggle a series), the
@@ -323,12 +377,61 @@ function createBadge(u, title) {
   const badge = el('div', 'pv-header');
   badge.style.left = (Y_AXIS_PX + BADGE_INSET_PX) + 'px';
   badge.style.top = (CHART_PADDING[0] + BADGE_INSET_PX) + 'px';
-  const text = el('span', 'pv-header-title');
-  text.textContent = title;
-  badge.appendChild(text);
+  badge.appendChild(title);
   const legend = u.root.querySelector('.u-legend');
   if (legend) badge.appendChild(legend);
   return badge;
+}
+
+// Controls in the plot's top-right corner. Each acts on its own subplot only.
+// show(type, on) updates a toggle's state without rebuilding the chart.
+function createTools(subplot, isHeatmap, act) {
+  const bar = el('div', 'pv-tools');
+  bar.style.right = (CHART_PADDING[1] + BADGE_INSET_PX) + 'px';
+  bar.style.top = (CHART_PADDING[0] + BADGE_INSET_PX) + 'px';
+  const toolClass = (on) => (on ? 'pv-tool active' : 'pv-tool');
+  const buttons = {};
+  const tools = [
+    { label: 'auto Y', type: 'autoY', on: !subplot._yOverride, title: 'Fit Y to the visible data (off: keep the current Y range)' },
+    { label: 'log Y', type: 'logY', on: !!subplot.y_axis.log, title: 'Y axis: logarithmic / linear' },
+    isHeatmap && { label: 'log Z', type: 'logZ', on: !!subplot.logScale, title: 'Colour scale: logarithmic / linear' },
+    { label: '✕', type: 'remove', on: false, title: 'Remove this subplot' },
+  ].filter(Boolean);
+  for (const t of tools) {
+    const b = el('button', toolClass(t.on));
+    b.textContent = t.label;
+    b.title = t.title;
+    b.addEventListener('click', () => act(t.type));
+    bar.appendChild(b);
+    buttons[t.type] = b;
+  }
+  return { bar, show: (type, on) => { buttons[type].className = toolClass(on); } };
+}
+
+// --- drag and drop of products from the tree ---------------------------------------
+
+const carriesProduct = (e) => Array.from(e.dataTransfer?.types || []).includes(PRODUCT_MIME);
+
+function bindDropTarget(node, onDrop) {
+  node.addEventListener('dragover', (e) => {
+    if (!carriesProduct(e)) return;
+    e.preventDefault();
+    node.classList.add('pv-drop-target');
+  });
+  node.addEventListener('dragleave', () => node.classList.remove('pv-drop-target'));
+  node.addEventListener('drop', (e) => {
+    node.classList.remove('pv-drop-target');
+    const path = e.dataTransfer.getData(PRODUCT_MIME);
+    if (!path) return;
+    e.preventDefault();
+    onDrop(path);
+  });
+}
+
+// The "new subplot" strip only shows while a product is being dragged.
+function watchProductDrags(root) {
+  document.addEventListener('dragstart', (e) => { if (carriesProduct(e)) root.classList.add('pv-dragging'); });
+  document.addEventListener('dragend', () => root.classList.remove('pv-dragging'));
 }
 
 function heatmapSeries(subplot) {
@@ -458,7 +561,7 @@ function exportPng(root, charts, pixelRatio, background) {
     ctx.drawImage(canvas, r.left - rootRect.left, r.top - rootRect.top, r.width, r.height);
     const x = r.left - rootRect.left + Y_AXIS_PX + BADGE_INSET_PX;
     const y = r.top - rootRect.top + CHART_PADDING[0] + BADGE_INSET_PX + 8;
-    const title = u.root.querySelector('.pv-header-title')?.textContent || '';
+    const title = u.root.querySelector('.pv-header-title')?.dataset.text || '';
     ctx.fillStyle = MUTED;
     ctx.fillText(title, x, y);
     if (u.series.length > 2) drawLegendRow(ctx, u, meta, x + ctx.measureText(title).width + 12, y);
