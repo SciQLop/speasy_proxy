@@ -3,7 +3,7 @@ import {
   mergeSorted, mergeSortedRows, mergeIntervals, evictProductCache,
   detectPlotType, configToBase64, base64ToConfig, isCovered, resolutionSufficient, rangesOverlap, trimCacheWindow, cacheToCsv,
   createSubplotData, createProductCache, subplotToConfig, subplotFromConfig,
-  normalizeWheelDelta, zoomRange, panRange, zoomToward, structureKey, resampleTarget,
+  normalizeWheelDelta, wheelIntent, zoomRange, panRange, zoomToward, structureKey, resampleTarget,
   plotTypeFromCache, computeValueRange, mergeValueRange, renderableRange,
   nearestIndex, lineTable, yRangeFromPixels, fmtTick, cleanText,
 } from '../../speasy_proxy/static/js/plot-core.js';
@@ -288,6 +288,29 @@ describe('normalizeWheelDelta', () => {
   it('clamps magnitude so one big notch cannot overshoot', () => {
     expect(normalizeWheelDelta(5000, 0)).toBe(120);
     expect(normalizeWheelDelta(-5000, 0)).toBe(-120);
+  });
+});
+
+describe('wheelIntent', () => {
+  const wheel = (o) => ({ deltaX: 0, deltaY: 0, deltaMode: 0, shiftKey: false, ctrlKey: false, ...o });
+  it('vertical wheel zooms', () => {
+    expect(wheelIntent(wheel({ deltaY: 40 }))).toEqual({ kind: 'zoom', px: 40 });
+  });
+  it('horizontal swipe pans', () => {
+    expect(wheelIntent(wheel({ deltaX: 30, deltaY: 4 }))).toEqual({ kind: 'pan', px: 30 });
+  });
+  it('mostly-vertical swipe with some drift still zooms', () => {
+    expect(wheelIntent(wheel({ deltaX: 4, deltaY: -30 }))).toEqual({ kind: 'zoom', px: -30 });
+  });
+  it('Shift+wheel pans whether the browser reports it on Y (Firefox) or X (Chrome)', () => {
+    expect(wheelIntent(wheel({ deltaY: 3, deltaMode: 1, shiftKey: true }))).toEqual({ kind: 'pan', px: 48 });
+    expect(wheelIntent(wheel({ deltaX: 3, deltaMode: 1, shiftKey: true }))).toEqual({ kind: 'pan', px: 48 });
+  });
+  it('Ctrl+wheel (trackpad pinch) is a pinch zoom', () => {
+    expect(wheelIntent(wheel({ deltaY: -5, ctrlKey: true }))).toEqual({ kind: 'pinch', px: -5 });
+  });
+  it('normalizes line deltas on the horizontal axis too', () => {
+    expect(wheelIntent(wheel({ deltaX: -2, deltaMode: 1 }))).toEqual({ kind: 'pan', px: -32 });
   });
 });
 

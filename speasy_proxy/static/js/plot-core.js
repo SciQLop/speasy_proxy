@@ -295,6 +295,17 @@ export function normalizeWheelDelta(deltaY, deltaMode) {
   return Math.max(-WHEEL_MAX_PX, Math.min(WHEEL_MAX_PX, px));
 }
 
+// What a wheel event means: 'pinch' (trackpad pinch arrives as Ctrl+wheel), 'pan'
+// (Shift+wheel or a mostly-horizontal swipe) or 'zoom'. px is the normalized delta.
+// Shift reads X too because Chrome already swaps Shift+wheel onto deltaX.
+export function wheelIntent({ deltaX, deltaY, deltaMode, shiftKey, ctrlKey }) {
+  const px = (d) => normalizeWheelDelta(d, deltaMode);
+  if (ctrlKey) return { kind: 'pinch', px: px(deltaY) };
+  if (shiftKey) return { kind: 'pan', px: px(deltaY || deltaX) };
+  if (Math.abs(deltaX) > Math.abs(deltaY)) return { kind: 'pan', px: px(deltaX) };
+  return { kind: 'zoom', px: px(deltaY) };
+}
+
 // Zoom [start,end] around the time under the cursor (cursorFrac in [0,1] across the range).
 // factor < 0 zooms in (shrinks), factor > 0 zooms out (widens). The cursor time stays put.
 export function zoomRange(start, end, cursorFrac, factor) {

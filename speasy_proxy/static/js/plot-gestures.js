@@ -1,11 +1,13 @@
-// Mouse gestures for one uPlot subplot. Plot area: wheel = zoom time at the cursor,
-// Shift+wheel = pan time, drag = pan time. Y-axis gutter: wheel = zoom Y, Shift+wheel
-// = pan Y, drag = pan Y, double-click = reset Y. Time changes go through ctx.setView so
-// every subplot stays on one shared window.
-import { normalizeWheelDelta, zoomToward, panRange, yRangeFromPixels } from './plot-core.js';
+// Mouse and trackpad gestures for one uPlot subplot. Plot area: wheel / pinch = zoom time
+// at the cursor, horizontal swipe / Shift+wheel / drag = pan time. Y-axis gutter: the
+// same gestures act on Y, plus double-click = reset Y. Time changes go through
+// ctx.setView so every subplot stays on one shared window.
+import { wheelIntent, zoomToward, panRange, yRangeFromPixels } from './plot-core.js';
 
 const ZOOM_SENSITIVITY = 0.0015;  // zoom amount per normalized wheel pixel
-const PAN_SENSITIVITY = 0.0015;   // pan amount (fraction of view) per normalized wheel pixel
+// simplify: tuned by reasoning, not on hardware; pinch deltas are ~10x smaller than
+// wheel notches. Raise/lower if pinch feels sluggish/jumpy on a real trackpad.
+const PINCH_ZOOM_SENSITIVITY = 0.01;
 const MIN_ZOOM_SPAN_MS = 1;       // smallest time window (times are ms)
 
 // ctx: { getView(), setView(view), setY(min, max), resetY() }
@@ -22,9 +24,9 @@ export function bindGestures(u, ctx) {
     const onY = inGutter(e);
     if (!onY && !u.over.contains(e.target)) return;
     e.preventDefault();
-    const delta = normalizeWheelDelta(e.deltaY, e.deltaMode);
-    if (onY) wheelY(u, ctx, e, delta);
-    else wheelX(u, ctx, e, delta);
+    const intent = wheelIntent(e);
+    if (onY) wheelY(u, ctx, e, intent);
+    else wheelX(u, ctx, e, intent);
   }, { passive: false });
 
   u.root.addEventListener('mousedown', (e) => {
@@ -40,15 +42,19 @@ export function bindGestures(u, ctx) {
   });
 }
 
-function wheelX(u, ctx, e, delta) {
+const zoomFactor = ({ kind, px }) =>
+  px * (kind === 'pinch' ? PINCH_ZOOM_SENSITIVITY : ZOOM_SENSITIVITY);
+
+// Pans move the content by the swipe's pixels, so it tracks the fingers like a drag.
+function wheelX(u, ctx, e, intent) {
   const { start, end } = ctx.getView();
-  if (e.shiftKey) {
-    ctx.setView(panRange(start, end, PAN_SENSITIVITY * delta));
+  const rect = u.over.getBoundingClientRect();
+  if (intent.kind === 'pan') {
+    ctx.setView(panRange(start, end, intent.px / (rect.width || 1)));
     return;
   }
-  const rect = u.over.getBoundingClientRect();
   const frac = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
-  const next = zoomToward(start, end, frac, delta * ZOOM_SENSITIVITY, MIN_ZOOM_SPAN_MS);
+  const next = zoomToward(start, end, frac, zoomFactor(intent), MIN_ZOOM_SPAN_MS);
   if (next) ctx.setView(next);
 }
 
@@ -61,16 +67,15 @@ function applyY(ctx, range) {
   if (range) ctx.setY(range.min, range.max);
 }
 
-function wheelY(u, ctx, e, delta) {
+function wheelY(u, ctx, e, intent) {
   const scale = yScaleSnapshot(u);
   const h = scale.heightPx;
-  if (e.shiftKey) {
-    const shift = h * PAN_SENSITIVITY * delta;
-    applyY(ctx, yRangeFromPixels(scale, h + shift, shift));
+  if (intent.kind === 'pan') {
+    applyY(ctx, yRangeFromPixels(scale, h + intent.px, intent.px));
     return;
   }
   const cursorPx = e.clientY - u.over.getBoundingClientRect().top;
-  const f = 1 + delta * ZOOM_SENSITIVITY;
+  const f = 1 + zoomFactor(intent);
   applyY(ctx, yRangeFromPixels(scale, cursorPx + (h - cursorPx) * f, cursorPx - cursorPx * f));
 }
 
