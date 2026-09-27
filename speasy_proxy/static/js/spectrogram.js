@@ -96,13 +96,37 @@ export function spectrogramValueAt(times, rows, yBinsFlat, timeMs, yValue) {
 
 // Browser canvas dimensions are bounded (typically 16384–32768 px); a spectrogram
 // with more time samples than that either fails to render or stutters. Cap the canvas
-// width and reduce each bucket of source columns to its per-bin maximum — picking one
-// sample per bucket instead would drop bursts narrower than the bucket, showing a
-// quiet interval where the instrument actually spiked.
+// width and reduce each column to the per-bin maximum of the samples it covers — picking
+// one sample instead would drop bursts narrower than a column, showing a quiet interval
+// where the instrument actually spiked.
 const MAX_SPECTROGRAM_CANVAS_WIDTH = 4096;
+// A sample covers the time up to the next one, unless that step is this many times longer
+// than the steps on both sides of it: then it is a data gap and stays empty.
+const GAP_FACTOR = 2.5;
 
-// view: { start, end } in ms (nullable); returns { canvas, tStart, tEnd, yMin, yMax } or null
-export function renderSpectrogramImage(times, rows, yBinsFlat, vMin, vMax, logScaleParam, view) {
+// Rows with something to draw (a finite value > 0). Empty and fill rows are left out of
+// the timeline: a lone all-NaN row inside a gap would otherwise make the gap look like
+// sparse data and get filled.
+function drawableSamples(rows, iStart, iEnd) {
+  const out = [];
+  for (let s = iStart; s < iEnd; s++) if (rows[s]?.some((v) => v > 0)) out.push(s);
+  return out;
+}
+
+// Median spacing of the samples: their cadence, robust to gaps and to the uneven rows a
+// resampled refetch brings.
+function cadence(t) {
+  const diffs = [];
+  for (let k = 1; k < t.length; k++) if (t[k] > t[k - 1]) diffs.push(t[k] - t[k - 1]);
+  if (diffs.length === 0) return 1;
+  diffs.sort((x, y) => x - y);
+  return diffs[diffs.length >> 1];
+}
+
+// view: { start, end } in ms (nullable); returns { canvas, tStart, tEnd, yMin, yMax, yEdges }
+// or null. Columns are laid out in time, from tStart to tEnd, so samples land at their
+// own time whatever their spacing.
+export function renderSpectrogramImage(times, rows, yBinsFlat, vMin, vMax, logScale, view) {
   const v = (view && view.start != null && view.end != null)
     ? { start: view.start, end: view.end }
     : { start: times[0], end: times[times.length - 1] };
@@ -118,60 +142,81 @@ export function renderSpectrogramImage(times, rows, yBinsFlat, vMin, vMax, logSc
   while (lo < hi) { const mid = (lo + hi) >> 1; if (times[mid] <= renderEnd) lo = mid + 1; else hi = mid; }
   const iEnd = lo;
 
-  const nTime = iEnd - iStart;
   const nY = yBinsFlat.length;
-  if (nTime <= 0 || nY <= 0) return null;
+  const drawn = drawableSamples(rows, iStart, iEnd);
+  if (drawn.length === 0 || nY <= 0) return null;
 
-  const outWidth = Math.min(nTime, MAX_SPECTROGRAM_CANVAS_WIDTH);
-  const step = nTime / outWidth;
+  const t = drawn.map((s) => times[s]);
+  const dt = cadence(t);
+  const tStart = t[0];
+  const tEnd = t[t.length - 1] + dt;
+  const width = Math.min(t.length, MAX_SPECTROGRAM_CANVAS_WIDTH);
+  const colOf = (time) => Math.min(width, Math.floor(((time - tStart) / (tEnd - tStart)) * width));
+  const colMax = columnMaxima(t, drawn.map((s) => rows[s]), nY, width, colOf, dt, tEnd);
 
   const canvas = document.createElement('canvas');
-  canvas.width = outWidth;
+  canvas.width = width;
   canvas.height = nY;
   const ctx = canvas.getContext('2d');
-  const imgData = ctx.createImageData(outWidth, nY);
-  const pixels = imgData.data;
+  const imgData = ctx.createImageData(width, nY);
+  paintColumns(imgData.data, colMax, width, nY, vMin, vMax, logScale);
+  ctx.putImageData(imgData, 0, 0);
+  return {
+    canvas,
+    tStart,
+    tEnd,
+    yMin: yBinsFlat[0],
+    yMax: yBinsFlat[nY - 1],
+    yEdges: computeYEdges(yBinsFlat),
+  };
+}
 
-  const logVMin = Math.log10(Math.max(vMin, 1e-30));
-  const logVMax = Math.log10(vMax);
+// Where sample k stops being drawn: the next sample, or, across a data gap, one local
+// step later. Steps are compared with their neighbours, not a global cadence: a cache
+// mixing full-resolution rows with coarser resampled ones is continuous in both parts.
+function coverEnd(t, k, dt, tEnd) {
+  if (k + 1 >= t.length) return tEnd;
+  const step = (i) => (i > 0 && i < t.length ? t[i] - t[i - 1] : dt);
+  const local = Math.max(step(k), step(k + 2));
+  const next = t[k + 1] - t[k];
+  return t[k] + (next > GAP_FACTOR * local ? local : next);
+}
 
-  const bucket = new Float64Array(nY);
-
-  for (let t = 0; t < outWidth; t++) {
-    const srcFrom = iStart + Math.floor(t * step);
-    const srcTo = Math.min(iStart + Math.floor((t + 1) * step), iEnd);
-    bucket.fill(0);
-    for (let s = srcFrom; s < srcTo; s++) {
-      const row = rows[s];
-      if (!row) continue;
+// Per column and bin, the largest value among the samples covering that column; each
+// sample covers at least its own column.
+function columnMaxima(t, rows, nY, width, colOf, dt, tEnd) {
+  const colMax = new Float64Array(width * nY);
+  for (let k = 0; k < t.length; k++) {
+    const row = rows[k];
+    const c0 = colOf(t[k]);
+    const c1 = Math.max(c0 + 1, colOf(coverEnd(t, k, dt, tEnd)));
+    for (let c = c0; c < Math.min(c1, width); c++) {
       for (let y = 0; y < nY; y++) {
         const val = row[y];
-        if (val != null && !isNaN(val) && val > bucket[y]) bucket[y] = val;
+        if (val != null && !isNaN(val) && val > colMax[c * nY + y]) colMax[c * nY + y] = val;
       }
     }
+  }
+  return colMax;
+}
+
+// Colour each (column, bin) through viridis; empty or non-positive cells stay transparent.
+function paintColumns(pixels, colMax, width, nY, vMin, vMax, logScale) {
+  const logVMin = Math.log10(Math.max(vMin, 1e-30));
+  const logVMax = Math.log10(vMax);
+  for (let c = 0; c < width; c++) {
     for (let y = 0; y < nY; y++) {
-      const val = bucket[y];
+      const val = colMax[c * nY + y];
       if (val <= 0) continue;
-      const norm = logScaleParam
+      const norm = logScale
         ? (Math.log10(val) - logVMin) / (logVMax - logVMin)
         : (val - vMin) / (vMax - vMin);
       const li = Math.max(0, Math.min(255, Math.round(norm * 255))) * 3;
-      const py = (nY - 1 - y);
-      const idx = (py * outWidth + t) * 4;
+      const idx = ((nY - 1 - y) * width + c) * 4;
       pixels[idx] = VIRIDIS_LUT[li];
       pixels[idx + 1] = VIRIDIS_LUT[li + 1];
       pixels[idx + 2] = VIRIDIS_LUT[li + 2];
       pixels[idx + 3] = 255;
     }
   }
-
-  ctx.putImageData(imgData, 0, 0);
-  return {
-    canvas,
-    tStart: times[iStart],
-    tEnd: times[Math.min(iEnd, times.length) - 1],
-    yMin: yBinsFlat[0],
-    yMax: yBinsFlat[nY - 1],
-    yEdges: computeYEdges(yBinsFlat),
-  };
 }

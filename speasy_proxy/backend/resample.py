@@ -14,7 +14,30 @@ def resample(var: SpeasyVariable, max_points: int, strategy: str = 'min_max') ->
     if len(var) <= max_points:
         return var
     strategies = {'min_max': _min_max, 'lttb': _lttb}
-    return strategies[strategy](var, max_points)
+    resample_lines = strategies[strategy]
+    return _spectrogram(var, max_points) if _is_spectrogram(var) else resample_lines(var, max_points)
+
+
+def _is_spectrogram(var: SpeasyVariable) -> bool:
+    # A second axis (DEPEND_1: energy, frequency, ...) makes the columns bins of one
+    # quantity, drawn as an image, rather than independent lines.
+    return len(var.axes) > 1
+
+
+def _spectrogram(var: SpeasyVariable, max_points: int) -> SpeasyVariable:
+    # One real row per time bucket, buckets evenly spread in time, so the image keeps an
+    # even coverage; each bucket keeps its most intense row so bursts survive. The line
+    # strategies kept clusters of per-channel extremes with long holes between them.
+    # max_points is sized for lines (a min and a max per pixel); an image column needs
+    # one row, hence half as many buckets.
+    n_buckets = max(1, max_points // 2)
+    t = var.time.astype('int64')
+    # Float: nanosecond offsets times n_buckets overflow int64 over multi-year spans.
+    buckets = np.minimum(((t - t[0]) / (t[-1] - t[0] + 1) * n_buckets).astype(np.int64), n_buckets - 1)
+    intensity = np.nansum(np.asarray(var.values, dtype=float), axis=1)
+    order = np.lexsort((-intensity, buckets))
+    _, first_of_bucket = np.unique(buckets[order], return_index=True)
+    return var[np.sort(order[first_of_bucket])]
 
 
 def _min_max(var: SpeasyVariable, max_points: int) -> SpeasyVariable:

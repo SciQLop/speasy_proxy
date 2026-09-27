@@ -1,6 +1,6 @@
 import numpy as np
 import pytest
-from speasy.products.variable import SpeasyVariable, VariableTimeAxis, DataContainer
+from speasy.products.variable import SpeasyVariable, VariableTimeAxis, VariableAxis, DataContainer
 from speasy_proxy.backend.resample import resample
 
 
@@ -108,6 +108,44 @@ def test_lttb_wide_product_stays_within_max_points():
     var = _make_var(100_000, n_cols=64)
     result = resample(var, max_points=200, strategy='lttb')
     assert len(result) <= 200
+
+
+def _make_spectrogram(n_points, n_bins, values=None, step_s=1):
+    times = (np.arange(n_points) * step_s).astype('datetime64[s]').astype('datetime64[ns]')
+    if values is None:
+        values = np.random.default_rng(7).lognormal(size=(n_points, n_bins))
+    axes = [VariableTimeAxis(values=times, meta={}),
+            VariableAxis(values=np.geomspace(10, 3e4, n_bins), meta={}, name='energy')]
+    return SpeasyVariable(axes=axes, values=DataContainer(values=values, meta={}, name='flux'))
+
+
+def test_spectrogram_keeps_rows_evenly_spread_in_time():
+    """Per-channel min/max kept clusters of extreme rows with hours-long holes between
+    them, which the /plot image then drew at the wrong times."""
+    var = _make_spectrogram(20000, 31)
+    result = resample(var, max_points=1000, strategy='min_max')
+    kept = result.time.astype('int64') // 10**9
+    assert 450 <= len(result) <= 500          # one row per image column: max_points / 2
+    assert np.diff(kept).max() <= 2 * 20000 / 500
+
+
+def test_spectrogram_bucketing_survives_multi_year_spans():
+    # Nanosecond offsets times the bucket count overflow int64 past a few years.
+    var = _make_spectrogram(20000, 4, step_s=3600)   # ~2.3 years of hourly spectra
+    result = resample(var, max_points=10000, strategy='min_max')
+    kept = result.time.astype('int64') // 10**9
+    assert 4500 <= len(result) <= 5000
+    assert np.all(np.diff(kept) > 0)
+
+
+def test_spectrogram_keeps_real_rows_and_bursts():
+    values = np.ones((20000, 8))
+    values[12345] = 1e6
+    var = _make_spectrogram(20000, 8, values=values)
+    for strategy in ('min_max', 'lttb'):
+        result = resample(var, max_points=1000, strategy=strategy)
+        assert result.values.max() == 1e6
+        assert set(np.unique(result.values)) <= {1.0, 1e6}   # original rows, not blends
 
 
 def test_invalid_strategy_raises():

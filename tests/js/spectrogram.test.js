@@ -100,11 +100,11 @@ describe('spectrogram', () => {
       expect(result.canvas.height).toBe(10);
     });
 
-    it('preserves tStart/tEnd/yMin/yMax regardless of capping', () => {
+    it('spans from the first sample to the end of the last one, regardless of capping', () => {
       const { times, rows, yBins } = makeData(10000, 10);
       const result = renderSpectrogramImage(times, rows, yBins, 1, 100000, false, null);
       expect(result.tStart).toBe(times[0]);
-      expect(result.tEnd).toBe(times[times.length - 1]);
+      expect(result.tEnd).toBe(times[times.length - 1] + 1000);  // the last sample covers one cadence
       expect(result.yMin).toBe(yBins[0]);
       expect(result.yMax).toBe(yBins[yBins.length - 1]);
     });
@@ -124,6 +124,55 @@ describe('spectrogram', () => {
       let brightest = 0;
       for (let t = 0; t < width; t++) brightest = Math.max(brightest, data[(py * width + t) * 4]);
       expect(brightest).toBe(253); // viridis top of scale
+    });
+
+    // Columns used to be one per sample, evenly spaced: a data gap, or the uneven rows
+    // a resampled refetch brings, moved every later sample to the wrong time.
+    it('places samples at their own time and leaves a data gap empty', () => {
+      const times = [0, 1000, 2000, 3000, 10000, 11000, 12000, 13000];
+      const rows = times.map((t) => [t < 5000 ? 1 : 2]);
+      const result = renderSpectrogramImage(times, rows, [1], 1, 2, false, null);
+      const { data, width } = result.canvas.imageData;
+      const span = result.tEnd - result.tStart;
+      const alphaAt = (t) => data[Math.floor(((t - result.tStart) / span) * width) * 4 + 3];
+
+      expect(alphaAt(6000)).toBe(0);     // inside the gap: nothing drawn
+      expect(alphaAt(8000)).toBe(0);
+      expect(alphaAt(10500)).toBe(255);  // data resumes where it really is
+      expect(alphaAt(1500)).toBe(255);
+    });
+
+    it('stretches each sample of a sparse slice up to the next one, not to one thin column', () => {
+      const times = [0, 1000, 2000, 3000];
+      const result = renderSpectrogramImage(times, times.map(() => [1]), [1], 1, 2, false, null);
+      const { data, width } = result.canvas.imageData;
+      for (let c = 0; c < width; c++) expect(data[c * 4 + 3]).toBe(255);
+    });
+
+    // After a zoom-out the cache holds full-resolution rows next to coarser resampled
+    // ones: the coarse stretch is continuous data, not a run of gaps.
+    it('fills a coarser stretch of samples instead of striping it', () => {
+      const times = [];
+      for (let t = 0; t < 2000; t += 10) times.push(t);      // fine cadence: 200 samples
+      for (let t = 2000; t < 12000; t += 100) times.push(t); // coarse cadence: 100 samples
+      const result = renderSpectrogramImage(times, times.map(() => [1]), [1], 1, 2, false, null);
+      const { data, width } = result.canvas.imageData;
+      const span = result.tEnd - result.tStart;
+      const lit = (t) => data[Math.floor(((t - result.tStart) / span) * width) * 4 + 3] === 255;
+      for (let t = 2000; t < 11900; t += 37) expect(lit(t)).toBe(true);
+    });
+
+    // A lone fill row (all NaN) inside a gap must not make the gap look like sparse data.
+    it('ignores empty rows when deciding what is a gap', () => {
+      const times = [0, 100, 200, 300, 400, 5000, 9000, 9100, 9200, 9300];
+      const rows = times.map((t) => (t === 5000 ? [NaN] : [1]));
+      const result = renderSpectrogramImage(times, rows, [1], 1, 2, false, null);
+      const { data, width } = result.canvas.imageData;
+      const span = result.tEnd - result.tStart;
+      const alphaAt = (t) => data[Math.floor(((t - result.tStart) / span) * width) * 4 + 3];
+      expect(alphaAt(2500)).toBe(0);
+      expect(alphaAt(7000)).toBe(0);
+      expect(alphaAt(9150)).toBe(255);
     });
 
     it('returns null for empty data', () => {
