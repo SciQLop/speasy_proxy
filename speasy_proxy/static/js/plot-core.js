@@ -382,6 +382,17 @@ export function cleanText(s) {
   return String(s ?? '').replace(/\0/g, '').trim();
 }
 
+// Search-result paths as text. Leading segments every result shares tell them apart not
+// at all, and a narrow sidebar cuts paths off at the end: drop them ("… / ") so the
+// segments that differ stay visible. The last segment is always kept.
+export function distinctCrumbs(crumbs) {
+  let shared = 0;
+  if (crumbs.length > 1) {
+    while (crumbs.every((c) => shared < c.length - 1 && c[shared] === crumbs[0][shared])) shared++;
+  }
+  return crumbs.map((c) => (shared > 0 ? '… / ' : '') + c.slice(shared).join(' / '));
+}
+
 // Where a product dropped at offsetY on a subplot of heightPx goes: a new subplot
 // 'before'/'after' it when near an edge, else 'into' it. Edge bands are 24 px, at most a
 // quarter of the height each, so short plots keep a middle band.

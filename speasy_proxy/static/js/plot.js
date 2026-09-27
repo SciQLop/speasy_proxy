@@ -8,7 +8,7 @@ import {
   createSubplotData, createProductCache, subplotToConfig, subplotFromConfig,
   detectPlotType, mergeSorted, mergeSortedRows, mergeIntervals, evictProductCache,
   configToBase64, base64ToConfig, isCovered, resolutionSufficient, rangesOverlap, trimCacheWindow, cacheToCsv,
-  structureKey, resampleTarget, plotTypeFromCache, computeValueRange, mergeValueRange, cleanText,
+  structureKey, resampleTarget, plotTypeFromCache, computeValueRange, mergeValueRange, cleanText, distinctCrumbs,
 } from './plot-core.js';
 import { ascendingSpectrogram } from './spectrogram.js';
 import { fetchData as apiFetchData, fetchInventory } from './api-client.js';
@@ -397,18 +397,19 @@ import { createPlotView, PRODUCT_MIME } from './plot-view.js';
             return;
         }
 
-        for (const leaf of results.slice(0, MAX_SEARCH_RESULTS)) {
+        // Name first: a long path gets cut off at the end, and the name is what you pick by.
+        const shown = results.slice(0, MAX_SEARCH_RESULTS);
+        const crumbs = distinctCrumbs(shown.map(leaf => leaf.breadcrumb.slice(0, -1)));
+        shown.forEach((leaf, i) => {
             const div = productLeaf(leaf.node);
-            const prefix = leaf.breadcrumb.slice(0, -1).join(' / ');
-            if (prefix) {
-                const span = document.createElement('span');
-                span.className = 'tree-crumb';
-                span.textContent = prefix + ' / ';
-                div.appendChild(span);
-            }
+            div.title = leaf.breadcrumb.join(' / ') + '\n' + leaf.path;
             div.appendChild(document.createTextNode(leaf.displayName));
+            const crumb = document.createElement('span');
+            crumb.className = 'tree-crumb';
+            crumb.textContent = crumbs[i];
+            div.appendChild(crumb);
             container.appendChild(div);
-        }
+        });
 
         if (results.length > MAX_SEARCH_RESULTS) {
             const more = document.createElement('div');
@@ -647,6 +648,7 @@ import { createPlotView, PRODUCT_MIME } from './plot-view.js';
         const stopMs = Date.parse(plotState.time_range.stop);
         trackLoading(+1);
         loadingSubplots.add(subplot);
+        renderAllSubplots(true);  // the new subplot shows at once, with its loading dot
         setStatus('Fetching ' + productPath + '...');
         try {
             const data = await fetchData(productPath, startMs, stopMs, undefined, prod);

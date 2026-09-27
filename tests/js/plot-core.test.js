@@ -5,7 +5,7 @@ import {
   createSubplotData, createProductCache, subplotToConfig, subplotFromConfig,
   normalizeWheelDelta, wheelIntent, zoomRange, panRange, zoomToward, structureKey, resampleTarget,
   plotTypeFromCache, computeValueRange, mergeValueRange, renderableRange,
-  nearestIndex, lineTable, yRangeFromPixels, fmtTick, cleanText, productTitle, dropZone,
+  nearestIndex, lineTable, yRangeFromPixels, fmtTick, cleanText, productTitle, dropZone, distinctCrumbs,
 } from '../../speasy_proxy/static/js/plot-core.js';
 
 describe('merge', () => {
@@ -584,5 +584,21 @@ describe('dropZone', () => {
     expect(dropZone(8, 40)).toBe('before');
     expect(dropZone(20, 40)).toBe('into');
     expect(dropZone(32, 40)).toBe('after');
+  });
+});
+
+describe('distinctCrumbs', () => {
+  it('drops the leading segments every result shares, so what tells them apart shows', () => {
+    expect(distinctCrumbs([
+      ['amda', 'Parameters', 'SW Models', 'Bepi', 'Tao'],
+      ['amda', 'Parameters', 'SW Models', 'Juno', 'Tao'],
+    ])).toEqual(['… / Bepi / Tao', '… / Juno / Tao']);
+  });
+  it('keeps at least the last segment', () => {
+    expect(distinctCrumbs([['amda', 'X'], ['amda', 'X']])).toEqual(['… / X', '… / X']);
+  });
+  it('keeps a lone result whole, and paths with nothing in common as they are', () => {
+    expect(distinctCrumbs([['cda', 'ACE']])).toEqual(['cda / ACE']);
+    expect(distinctCrumbs([['cda', 'ACE'], ['amda', 'ACE']])).toEqual(['cda / ACE', 'amda / ACE']);
   });
 });

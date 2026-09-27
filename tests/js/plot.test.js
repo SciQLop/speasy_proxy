@@ -838,6 +838,19 @@ describe('fetches that finish after the state moved on', () => {
     await flush();
   });
 
+  it('a new subplot shows up at once, with its loading dot, before its data arrives', async () => {
+    const slow = deferred();
+    apiClient.fetchData.mockReturnValueOnce(slow.promise);
+    const before = dom.created.length;
+
+    plot.__test__.subplotAction({ type: 'addProduct', index: null, path: 'cda/a' });
+
+    const titles = dom.created.slice(before).filter((e) => e.className === 'pv-header-title').map((e) => e.dataset.text);
+    expect(titles).toEqual(['a ●']);
+    slow.resolve(null);
+    await flush();
+  });
+
   it('adding a product refuses a stop before the start', () => {
     dom.getById('start-time').value = '02-01-2020 00:00';
     dom.getById('stop-time').value = '01-01-2020 00:00';
@@ -874,7 +887,7 @@ describe('URL state', () => {
 });
 
 describe('product search', () => {
-  it('shows each result\'s path once, not ending in a repeat of its own name', async () => {
+  it('shows each result\'s name first, then its path once (no repeated name)', async () => {
     apiClient.fetchInventory.mockResolvedValueOnce({
       cda: { __spz_type__: 'ProviderIndex', ACE: { __spz_type__: 'DatasetIndex', __spz_name__: 'ACE',
         GSE_LAT: { __spz_type__: 'ParameterIndex', __spz_provider__: 'cda', __spz_uid__: 'AC/GSE_LAT', __spz_name__: 'GSE_LAT' } } },
@@ -884,8 +897,9 @@ describe('product search', () => {
 
     plot.__test__.onSearchInput({ target: { value: 'gse_lat' } });
 
-    const prefix = dom.created.slice(before).find((e) => e.tagName === 'SPAN');
-    expect(prefix.textContent).toBe('cda / ACE / ');
+    // Name first: long paths get cut off at the end, and the name is what you pick by.
+    const leaf = dom.created.slice(before).find((e) => e.className === 'tree-leaf');
+    expect(leaf.children.map((c) => c.textContent)).toEqual(['+', 'GSE_LAT', 'cda / ACE']);
   });
 
   it('binds its input listener once, even when the inventory is loaded again (Retry)', async () => {
