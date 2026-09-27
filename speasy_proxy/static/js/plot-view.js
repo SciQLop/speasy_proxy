@@ -6,7 +6,7 @@
 // draws it and reports back: time-window changes through onViewChange, subplot edits
 // (log toggles, removals, dropped products) through onAction({ type, index, path }).
 import uPlot from './vendor/uPlot.esm.js';
-import { CHART_COLORS, escapeHtml } from './common.js';
+import { CHART_COLORS, escapeHtml, parseUtc } from './common.js';
 import {
   lineTable, nearestIndex, fmtTick, productTitle, dropZone,
   computeValueRange, renderableRange,
@@ -64,7 +64,7 @@ export function createPlotView(root, { onViewChange, onAction = () => {} }) {
     setEmpty(nextPlots.length === 0);
     plots = nextPlots;
     view = { ...nextView };
-    intervals = (opts.intervals || []).map((iv) => ({ ...iv, t0: Date.parse(iv.start), t1: Date.parse(iv.stop) }));
+    intervals = (opts.intervals || []).map((iv) => ({ ...iv, t0: parseUtc(iv.start).getTime(), t1: parseUtc(iv.stop).getTime() }));
     const heights = layoutHeights(plots, root.clientHeight);
     charts = plots.map((sp, i) => createChart(sp, i, heights[i], opts.loading?.has(sp)));
     fitHeights();

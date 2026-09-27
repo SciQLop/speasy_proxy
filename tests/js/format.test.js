@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { formatBytes, formatNumber, formatDuration } from '../../speasy_proxy/static/js/format.js';
+import { formatBytes, formatNumber, formatDuration, formatDateTime } from '../../speasy_proxy/static/js/format.js';
 
 describe('format', () => {
   it('formats bytes', () => {
@@ -17,5 +17,18 @@ describe('format', () => {
     expect(formatDuration(90)).toBe('1m');
     expect(formatDuration(3 * 3600 + 5 * 60)).toBe('3h 5m');
     expect(formatDuration(2 * 86400 + 4 * 3600)).toBe('2d 4h');
+  });
+});
+
+describe('formatDateTime', () => {
+  it('shows server times in UTC, labelled, whatever the browser zone', () => {
+    const tz = process.env.TZ;
+    process.env.TZ = 'Europe/Paris';
+    try {
+      expect(formatDateTime('2024-01-01T00:00:00')).toBe('2024-01-01 00:00 UTC');
+      expect(formatDateTime('2024-01-01T00:00:00Z')).toBe('2024-01-01 00:00 UTC');
+    } finally {
+      if (tz === undefined) delete process.env.TZ; else process.env.TZ = tz;
+    }
   });
 });

@@ -29,6 +29,15 @@ export function attachDatePicker(el) {
   });
 }
 
+// A time from the inventory, a config or a link, as a Date. They carry no zone
+// ('1997-08-25 17:48:00', '2024-01-01T00:00:00') and JS would read those as local time;
+// here a zone-less date-time is UTC. Explicit zones, bare dates and epoch ms pass through.
+const ZONELESS_DATETIME = /^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}(:\d{2}(\.\d+)?)?$/;
+export function parseUtc(value) {
+  const s = typeof value === 'string' ? value.trim() : value;
+  return new Date(ZONELESS_DATETIME.test(s) ? s.replace(' ', 'T') + 'Z' : s);
+}
+
 // Set a date field, keeping the flatpickr calendar in sync when present. flatpickr only
 // knows local time, so it gets the UTC text rather than the Date: the field then shows
 // UTC, and whatever it holds is read back by parseDateInput as UTC.

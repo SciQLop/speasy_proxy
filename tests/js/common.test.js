@@ -1,8 +1,30 @@
-import { describe, it, expect, vi, afterEach } from 'vitest';
+import { describe, it, expect, vi, afterEach, beforeAll, afterAll } from 'vitest';
 import {
-  escapeHtml, formatDateInput, parseDateInput, setDateInput,
+  escapeHtml, formatDateInput, parseDateInput, setDateInput, parseUtc,
   installErrorBoundary, runWithConcurrency,
 } from '../../speasy_proxy/static/js/common.js';
+
+// Inventory dates ('1997-08-25 17:48:00') and config/link times ('2024-01-01T00:00:00')
+// carry no zone: JS reads them as local time, which shifted views by the UTC offset.
+describe('parseUtc', () => {
+  let tz;
+  beforeAll(() => { tz = process.env.TZ; process.env.TZ = 'Europe/Paris'; });
+  afterAll(() => { if (tz === undefined) delete process.env.TZ; else process.env.TZ = tz; });
+  it('reads a zone-less ISO date-time as UTC', () => {
+    expect(parseUtc('2024-01-01T00:00:00').getTime()).toBe(Date.UTC(2024, 0, 1));
+  });
+  it('reads the inventory space-separated form as UTC', () => {
+    expect(parseUtc('1997-08-25 17:48:00').getTime()).toBe(Date.UTC(1997, 7, 25, 17, 48));
+  });
+  it('keeps an explicit zone and a bare date', () => {
+    expect(parseUtc('2024-01-01T00:00:00+02:00').getTime()).toBe(Date.UTC(2023, 11, 31, 22));
+    expect(parseUtc('2024-01-01T00:00:00.000Z').getTime()).toBe(Date.UTC(2024, 0, 1));
+    expect(parseUtc('2024-01-01').getTime()).toBe(Date.UTC(2024, 0, 1));
+  });
+  it('passes numbers (epoch ms) through', () => {
+    expect(parseUtc(86400000).getTime()).toBe(86400000);
+  });
+});
 
 // The time inputs are UTC, like the plot axes and the data: in local time a user east
 // of Greenwich typing 00:00 got data from the previous day.

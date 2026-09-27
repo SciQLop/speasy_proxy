@@ -1,4 +1,4 @@
-import { attachDatePicker, setDateInput, parseDateInput, setStatus, showLoading, showFetchBar, installErrorBoundary, runWithConcurrency, CHART_COLORS, REGION_COLORS } from './common.js';
+import { attachDatePicker, setDateInput, parseDateInput, parseUtc, setStatus, showLoading, showFetchBar, installErrorBoundary, runWithConcurrency, CHART_COLORS, REGION_COLORS } from './common.js';
 import {
   shueParams, bowShockParams, classifyPoint,
   toReData as sharedToReData, computeAxisRange,
@@ -411,7 +411,7 @@ const API_BASE = (window.SPEASY_BASE_URL || '').replace(/\/$/, '') + '/';
                     try {
                         const bounds = JSON.parse(cb.dataset.timeBoundsJson || '{}');
                         if (bounds.stop) {
-                            const t = new Date(bounds.stop).getTime();
+                            const t = parseUtc(bounds.stop).getTime();
                             if (minStop === null || t < minStop) minStop = t;
                         }
                     } catch (_) {}
@@ -554,7 +554,7 @@ const API_BASE = (window.SPEASY_BASE_URL || '').replace(/\/$/, '') + '/';
                 try {
                     const bounds = JSON.parse(cb.dataset.timeBoundsJson || '{}');
                     if (bounds.start) {
-                        const e = new Date(bounds.stop || bounds.start);
+                        const e = parseUtc(bounds.stop || bounds.start);
                         const s = new Date(e.getTime() - getSelectedDurationMs());
                         setDateInput(document.getElementById('startTime'), s);
                         setDateInput(document.getElementById('stopTime'), e);
@@ -934,8 +934,8 @@ const API_BASE = (window.SPEASY_BASE_URL || '').replace(/\/$/, '') + '/';
         if (coordSys) document.getElementById('coordSys').value = coordSys;
         const start = params.get('start');
         const stop = params.get('stop');
-        if (start && !isNaN(new Date(start))) setDateInput(document.getElementById('startTime'), new Date(start));
-        if (stop && !isNaN(new Date(stop))) setDateInput(document.getElementById('stopTime'), new Date(stop));
+        if (start && !isNaN(parseUtc(start))) setDateInput(document.getElementById('startTime'), parseUtc(start));
+        if (stop && !isNaN(parseUtc(stop))) setDateInput(document.getElementById('stopTime'), parseUtc(stop));
         const dp = params.get('dp');
         if (dp !== null && !isNaN(parseFloat(dp))) {
             document.getElementById('dpSlider').value = dp;
@@ -969,7 +969,7 @@ const API_BASE = (window.SPEASY_BASE_URL || '').replace(/\/$/, '') + '/';
                 try {
                     const bounds = JSON.parse(cb.dataset.timeBoundsJson || '{}');
                     if (bounds.start) {
-                        const e = new Date(bounds.stop || bounds.start);
+                        const e = parseUtc(bounds.stop || bounds.start);
                         const s = new Date(e.getTime() - getSelectedDurationMs());
                         setDateInput(document.getElementById('startTime'), s);
                         setDateInput(document.getElementById('stopTime'), e);

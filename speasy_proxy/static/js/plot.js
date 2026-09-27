@@ -1,5 +1,5 @@
 import {
-  attachDatePicker, setDateInput, parseDateInput,
+  attachDatePicker, setDateInput, parseDateInput, parseUtc,
   setStatus, showLoading, showFetchBar, fallbackCopy,
   installErrorBoundary,
 } from './common.js';
@@ -181,7 +181,7 @@ import { createPlotView, PRODUCT_MIME } from './plot-view.js';
         const stopEl = document.getElementById('stop-time');
         const startEl = document.getElementById('start-time');
         if (!stopEl.value && !startEl.value && node.stop_date) {
-            const stopDate = new Date(node.stop_date);
+            const stopDate = parseUtc(node.stop_date);
             const startDate = new Date(stopDate.getTime() - 7 * DAY_MS);
             setDateInput(stopEl, stopDate);
             setDateInput(startEl, startDate);
@@ -1071,8 +1071,8 @@ import { createPlotView, PRODUCT_MIME } from './plot-view.js';
     }
 
     function applyConfig(config) {
-        const startDate = config.time_range.start ? new Date(config.time_range.start) : null;
-        let stopDate = config.time_range.stop ? new Date(config.time_range.stop) : null;
+        const startDate = config.time_range.start ? parseUtc(config.time_range.start) : null;
+        let stopDate = config.time_range.stop ? parseUtc(config.time_range.stop) : null;
         // A bare "YYYY-MM-DD" (e.g. the legacy ?start=&stop= link format, both parsed as
         // UTC midnight) used for both start and stop is meant as "that whole day", not a
         // zero-width instant -- left alone it silently produces a request the backend
@@ -1256,14 +1256,14 @@ import { createPlotView, PRODUCT_MIME } from './plot-view.js';
 
     // ===== Events Panel =====
 
-    const fmtEventDate = (d) => new Date(d).toISOString().replace('T', ' ').replace(/:\d{2}\.\d+Z$/, '');
+    const fmtEventDate = (d) => parseUtc(d).toISOString().replace('T', ' ').replace(/:\d{2}\.\d+Z$/, '');
 
     function updateEventsPanel() {
         const list = document.getElementById('events-list');
         list.innerHTML = '';
         document.getElementById('events-container').hidden = plotState.intervals.length === 0;
 
-        const sorted = [...plotState.intervals].sort((a, b) => new Date(a.start) - new Date(b.start));
+        const sorted = [...plotState.intervals].sort((a, b) => parseUtc(a.start) - parseUtc(b.start));
         for (const iv of sorted) {
             const dateRange = fmtEventDate(iv.start) + ' — ' + fmtEventDate(iv.stop);
             const item = document.createElement('div');
@@ -1283,8 +1283,8 @@ import { createPlotView, PRODUCT_MIME } from './plot-view.js';
 
     // The event fills the middle third of the view.
     function centerOnInterval(iv) {
-        const start = Date.parse(iv.start);
-        const end = Date.parse(iv.stop);
+        const start = parseUtc(iv.start).getTime();
+        const end = parseUtc(iv.stop).getTime();
         const pad = end - start;
         const view = { start: start - pad, end: end + pad };
         plotView.setView(view);

@@ -1,4 +1,5 @@
 // Display formatting helpers (used by the home dashboard).
+import { parseUtc } from './common.js';
 
 export function formatBytes(bytes) {
   if (bytes === 0) return '0 B';
@@ -23,11 +24,6 @@ export function formatDuration(seconds) {
 }
 
 export function formatDateTime(isoString) {
-  try {
-    return new Date(isoString).toLocaleString(undefined, {
-      month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit',
-    });
-  } catch {
-    return isoString;
-  }
+  const d = parseUtc(isoString);
+  return Number.isNaN(d.getTime()) ? String(isoString) : d.toISOString().slice(0, 16).replace('T', ' ') + ' UTC';
 }
