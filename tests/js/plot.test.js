@@ -544,6 +544,15 @@ describe('per-subplot actions (the toolbar on each subplot)', () => {
     expect(plotState.plots[1].products.map((p) => p.path)).toEqual(['cda/b', 'cda/c']);
   });
 
+  it('a product dropped on a subplot edge gets a new subplot at that position', () => {
+    plotState.plots = [lineSubplot('cda/a'), lineSubplot('cda/b')];
+
+    plot.__test__.subplotAction({ type: 'insertProduct', index: 1, path: 'cda/c' });
+    plot.__test__.subplotAction({ type: 'insertProduct', index: 0, path: 'cda/d' });
+
+    expect(plotState.plots.map((sp) => sp.products[0].path)).toEqual(['cda/d', 'cda/a', 'cda/c', 'cda/b']);
+  });
+
   it('a product added without a target gets a new subplot at the bottom', () => {
     plotState.plots = [lineSubplot('cda/a')];
 

@@ -152,7 +152,7 @@ import { createPlotView, PRODUCT_MIME } from './plot-view.js';
 
         const addAsNewSubplot = () => {
             selectProduct(node, div);
-            addProductToPlot(selectedProduct, null);
+            addProductToPlot(selectedProduct, {});
         };
         div.addEventListener('click', () => selectProduct(node, div));
         div.addEventListener('dblclick', addAsNewSubplot);
@@ -544,7 +544,8 @@ import { createPlotView, PRODUCT_MIME } from './plot-view.js';
         }),
         remove: ({ index }) => removeSubplot(index),
         removeProduct: ({ index, path }) => removeProductFromSubplot(index, path),
-        addProduct: ({ index, path }) => addProductToPlot(path, index),
+        addProduct: ({ index, path }) => addProductToPlot(path, index === null ? {} : { into: index }),
+        insertProduct: ({ index, path }) => addProductToPlot(path, { at: index }),
     };
 
     function subplotAction(action) {
@@ -559,15 +560,16 @@ import { createPlotView, PRODUCT_MIME } from './plot-view.js';
         updateURL();
     }
 
-    // subplotIndex null = a new subplot at the bottom. Params (coordinate system, AMDA
-    // arguments) come from the sidebar panel, which describes the selected product only.
-    function addProductToPlot(product, subplotIndex) {
+    // target: { into: i } overlays on subplot i, { at: i } inserts a new subplot at i, {}
+    // appends one. Params (coordinate system, AMDA arguments) come from the sidebar panel,
+    // which describes the selected product only.
+    function addProductToPlot(product, { into = null, at = plotState.plots.length } = {}) {
         if (!plotView) { setStatus('Chart not available — check network connection.'); return; }
         if (!product) { setStatus('No product selected.'); return; }
         const range = typedRange();
         if (!range) return;
 
-        const existing = subplotIndex === null ? null : plotState.plots[subplotIndex];
+        const existing = into === null ? null : plotState.plots[into];
         if (existing && existing.products.some(p => p.path === product)) {
             setStatus('Product already in this subplot.');
             return;
@@ -577,7 +579,7 @@ import { createPlotView, PRODUCT_MIME } from './plot-view.js';
         plotState.time_range.stop = range.stop.toISOString();
 
         const subplot = existing || createSubplotData();
-        if (!existing) plotState.plots.push(subplot);
+        if (!existing) plotState.plots.splice(at, 0, subplot);
         const params = product === selectedProduct ? collectProductParams() : {};
         subplot.products.push({ path: product, label: product, ...params });
         subplot.productData[product] = createProductCache(product);

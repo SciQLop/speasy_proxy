@@ -8,7 +8,7 @@
 import uPlot from './vendor/uPlot.esm.js';
 import { CHART_COLORS, escapeHtml } from './common.js';
 import {
-  lineTable, nearestIndex, fmtTick, productTitle,
+  lineTable, nearestIndex, fmtTick, productTitle, dropZone,
   computeValueRange, renderableRange,
 } from './plot-core.js';
 import { binRowRects, computeYEdges, lowestPositiveEdge, renderSpectrogramImage, spectrogramValueAt, VIRIDIS_LUT } from './spectrogram.js';
@@ -175,7 +175,13 @@ export function createPlotView(root, { onViewChange, onAction = () => {} }) {
     const colorbar = isHeatmap ? createColorbar(subplot) : null;
     u.root.appendChild(createBadge(u, createTitle(subplot, isHeatmap, loading, (path) => act('removeProduct', path)), colorbar));
     u.root.appendChild(tools.bar);
-    bindDropTarget(u.root, (path) => act('addProduct', path));
+    bindDropTarget(u.root, (path, zone) => {
+      if (zone === 'into') act('addProduct', path);
+      else onAction({ type: 'insertProduct', index: zone === 'before' ? index : index + 1, path });
+    }, (e) => {
+      const r = u.root.getBoundingClientRect();
+      return dropZone(e.clientY - r.top, r.height);
+    });
     u.batch(() => {
       u.setScale('x', { min: view.start, max: view.end });
       if (subplot._yOverride) u.setScale('y', subplot._yOverride);
@@ -469,19 +475,25 @@ function createTools(subplot, isHeatmap, act) {
 
 const carriesProduct = (e) => Array.from(e.dataTransfer?.types || []).includes(PRODUCT_MIME);
 
-function bindDropTarget(node, onDrop) {
+// zoneOf(e) names where on the node the drop would land ('into', 'before', 'after'); the
+// node shows it with a matching class (outline, or an insertion line on that edge).
+const ZONE_CLASS = { into: 'pv-drop-target', before: 'pv-drop-before', after: 'pv-drop-after' };
+
+function bindDropTarget(node, onDrop, zoneOf = () => 'into') {
+  const clear = () => node.classList.remove(...Object.values(ZONE_CLASS));
   node.addEventListener('dragover', (e) => {
     if (!carriesProduct(e)) return;
     e.preventDefault();
-    node.classList.add('pv-drop-target');
+    clear();
+    node.classList.add(ZONE_CLASS[zoneOf(e)]);
   });
-  node.addEventListener('dragleave', () => node.classList.remove('pv-drop-target'));
+  node.addEventListener('dragleave', clear);
   node.addEventListener('drop', (e) => {
-    node.classList.remove('pv-drop-target');
+    clear();
     const path = e.dataTransfer.getData(PRODUCT_MIME);
     if (!path) return;
     e.preventDefault();
-    onDrop(path);
+    onDrop(path, zoneOf(e));
   });
 }
 

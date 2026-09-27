@@ -186,6 +186,9 @@
         .pv-plots .uplot:hover .pv-chip-x { display: inline; }
         /* Drop targets for products dragged from the tree */
         .pv-plots .uplot.pv-drop-target { outline: 2px dashed #6b8afd; outline-offset: -2px; }
+        /* Near a subplot's top/bottom edge: insertion line where the new subplot will go */
+        .pv-plots .uplot.pv-drop-before { box-shadow: inset 0 4px 0 #6b8afd; }
+        .pv-plots .uplot.pv-drop-after { box-shadow: inset 0 -4px 0 #6b8afd; }
         .pv-drop-new { display: none; position: absolute; left: 0; right: 0; bottom: 0; height: 40px; z-index: 15;
             align-items: center; justify-content: center; background: rgba(26, 31, 54, 0.92);
             border: 2px dashed #2a3358; color: #8892b0; font-size: 0.85rem; }
@@ -295,7 +298,7 @@
     <div class="product-panel" id="product-panel" style="display:none;">
         <div class="product-panel-path" id="product-path"></div>
         <div class="product-params" id="product-params"></div>
-        <div class="product-panel-hint">+ or double-click: new subplot · drag onto a subplot: overlay</div>
+        <div class="product-panel-hint">+ or double-click: new subplot · drag onto a subplot: overlay, onto its top/bottom edge: new subplot there</div>
     </div>
     <div class="tree-container" id="tree-container">
         <div class="loading-text">Loading inventory...</div>

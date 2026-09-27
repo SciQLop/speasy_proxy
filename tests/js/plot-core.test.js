@@ -5,7 +5,7 @@ import {
   createSubplotData, createProductCache, subplotToConfig, subplotFromConfig,
   normalizeWheelDelta, wheelIntent, zoomRange, panRange, zoomToward, structureKey, resampleTarget,
   plotTypeFromCache, computeValueRange, mergeValueRange, renderableRange,
-  nearestIndex, lineTable, yRangeFromPixels, fmtTick, cleanText, productTitle,
+  nearestIndex, lineTable, yRangeFromPixels, fmtTick, cleanText, productTitle, dropZone,
 } from '../../speasy_proxy/static/js/plot-core.js';
 
 describe('merge', () => {
@@ -567,5 +567,22 @@ describe('productTitle', () => {
   it('falls back to the last path segment before the data arrives', () => {
     expect(productTitle({ path: 'amda/sw_n' }, undefined)).toBe('sw_n');
     expect(productTitle({ path: 'amda/sw_n' }, { title: '' })).toBe('sw_n');
+  });
+});
+
+describe('dropZone', () => {
+  it('near the top or bottom edge inserts a subplot there; the middle overlays', () => {
+    expect(dropZone(5, 200)).toBe('before');
+    expect(dropZone(195, 200)).toBe('after');
+    expect(dropZone(100, 200)).toBe('into');
+  });
+  it('keeps the edge bands to 24 px on tall plots', () => {
+    expect(dropZone(30, 400)).toBe('into');
+    expect(dropZone(20, 400)).toBe('before');
+  });
+  it('keeps a middle band on short plots (a quarter each side at most)', () => {
+    expect(dropZone(8, 40)).toBe('before');
+    expect(dropZone(20, 40)).toBe('into');
+    expect(dropZone(32, 40)).toBe('after');
   });
 });

@@ -382,6 +382,16 @@ export function cleanText(s) {
   return String(s ?? '').replace(/\0/g, '').trim();
 }
 
+// Where a product dropped at offsetY on a subplot of heightPx goes: a new subplot
+// 'before'/'after' it when near an edge, else 'into' it. Edge bands are 24 px, at most a
+// quarter of the height each, so short plots keep a middle band.
+export function dropZone(offsetY, heightPx) {
+  const band = Math.min(24, heightPx / 4);
+  if (offsetY < band) return 'before';
+  if (offsetY > heightPx - band) return 'after';
+  return 'into';
+}
+
 // A label set on purpose (preset, shared config) wins; a label that is just the path
 // (what adding from the tree stores) gives way to the ISTP name once data has arrived.
 export function productTitle(product, cache) {
