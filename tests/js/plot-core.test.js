@@ -3,7 +3,7 @@ import {
   mergeSorted, mergeSortedRows, mergeIntervals, evictProductCache,
   detectPlotType, configToBase64, base64ToConfig, isCovered, resolutionSufficient, rangesOverlap, trimCacheWindow, cacheToCsv,
   createSubplotData, createProductCache, subplotToConfig, subplotFromConfig,
-  normalizeWheelDelta, wheelIntent, zoomRange, panRange, zoomToward, structureKey, resampleTarget,
+  normalizeWheelDelta, wheelIntent, zoomRange, panRange, zoomToward, pinchRange, structureKey, resampleTarget,
   plotTypeFromCache, computeValueRange, mergeValueRange, renderableRange,
   nearestIndex, lineTable, yRangeFromPixels, fmtTick, cleanText, productTitle, dropZone, distinctCrumbs,
 } from '../../speasy_proxy/static/js/plot-core.js';
@@ -359,6 +359,29 @@ describe('zoomToward', () => {
   });
   it('always allows zooming out regardless of floor', () => {
     expect(zoomToward(0, 0.5, 0.5, 1, 1)).toEqual({ start: -0.25, end: 0.75 });
+  });
+});
+
+describe('pinchRange', () => {
+  const view = { start: 0, end: 100 };
+  it('keeps the times under both fingers when they spread (zoom in)', () => {
+    // fingers at t=25 and t=75 move out to the plot edges → window becomes [25, 75]
+    expect(pinchRange(view, [0.25, 0.75], [0, 1], 1)).toEqual({ start: 25, end: 75 });
+  });
+  it('pans when both fingers move together', () => {
+    const r = pinchRange(view, [0.2, 0.6], [0.3, 0.7], 1);
+    expect(r.start).toBeCloseTo(-10);
+    expect(r.end).toBeCloseTo(90);
+  });
+  it('zooms out when the fingers pinch together', () => {
+    const r = pinchRange(view, [0, 1], [0.25, 0.75], 1);
+    expect(r.start).toBeCloseTo(-50);
+    expect(r.end).toBeCloseTo(150);
+  });
+  it('is null when the fingers cross or meet, or below the min span', () => {
+    expect(pinchRange(view, [0.2, 0.6], [0.5, 0.5], 1)).toBeNull();
+    expect(pinchRange(view, [0.2, 0.6], [0.6, 0.2], 1)).toBeNull();
+    expect(pinchRange({ start: 0, end: 2 }, [0.4, 0.6], [0, 1], 1)).toBeNull();
   });
 });
 

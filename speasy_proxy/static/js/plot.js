@@ -153,6 +153,7 @@ import { createPlotView, PRODUCT_MIME } from './plot-view.js';
         const addAsNewSubplot = () => {
             selectProduct(node, div);
             addProductToPlot(selectedProduct, {});
+            closeDrawer();
         };
         div.addEventListener('click', () => selectProduct(node, div));
         div.addEventListener('dblclick', addAsNewSubplot);
@@ -1178,12 +1179,24 @@ import { createPlotView, PRODUCT_MIME } from './plot-view.js';
 
     // ===== Sidebar Collapse =====
 
+    // On a phone the sidebar is a drawer ('open'); on a wider screen it collapses in place.
+    const phoneLayout = window.matchMedia('(max-width: 768px), (max-height: 500px)');
+
+    function closeDrawer() {
+        document.querySelector('.sidebar').classList.remove('open');
+    }
+
     function initSidebarCollapse() {
         const sidebar = document.querySelector('.sidebar');
         const btn = document.getElementById('sidebar-collapse-btn');
         const handle = document.getElementById('resize-handle');
 
         function updateBtn() {
+            if (phoneLayout.matches) {
+                btn.innerHTML = '&#9776;';
+                btn.style.left = '';
+                return;
+            }
             const collapsed = sidebar.classList.contains('collapsed');
             btn.innerHTML = collapsed ? '&#9654;' : '&#9664;';
             btn.style.left = collapsed ? '0' : sidebar.getBoundingClientRect().width + 'px';
@@ -1191,14 +1204,18 @@ import { createPlotView, PRODUCT_MIME } from './plot-view.js';
         }
 
         btn.addEventListener('click', () => {
-            sidebar.classList.toggle('collapsed');
+            sidebar.classList.toggle(phoneLayout.matches ? 'open' : 'collapsed');
             updateBtn();
         });
+        document.getElementById('sidebar-backdrop').addEventListener('click', closeDrawer);
 
         sidebar.addEventListener('transitionend', () => updateBtn());
+        phoneLayout.addEventListener('change', updateBtn);
 
         new ResizeObserver(() => updateBtn()).observe(sidebar);
         updateBtn();
+        // A phone opening a bare /plot has nothing to show yet: start in the product list.
+        if (phoneLayout.matches && !location.search) sidebar.classList.add('open');
     }
 
     // ===== Controls Bar Collapse =====
@@ -1228,7 +1245,7 @@ import { createPlotView, PRODUCT_MIME } from './plot-view.js';
                 item.className = 'side-item';
                 item.textContent = preset.name;
                 item.title = preset.description || preset.name;
-                item.addEventListener('click', () => applyConfig(preset.config));
+                item.addEventListener('click', () => { applyConfig(preset.config); closeDrawer(); });
                 list.appendChild(item);
             }
             document.getElementById('presets-container').hidden = false;
@@ -1259,7 +1276,7 @@ import { createPlotView, PRODUCT_MIME } from './plot-view.js';
             text.textContent = dateRange;
             item.appendChild(swatch);
             item.appendChild(text);
-            item.addEventListener('click', () => centerOnInterval(iv));
+            item.addEventListener('click', () => { centerOnInterval(iv); closeDrawer(); });
             list.appendChild(item);
         }
     }

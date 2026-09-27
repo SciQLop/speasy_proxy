@@ -120,7 +120,7 @@ export function createPlotView(root, { onViewChange, onAction = () => {} }) {
   function setEmpty(empty) {
     root.classList.toggle('pv-empty', empty);
     dropNew.textContent = empty
-      ? 'Drag a product here, or double-click it in the tree'
+      ? 'Drag a product here, or press its + in the product tree'
       : '+ New subplot';
   }
 

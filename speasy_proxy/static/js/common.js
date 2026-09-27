@@ -24,6 +24,8 @@ export function attachDatePicker(el) {
     dateFormat: 'd-m-Y H:i',
     allowInput: true,
     minuteIncrement: 1,
+    // Phones would otherwise get a native local-time picker, not these UTC fields.
+    disableMobile: true,
   });
 }
 

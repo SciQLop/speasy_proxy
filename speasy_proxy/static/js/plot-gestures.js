@@ -1,8 +1,9 @@
-// Mouse and trackpad gestures for one uPlot subplot. Plot area: wheel / pinch = zoom time
-// at the cursor, horizontal swipe / Shift+wheel / drag = pan time. Y-axis gutter: the
-// same gestures act on Y, plus double-click = reset Y. Time changes go through
-// ctx.setView so every subplot stays on one shared window.
-import { wheelIntent, zoomToward, panRange, yRangeFromPixels } from './plot-core.js';
+// Mouse, trackpad and touch gestures for one uPlot subplot. Plot area: wheel / pinch =
+// zoom time at the cursor, horizontal swipe / Shift+wheel / drag = pan time; on touch,
+// one finger pans time and two fingers pinch-zoom it. Y-axis gutter: mouse gestures act
+// on Y, double-click (double-tap) = reset Y; a finger there scrolls the subplot list.
+// Time changes go through ctx.setView so every subplot stays on one shared window.
+import { wheelIntent, zoomToward, panRange, pinchRange, yRangeFromPixels } from './plot-core.js';
 
 const ZOOM_SENSITIVITY = 0.0015;  // zoom amount per normalized wheel pixel
 // simplify: tuned by reasoning, not on hardware; pinch deltas are ~10x smaller than
@@ -30,10 +31,9 @@ export function bindGestures(u, ctx) {
   }, { passive: false });
 
   u.root.addEventListener('mousedown', (e) => {
-    if (e.button !== 0) return;
-    if (inGutter(e)) dragY(u, ctx, e);
-    else if (u.over.contains(e.target)) dragX(u, ctx, e);
+    if (e.button === 0 && inGutter(e)) dragY(u, ctx, e);
   });
+  bindTimeDrag(u, ctx);
 
   u.root.addEventListener('dblclick', (e) => {
     if (!inGutter(e)) return;
@@ -79,14 +79,42 @@ function wheelY(u, ctx, e, intent) {
   applyY(ctx, yRangeFromPixels(scale, cursorPx + (h - cursorPx) * f, cursorPx - cursorPx * f));
 }
 
-function dragX(u, ctx, e) {
-  const start = ctx.getView();
-  const x0 = e.clientX;
-  const width = u.over.clientWidth || 1;
-  onDrag((m) => {
-    const shift = ((m.clientX - x0) / width) * (start.end - start.start);
-    ctx.setView({ start: start.start - shift, end: start.end - shift });
+// Pointers down on the plot area, by id, in touch order. The gesture is re-anchored to
+// the current view whenever a finger lands or lifts, so going from two fingers to one
+// continues as a pan without a jump.
+function bindTimeDrag(u, ctx) {
+  const pointers = new Map();  // pointerId -> clientX
+  let anchor = null;           // { view, fracs } at the last change of finger count
+  const fracs = () => {
+    const r = u.over.getBoundingClientRect();
+    return [...pointers.values()].slice(0, 2).map((x) => (x - r.left) / (r.width || 1));
+  };
+  const reanchor = () => { anchor = { view: ctx.getView(), fracs: fracs() }; };
+
+  u.over.addEventListener('pointerdown', (e) => {
+    if (e.pointerType === 'mouse' && e.button !== 0) return;
+    u.over.setPointerCapture(e.pointerId);
+    pointers.set(e.pointerId, e.clientX);
+    document.body.style.userSelect = 'none';
+    reanchor();
   });
+  u.over.addEventListener('pointermove', (e) => {
+    if (!pointers.has(e.pointerId)) return;
+    pointers.set(e.pointerId, e.clientX);
+    const now = fracs();
+    const { view, fracs: then } = anchor;
+    const next = now.length === 2
+      ? pinchRange(view, then, now, MIN_ZOOM_SPAN_MS)
+      : panRange(view.start, view.end, then[0] - now[0]);
+    if (next) ctx.setView(next);
+  });
+  const lift = (e) => {
+    if (!pointers.delete(e.pointerId)) return;
+    if (pointers.size === 0) document.body.style.userSelect = '';
+    reanchor();
+  };
+  u.over.addEventListener('pointerup', lift);
+  u.over.addEventListener('pointercancel', lift);
 }
 
 // Anchored to the scale at mousedown: the drag keeps changing the live scale, so reading

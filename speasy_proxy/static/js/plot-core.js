@@ -332,6 +332,19 @@ export function panRange(start, end, fraction) {
   return { start: start + shift, end: end + shift };
 }
 
+// Two-finger pinch: the times under the fingers at touch-down ([f1, f2], fractions of the
+// plot width across view0) stay under the fingers at their new positions [g1, g2]. One
+// formula covers zoom and pan. Null when the fingers meet or cross, or below minSpan.
+export function pinchRange(view0, [f1, f2], [g1, g2], minSpan) {
+  const span0 = view0.end - view0.start;
+  const t1 = view0.start + f1 * span0;
+  const t2 = view0.start + f2 * span0;
+  const span = (t2 - t1) / (g2 - g1);
+  if (!Number.isFinite(span) || span < minSpan) return null;
+  const start = t1 - g1 * span;
+  return { start, end: start + span };
+}
+
 const DEFAULT_PLOT_WIDTH_PX = 2000; // fallback when the chart hasn't been laid out yet
 const MIN_RESAMPLE_POINTS = 2000;   // floor so a tiny/unsized plot still fetches usable detail
 
