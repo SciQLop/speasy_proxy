@@ -216,17 +216,22 @@ describe('rendering subplots with uPlot', () => {
     expect(liveCharts().map((u) => u.opts.legend.show)).toEqual([true, false, true]);
   });
 
-  it('labels each subplot with a badge carrying the unit (no rotated axis label)', () => {
+  it('puts the unit on the Y axis and the name in the badge, without widening the gutter', () => {
     initChart();
+    const unitless = { ...lineCache('cda/c', ''), unit: '' };
     plotState.plots = [
       { products: [{ path: 'cda/b', label: 'OMNI B' }], y_axis: { log: false }, plotType: 'line', productData: { 'cda/b': lineCache('cda/b', '') } },
       heatmapSubplot(),
+      { products: [{ path: 'cda/c', label: 'count' }], y_axis: { log: false }, plotType: 'line', productData: { 'cda/c': unitless } },
     ];
     renderAllSubplots();
 
-    const titles = dom.created.filter((e) => e.className === 'pv-header-title').slice(-2).map((e) => e.textContent);
-    expect(titles).toEqual(['OMNI B (nT)', 'flux · energy (eV)']);
-    for (const u of liveCharts()) expect(u.opts.axes[1].label).toBeFalsy();
+    const titles = dom.created.filter((e) => e.className === 'pv-header-title').slice(-3).map((e) => e.textContent);
+    expect(titles).toEqual(['OMNI B', 'flux · energy', 'count']);
+    const yAxes = liveCharts().map((u) => u.opts.axes[1]);
+    expect(yAxes.map((a) => a.label ?? null)).toEqual(['nT', 'eV', null]);
+    // every subplot's plot area starts at the same x, labelled or not
+    expect(yAxes.map((a) => a.size + (a.label != null ? a.labelSize : 0))).toEqual([64, 64, 64]);
   });
 
   it('puts every product of a subplot on one joined time axis', () => {
@@ -736,7 +741,7 @@ describe('ISTP names and descriptions', () => {
     renderAllSubplots();
 
     const title = dom.created.slice(before).find((e) => e.className === 'pv-header-title');
-    expect(title.textContent).toBe('sw density (nT)');
+    expect(title.textContent).toBe('sw density');
     expect(title.title).toBe('amda/omni_sw_n — Solar wind density');
   });
 });
@@ -754,7 +759,8 @@ describe('units in a mixed subplot', () => {
     renderAllSubplots();
 
     const title = dom.created.slice(before).find((e) => e.className === 'pv-header-title');
-    expect(title.dataset.text).toBe('n, n2, v (cm-3, km/s)');
+    expect(title.dataset.text).toBe('n, n2, v');
+    expect(liveCharts().at(-1).opts.axes[1].label).toBe('cm-3, km/s');
   });
 });
 

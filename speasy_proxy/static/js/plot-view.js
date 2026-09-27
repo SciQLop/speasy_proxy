@@ -15,6 +15,7 @@ import { binRowRects, computeYEdges, lowestPositiveEdge, renderSpectrogramImage,
 import { bindGestures } from './plot-gestures.js';
 
 const Y_AXIS_PX = 64;      // fixed y-axis gutter so every subplot's plot area lines up
+const Y_UNIT_PX = 16;      // part of that gutter given to a rotated unit label, when there is one
 const X_AXIS_PX = 46;      // time axis (two label lines), drawn under the last subplot only
 const MIN_PLOT_PX = 60;
 // Explicit [top, right, bottom, left] padding: uPlot otherwise auto-pads only the chart
@@ -155,7 +156,7 @@ export function createPlotView(root, { onViewChange, onAction = () => {} }) {
       // One series: the title already names it, a legend would only repeat it.
       legend: { show: series.length > 2, live: false },
       scales: { x: { time: true }, y: yScale(subplot, isHeatmap) },
-      axes: [xAxis(isLast), yAxisOpts(isHeatmap)],
+      axes: [xAxis(isLast), yAxisOpts(isHeatmap, yUnit(subplot, isHeatmap))],
       series,
       hooks: {
         drawClear: [(u) => drawBackdrop(u, subplot, isHeatmap)],
@@ -270,10 +271,15 @@ function xAxis(isLast) {
     : { ...axisBase, show: false, grid: { show: false } };
 }
 
-function yAxisOpts(isHeatmap) {
+// The unit is drawn rotated at the gutter's outer edge, inside Y_AXIS_PX: tick values
+// get what is left, so labelled and unlabelled subplots keep the same plot-area left.
+function yAxisOpts(isHeatmap, unit) {
   return {
     ...axisBase,
-    size: Y_AXIS_PX,
+    size: unit ? Y_AXIS_PX - Y_UNIT_PX : Y_AXIS_PX,
+    label: unit || null,
+    labelSize: Y_UNIT_PX,
+    labelGap: 0,
     values: (u, splits) => splits.map(fmtTick),
     grid: isHeatmap ? { show: false } : { stroke: '#1e2640', width: 1, filter: decadesOnlyOnLog },
     ticks: { ...axisBase.ticks, filter: decadesOnlyOnLog },
@@ -351,15 +357,13 @@ function productHover(subplot, p) {
   return p.path + (desc ? ' — ' + desc : '');
 }
 
-// Badge text after the products: the unit (lines) or the y quantity and its unit
-// (spectrograms) — replaces a rotated axis label that cost a strip of width per plot.
+const yUnit = (subplot, isHeatmap) => (isHeatmap ? firstCache(subplot)?.yAxisUnit || '' : lineUnits(subplot));
+
+// Badge text after the products: the y quantity for spectrograms (its unit, like a line
+// plot's, is on the Y axis).
 function badgeSuffix(subplot, isHeatmap, loading) {
-  const cache = firstCache(subplot);
-  const unit = (u) => (u ? ' (' + u + ')' : '');
-  const suffix = isHeatmap
-    ? ' · ' + (cache?.yAxisName || '') + unit(cache?.yAxisUnit)
-    : unit(lineUnits(subplot));
-  return suffix + (loading ? ' ●' : '');
+  const quantity = isHeatmap && firstCache(subplot)?.yAxisName;
+  return (quantity ? ' · ' + quantity : '') + (loading ? ' ●' : '');
 }
 
 // With several products, each name gets its own remove button (shown on hover). The

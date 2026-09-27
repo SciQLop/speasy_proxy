@@ -35,7 +35,7 @@
             display: flex;
             align-items: center;
             gap: 10px;
-            padding: 8px 16px;
+            padding: 8px 16px 8px 30px;  /* left: room for the sidebar toggle */
             background: #111627;
             border-bottom: 1px solid #1e2640;
             flex-wrap: wrap;
@@ -52,6 +52,8 @@
             outline: none;
         }
 
+        /* The sidebar toggle sits in the top bar: centred on the chart it hid a y axis unit. */
+        .sidebar-collapse-btn { top: 9px; transform: none; height: 28px; }
         .time-range { display: flex; align-items: center; gap: 6px; color: #555e7e; }
         .time-zone { font-size: 0.75rem; }
         .bar-spacer { flex: 1; }
@@ -174,8 +176,11 @@
         .pv-plots .u-over { cursor: grab; }
         .pv-plots .u-over:active { cursor: grabbing; }
         /* Per-subplot toolbar, top-right of each plot (plot-view.js createTools) */
-        .pv-tools { position: absolute; z-index: 6; display: flex; gap: 3px; opacity: 0.6; transition: opacity 0.15s; }
-        .pv-plots .uplot:hover .pv-tools { opacity: 1; }
+        /* Hidden until its subplot is hovered, to keep the data area clear; always shown
+           where there is no hover (touch screens) and while it has keyboard focus. */
+        .pv-tools { position: absolute; z-index: 6; display: flex; gap: 3px; opacity: 0; transition: opacity 0.15s; }
+        .pv-plots .uplot:hover .pv-tools, .pv-tools:focus-within { opacity: 1; }
+        @media (hover: none) { .pv-tools { opacity: 0.6; } }
         .pv-tool { padding: 1px 6px; border: 1px solid #2a3358; border-radius: 3px; background: rgba(11, 14, 23, 0.8);
             color: #8892b0; font-size: 11px; line-height: 14px; cursor: pointer; }
         .pv-tool:hover { color: #e0e6f0; border-color: #6b8afd; }
