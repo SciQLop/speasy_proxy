@@ -10,7 +10,7 @@ TypeScript**. The FastAPI app serves these `.js` files as static assets under
 
 | Module | Responsibility |
 |--------|----------------|
-| `common.js` | `setStatus`, `showLoading`, `showFetchBar`, `fallbackCopy`, `toLocalISOString` (unified, with seconds), `escapeHtml` |
+| `common.js` | `setStatus`, `showLoading`, `showFetchBar`, `fallbackCopy`, UTC date-field helpers (`parseDateInput`, `setDateInput`), `escapeHtml` |
 | `format.js` | `formatBytes`, `formatNumber`, `formatDuration`, `formatDateTime` |
 | `inventory-tree.js` | speasy `__spz_*` schema primitives: `isSpzMetaKey`, `getDisplayName`, `getProductPath`, `shouldSkipNode`, `hasVisibleChildren`, `isParameterIndex`, `SKIP_KEYS` (shared) + `SSC_METADATA_KEYS` (SSC-only, not applied on `/plot`) |
 | `magnetosphere.js` | 3D physics: `shueParams`, `bowShockParams`, `classifyPoint`, `toReData`, `computeAxisRange` |

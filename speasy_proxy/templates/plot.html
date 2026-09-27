@@ -63,6 +63,27 @@
         .product-panel-hint { color: #555e7e; margin-top: 4px; font-size: 0.75rem; }
 
         /* Tree product rows: "+" adds a new subplot, drag onto a subplot overlays */
+        /* Collapsible sidebar panels and tree branches: native <details>, one arrow style */
+        .side-section { border-bottom: 1px solid #1e2640; }
+        .side-section > summary { padding: 8px 16px; color: #8892b0; font-size: 0.85rem; }
+        .side-section > summary, .tree-branch > summary { cursor: pointer; user-select: none; list-style: none;
+            white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .tree-branch > summary { padding: 3px 0; }
+        .side-section > summary::-webkit-details-marker, .tree-branch > summary::-webkit-details-marker { display: none; }
+        .side-section > summary::before, .tree-branch > summary::before { content: '▶ '; display: inline-block;
+            font-size: 0.7em; color: #555e7e; transition: transform 0.15s; }
+        .side-section[open] > summary::before, .tree-branch[open] > summary::before { transform: rotate(90deg); }
+        .side-list { max-height: 200px; overflow-y: auto; padding: 0 8px 8px; }
+        .side-item { display: flex; align-items: center; gap: 6px; padding: 4px 8px; border-radius: 4px;
+            font-size: 0.85rem; cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .side-item:hover { background: #1e2640; }
+        .side-swatch { width: 10px; height: 10px; border-radius: 2px; flex-shrink: 0; }
+        .tree-branch { margin-left: 4px; }
+        .tree-children { margin-left: 12px; }
+        .tree-crumb { color: #555e7e; }
+        .retry-btn { margin: 8px 0; padding: 6px 16px; border: none; border-radius: 6px; background: #6b8afd;
+            color: #fff; font-size: 0.85rem; cursor: pointer; }
+
         .tree-leaf { position: relative; padding: 3px 22px 3px 8px; cursor: pointer; white-space: nowrap;
             overflow: hidden; text-overflow: ellipsis; border-radius: 4px; }
         .tree-leaf:hover, .tree-leaf.selected { background: #1e2640; }
@@ -158,7 +179,7 @@
             color: #8892b0; font-size: 11px; line-height: 14px; cursor: pointer; }
         .pv-tool:hover { color: #e0e6f0; border-color: #6b8afd; }
         .pv-tool.active { color: #fff; background: #3b4f9e; border-color: #6b8afd; }
-        .pv-tool:last-child:hover { color: #ee6666; border-color: #ee6666; }
+        .pv-tool.remove:hover { color: #ee6666; border-color: #ee6666; }
         /* Remove-product buttons in a multi-product title, shown on hover */
         .pv-chip-x { display: none; margin: 0 2px 0 3px; padding: 0 3px; border: none; border-radius: 3px;
             background: transparent; color: #ee6666; font-size: 10px; cursor: pointer; pointer-events: auto; }
@@ -259,18 +280,14 @@
     <div class="sidebar-header">
         <a href="{{ base_url }}/" class="back-link">&larr; Back to dashboard</a>
     </div>
-    <div id="presets-container" style="display:none;border-bottom:1px solid #1e2640;">
-        <div style="padding:8px 16px;cursor:pointer;user-select:none;color:#8892b0;font-size:0.85rem;" id="presets-toggle">
-            <span id="presets-arrow" style="font-size:0.7em;display:inline-block;transition:transform 0.15s;color:#555e7e;">&#9654; </span>Presets
-        </div>
-        <div id="presets-list" style="display:none;max-height:200px;overflow-y:auto;padding:0 8px 8px;"></div>
-    </div>
-    <div id="events-container" style="display:none;border-bottom:1px solid #1e2640;">
-        <div style="padding:8px 16px;cursor:pointer;user-select:none;color:#8892b0;font-size:0.85rem;" id="events-toggle">
-            <span id="events-arrow" style="font-size:0.7em;display:inline-block;transition:transform 0.15s;color:#555e7e;">&#9654; </span>Events
-        </div>
-        <div id="events-list" style="display:none;max-height:200px;overflow-y:auto;padding:0 8px 8px;"></div>
-    </div>
+    <details class="side-section" id="presets-container" hidden>
+        <summary>Presets</summary>
+        <div class="side-list" id="presets-list"></div>
+    </details>
+    <details class="side-section" id="events-container" hidden>
+        <summary>Events</summary>
+        <div class="side-list" id="events-list"></div>
+    </details>
     <div style="padding:8px 16px;border-bottom:1px solid #1e2640;">
         <h2 style="font-size:1.1rem;font-weight:600;margin-bottom:8px;">Products</h2>
         <input type="text" id="search-box" placeholder="Search products..." style="width:100%;padding:8px 10px;border:1px solid #2a3358;border-radius:6px;background:#0b0e17;color:#e0e6f0;font-size:0.9rem;outline:none;">

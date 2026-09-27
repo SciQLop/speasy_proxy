@@ -17,6 +17,18 @@ import { createPlotView, PRODUCT_MIME } from './plot-view.js';
     const BASE_URL = (window.SPEASY_BASE_URL || '').replace(/\/$/, '');
     const API_BASE = BASE_URL + '/';
     const MAX_CACHE_POINTS = 500000;
+    const DAY_MS = 86400000;
+    const MAX_SEARCH_RESULTS = 100;
+
+    // Pan/zoom refetches the visible range + buffer for products whose cache doesn't
+    // already cover it densely enough. Server-side resampling (max_points) keeps
+    // payloads bounded regardless of time range.
+    const BUFFER_RATIO = 1.0;          // pre-fetch 1x view width on each side
+    const POINTS_PER_PIXEL = 2.0;      // target density of the *visible* window (server resample target)
+    const ZOOM_IN_REFETCH_RATIO = 0.5; // zooming into < half the fetched span triggers a denser refetch
+    const TRIM_WINDOW_RATIO = 2.0;     // keep cached data within view ± 2x view span; older data is dropped
+    const YOUNG_FETCH_MS = 700;        // an in-flight pan fetch younger than this is cheap to abort...
+    const MIN_USEFUL_OVERLAP = 0.5;    // ...unless it covers at least this share of the new request
 
     // State
     let plotView = null;
@@ -27,19 +39,18 @@ import { createPlotView, PRODUCT_MIME } from './plot-view.js';
 
     // Multi-plot state — single source of truth
     const plotState = {
-        version: 1,
         time_range: { start: null, stop: null },
         plots: [],  // array of subplot objects
         intervals: []  // [{start, stop, color?, label?}] — vertical spans across all subplots
     };
 
     let currentView = { start: null, end: null };
-    let fetchController = null;
+    let inFlight = null;  // the running pan/zoom fetch: { controller, start, stop, t0 }
     let panFetchQueued = false;  // a pan/zoom arrived while a fetch was in flight — rerun once after it
     let lastStructureKey = null;  // structure of the last full chart build; used to pick merge vs rebuild
     const loadingSubplots = new Set();  // subplots currently fetching data (for the spinner)
 
-    // ===== Task 4: Inventory Tree =====
+    // ===== Inventory Tree =====
 
     async function loadInventory() {
         const container = document.getElementById('tree-container');
@@ -70,7 +81,7 @@ import { createPlotView, PRODUCT_MIME } from './plot-view.js';
             container.appendChild(msg);
             const retryBtn = document.createElement('button');
             retryBtn.textContent = 'Retry';
-            retryBtn.style.cssText = 'margin:8px 0;padding:6px 16px;border:none;border-radius:6px;background:#6b8afd;color:#fff;font-size:0.85rem;cursor:pointer;';
+            retryBtn.className = 'retry-btn';
             retryBtn.addEventListener('click', () => loadInventory());
             container.appendChild(retryBtn);
             console.error('Inventory load error:', e);
@@ -105,37 +116,24 @@ import { createPlotView, PRODUCT_MIME } from './plot-view.js';
         // whole ~100k-node inventory up front froze the page for ~0.6 s on every load.
         if (!hasSelectableDescendant(data)) return null;
 
-        const wrapper = document.createElement('div');
-        wrapper.style.cssText = 'margin-left:4px;';
-
-        const header = document.createElement('div');
-        header.style.cssText = 'padding:3px 0;cursor:pointer;user-select:none;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;';
-        const arrow = document.createElement('span');
-        arrow.textContent = '▶ ';
-        arrow.style.cssText = 'font-size:0.7em;display:inline-block;transition:transform 0.15s;color:#555e7e;';
-        header.appendChild(arrow);
-        header.appendChild(document.createTextNode(displayName));
-
-        const childContainer = document.createElement('div');
-        childContainer.style.cssText = 'display:none;margin-left:12px;';
+        const branch = document.createElement('details');
+        branch.className = 'tree-branch';
+        const summary = document.createElement('summary');
+        summary.textContent = displayName;
+        const children = document.createElement('div');
+        children.className = 'tree-children';
+        branch.appendChild(summary);
+        branch.appendChild(children);
         let built = false;
-
-        header.addEventListener('click', () => {
-            if (!built) {
-                for (const ck of browsableChildKeys(data).sort()) {
-                    const child = buildTreeNode(data[ck], ck);
-                    if (child) childContainer.appendChild(child);
-                }
-                built = true;
+        branch.addEventListener('toggle', () => {
+            if (!branch.open || built) return;
+            built = true;
+            for (const ck of browsableChildKeys(data).sort()) {
+                const child = buildTreeNode(data[ck], ck);
+                if (child) children.appendChild(child);
             }
-            const open = childContainer.style.display !== 'none';
-            childContainer.style.display = open ? 'none' : 'block';
-            arrow.style.transform = open ? '' : 'rotate(90deg)';
         });
-
-        wrapper.appendChild(header);
-        wrapper.appendChild(childContainer);
-        return wrapper;
+        return branch;
     }
 
     // A product row in the tree or the search results. Click selects it (its params show
@@ -183,7 +181,7 @@ import { createPlotView, PRODUCT_MIME } from './plot-view.js';
         const startEl = document.getElementById('start-time');
         if (!stopEl.value && !startEl.value && node.stop_date) {
             const stopDate = new Date(node.stop_date);
-            const startDate = new Date(stopDate.getTime() - 7 * 86400000);
+            const startDate = new Date(stopDate.getTime() - 7 * DAY_MS);
             setDateInput(stopEl, stopDate);
             setDateInput(startEl, startDate);
         }
@@ -353,7 +351,7 @@ import { createPlotView, PRODUCT_MIME } from './plot-view.js';
         return {};
     }
 
-    // ===== Task 5: Search/Filter =====
+    // ===== Search =====
 
     // Bound once in bindControls: loadInventory can run again (Retry).
     function onSearchInput(e) {
@@ -392,23 +390,19 @@ import { createPlotView, PRODUCT_MIME } from './plot-view.js';
         container.innerHTML = '';
 
         const terms = query.split(/\s+/).filter(t => t.length > 0);
-        const results = leafIndex.filter(leaf => {
-            return terms.every(t => leaf.name.indexOf(t) !== -1);
-        });
+        const results = leafIndex.filter(leaf => terms.every(t => leaf.name.includes(t)));
 
         if (results.length === 0) {
             container.innerHTML = '<div class="loading-text">No results found.</div>';
             return;
         }
 
-        const max = Math.min(results.length, 100);
-        for (let i = 0; i < max; i++) {
-            const leaf = results[i];
+        for (const leaf of results.slice(0, MAX_SEARCH_RESULTS)) {
             const div = productLeaf(leaf.node);
             const prefix = leaf.breadcrumb.slice(0, -1).join(' / ');
             if (prefix) {
                 const span = document.createElement('span');
-                span.style.color = '#555e7e';
+                span.className = 'tree-crumb';
                 span.textContent = prefix + ' / ';
                 div.appendChild(span);
             }
@@ -416,15 +410,15 @@ import { createPlotView, PRODUCT_MIME } from './plot-view.js';
             container.appendChild(div);
         }
 
-        if (results.length > 100) {
+        if (results.length > MAX_SEARCH_RESULTS) {
             const more = document.createElement('div');
             more.className = 'loading-text';
-            more.textContent = '... and ' + (results.length - 100) + ' more results';
+            more.textContent = '... and ' + (results.length - MAX_SEARCH_RESULTS) + ' more results';
             container.appendChild(more);
         }
     }
 
-    // ===== Task 6: Data Fetch and Plot =====
+    // ===== Chart and controls =====
 
     function initChart() {
         const el = document.getElementById('chart');
@@ -454,8 +448,7 @@ import { createPlotView, PRODUCT_MIME } from './plot-view.js';
             else if (btn.dataset.ms) applyRelativeRange(Number(btn.dataset.ms));
         });
         document.getElementById('btn-now').addEventListener('click', () => {
-            const start = parseDateInput(document.getElementById('start-time').value);
-            const width = (currentStopMs() - currentStartMs()) || 86400000;
+            const width = (currentStopMs() - currentStartMs()) || DAY_MS;
             const now = Date.now();
             replotOverRange(now - width, now);
         });
@@ -469,40 +462,8 @@ import { createPlotView, PRODUCT_MIME } from './plot-view.js';
         });
         document.getElementById('btn-clear').addEventListener('click', clearAllPlots);
 
-        document.getElementById('btn-export-png').addEventListener('click', () => {
-            if (!plotView || plotState.plots.length === 0) return;
-            const url = plotView.toDataURL(2, '#0b0e17');
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = 'speasy-plot.png';
-            a.click();
-        });
-
-        document.getElementById('btn-export-csv').addEventListener('click', () => {
-            if (plotState.plots.length === 0) return;
-            const startMs = currentView.start != null ? currentView.start : -Infinity;
-            const stopMs = currentView.end != null ? currentView.end : Infinity;
-            const parts = [];
-            let heatmapCount = 0;
-            for (const sp of plotState.plots) {
-                for (const prod of sp.products) {
-                    const cache = sp.productData[prod.path];
-                    if (!cache || cache.times.length === 0) continue;
-                    if (Object.keys(cache.columns || {}).length === 0) { heatmapCount++; continue; }
-                    parts.push(cacheToCsv(cache, startMs, stopMs));
-                }
-            }
-            if (parts.length === 0) { setStatus('No line data to export.'); return; }
-            const blob = new Blob([parts.join('\n\n') + '\n'], { type: 'text/csv' });
-            const a = document.createElement('a');
-            a.href = URL.createObjectURL(blob);
-            a.download = 'speasy-export.csv';
-            a.click();
-            URL.revokeObjectURL(a.href);
-            let msg = 'Exported ' + parts.length + ' product(s) to CSV.';
-            if (heatmapCount > 0) msg += ' (' + heatmapCount + ' spectrogram(s) skipped — CSV is for line data.)';
-            setStatus(msg);
-        });
+        document.getElementById('btn-export-png').addEventListener('click', exportPng);
+        document.getElementById('btn-export-csv').addEventListener('click', exportCsv);
 
         // Close the share popover on outside click
         document.addEventListener('click', (e) => {
@@ -539,6 +500,35 @@ import { createPlotView, PRODUCT_MIME } from './plot-view.js';
                 fallbackCopy(urlInput, copyBtn);
             }
         });
+    }
+
+    function download(href, filename) {
+        const a = document.createElement('a');
+        a.href = href;
+        a.download = filename;
+        a.click();
+    }
+
+    function exportPng() {
+        if (!plotView || plotState.plots.length === 0) return;
+        download(plotView.toDataURL(2, '#0b0e17'), 'speasy-plot.png');
+    }
+
+    // Line data of the visible window, one CSV block per product; spectrograms are skipped.
+    function exportCsv() {
+        const startMs = currentView.start ?? -Infinity;
+        const stopMs = currentView.end ?? Infinity;
+        const caches = plotState.plots.flatMap(sp => sp.products.map(p => sp.productData[p.path]))
+            .filter(cache => cache && cache.times.length > 0);
+        const lines = caches.filter(cache => Object.keys(cache.columns).length > 0);
+        if (lines.length === 0) { setStatus('No line data to export.'); return; }
+        const blob = new Blob([lines.map(c => cacheToCsv(c, startMs, stopMs)).join('\n\n') + '\n'], { type: 'text/csv' });
+        const href = URL.createObjectURL(blob);
+        download(href, 'speasy-export.csv');
+        URL.revokeObjectURL(href);
+        const skipped = caches.length - lines.length;
+        setStatus('Exported ' + lines.length + ' product(s) to CSV.'
+            + (skipped > 0 ? ' (' + skipped + ' spectrogram(s) skipped — CSV is for line data.)' : ''));
     }
 
     // Per-subplot edits reported by the chart (its toolbar, title chips and drop targets).
@@ -614,10 +604,8 @@ import { createPlotView, PRODUCT_MIME } from './plot-view.js';
         if (subplot.products.length === 0) {
             removeSubplot(subplotIndex);
         } else {
-            // First product drives plot type — re-detect if we removed it
-            if (subplot.products[0]) {
-                subplot.plotType = plotTypeFromCache(subplot.productData[subplot.products[0].path]);
-            }
+            // The first product drives the plot type: re-detect in case it was the one removed.
+            subplot.plotType = plotTypeFromCache(subplot.productData[subplot.products[0].path]);
             renderAllSubplots(true);
             updateURL();
         }
@@ -706,16 +694,13 @@ import { createPlotView, PRODUCT_MIME } from './plot-view.js';
 
     function currentStartMs() {
         const d = parseDateInput(document.getElementById('start-time').value);
-        return d ? d.getTime() : currentStopMs() - 86400000;
+        return d ? d.getTime() : currentStopMs() - DAY_MS;
     }
 
     // Set the window and re-plot fresh. Caches are reset so a new (possibly disjoint)
     // window fetches clean data instead of merging across a time gap.
     function replotOverRange(startMs, stopMs) {
-        setDateInput(document.getElementById('start-time'), new Date(startMs));
-        setDateInput(document.getElementById('stop-time'), new Date(stopMs));
-        plotState.time_range.start = new Date(startMs).toISOString();
-        plotState.time_range.stop = new Date(stopMs).toISOString();
+        setTimeRange(startMs, stopMs);
 
         if (plotState.plots.length === 0) return;
         for (const sp of plotState.plots) {
@@ -725,6 +710,15 @@ import { createPlotView, PRODUCT_MIME } from './plot-view.js';
         fetchAllAndRender();
     }
 
+    // The one place the time window changes: state and the start/stop fields stay in step,
+    // so chips, Now and arrow keys always work from what is on screen.
+    function setTimeRange(startMs, stopMs) {
+        plotState.time_range.start = new Date(startMs).toISOString();
+        plotState.time_range.stop = new Date(stopMs).toISOString();
+        setDateInput(document.getElementById('start-time'), new Date(startMs));
+        setDateInput(document.getElementById('stop-time'), new Date(stopMs));
+    }
+
     function applyRelativeRange(spanMs) {
         const stop = currentStopMs();
         replotOverRange(stop - spanMs, stop);
@@ -732,7 +726,7 @@ import { createPlotView, PRODUCT_MIME } from './plot-view.js';
 
     function panTime(dir) {
         const start = currentStartMs(), stop = currentStopMs();
-        const width = (stop - start) || 86400000;
+        const width = (stop - start) || DAY_MS;
         replotOverRange(start + dir * width, stop + dir * width);
     }
 
@@ -825,7 +819,7 @@ import { createPlotView, PRODUCT_MIME } from './plot-view.js';
                     cache.yAxis = yAxis;
                     const axisMeta = json.axes[1].meta || {};
                     cache.yAxisName = cleanText(axisMeta.LABLAXIS || axisMeta.FIELDNAM || json.axes[1].name);
-                    cache.yAxisUnit = cleanText(json.axes[1].meta && json.axes[1].meta.UNITS);
+                    cache.yAxisUnit = cleanText(axisMeta.UNITS);
                 } else {
                     cache.yAxis = newValues[0] ? newValues[0].map((_, i) => i) : [];
                 }
@@ -888,7 +882,7 @@ import { createPlotView, PRODUCT_MIME } from './plot-view.js';
         return { start: t[0] || 0, end: t[t.length - 1] || 1 };
     }
 
-    // Every user pan/zoom (wheel, drag, slider) lands here; the refetch waits for the
+    // Every user pan/zoom (wheel, drag, keys, events list) lands here; the refetch waits for the
     // gesture to settle.
     function onViewChange(view) {
         currentView = { start: view.start, end: view.end };
@@ -904,8 +898,7 @@ import { createPlotView, PRODUCT_MIME } from './plot-view.js';
         currentView.start = view.start;
         currentView.end = view.end;
 
-        plotState.time_range.start = new Date(view.start).toISOString();
-        plotState.time_range.stop = new Date(view.end).toISOString();
+        setTimeRange(view.start, view.end);
         updateURL();
 
         const viewRange = view.end - view.start;
@@ -938,26 +931,22 @@ import { createPlotView, PRODUCT_MIME } from './plot-view.js';
         // disjoint ranges are pure waste, and a young fetch with little overlap is
         // cheap to discard. Otherwise let it finish — aborting useful fetches starves
         // the cache (nothing ever completes, coverage never grows) and churns the server.
-        if (fetchController) {
-            const r = fetchController._range;
-            const reqSpan = reqStop - reqStart;
-            const overlapMs = r ? Math.max(0, Math.min(r.stop, reqStop) - Math.max(r.start, reqStart)) : 0;
-            const young = performance.now() - (fetchController._t0 || 0) < 700;
-            if (overlapMs === 0 || (young && overlapMs < 0.5 * reqSpan)) fetchController.abort();
+        if (inFlight) {
+            const overlapMs = Math.max(0, Math.min(inFlight.stop, reqStop) - Math.max(inFlight.start, reqStart));
+            const young = performance.now() - inFlight.t0 < YOUNG_FETCH_MS;
+            if (overlapMs === 0 || (young && overlapMs < MIN_USEFUL_OVERLAP * (reqStop - reqStart))) {
+                inFlight.controller.abort();
+            }
             panFetchQueued = true;
             return;
         }
         const controller = new AbortController();
-        controller._range = { start: reqStart, stop: reqStop };
-        controller._t0 = performance.now();
-        fetchController = controller;
+        const mine = { controller, start: reqStart, stop: reqStop, t0: performance.now() };
+        inFlight = mine;
         showFetchBar(true);
 
-        const fetchStart = new Date(view.start - buffer).toISOString();
-        const fetchStop = new Date(view.end + buffer).toISOString();
-
         const fetchJobs = toFetch.map(({ path, cache }) =>
-            fetchData(path, fetchStart, fetchStop, controller.signal)
+            fetchData(path, reqStart, reqStop, controller.signal)
                 .then(data => ({ cache, data }))
                 .catch(e => {
                     if (e.name !== 'AbortError') console.error('Fetch error for', path, e);
@@ -975,11 +964,9 @@ import { createPlotView, PRODUCT_MIME } from './plot-view.js';
                     // across a time gap). Overlapping caches merge in place, so data
                     // stays on screen while the refetch is in flight instead of blanking.
                     for (const r of valid) {
-                        if (!rangesOverlap(r.cache.intervals, view.start - buffer, view.end + buffer)) {
-                            resetProductCache(r.cache);
-                        }
+                        if (!rangesOverlap(r.cache.intervals, reqStart, reqStop)) resetProductCache(r.cache);
                     }
-                    for (const r of valid) mergeProductData(r.cache, r.data, view.start - buffer, view.end + buffer);
+                    for (const r of valid) mergeProductData(r.cache, r.data, reqStart, reqStop);
 
                     // Bound every cache to a rolling window around the live view:
                     // merged data accumulates otherwise, and re-zipping/re-parsing
@@ -1003,9 +990,9 @@ import { createPlotView, PRODUCT_MIME } from './plot-view.js';
                 }
             }
         } finally {
-            if (fetchController === controller) {
+            if (inFlight === mine) {
                 showFetchBar(false);
-                fetchController = null;
+                inFlight = null;
             }
             if (panFetchQueued) {
                 // At most one queued rerun per fetch; it re-reads the live view,
@@ -1027,18 +1014,8 @@ import { createPlotView, PRODUCT_MIME } from './plot-view.js';
         }
     }
 
-    // ===== Continuous Pan/Zoom =====
-    //
-    // Pan/zoom refetches the visible range + buffer for products whose cache doesn't
-    // already cover it densely enough. Server-side resampling (max_points) keeps
-    // payloads bounded regardless of time range.
 
-    const BUFFER_RATIO = 1.0;      // pre-fetch 1x view width on each side
-    const POINTS_PER_PIXEL = 2.0;  // target density of the *visible* window (server resample target)
-    const ZOOM_IN_REFETCH_RATIO = 0.5; // zooming into < half the fetched span triggers a denser refetch
-    const TRIM_WINDOW_RATIO = 2.0;     // keep cached data within view ± 2x view span; older data is dropped
-
-    // ===== Task 8: URL State =====
+    // ===== URL State =====
 
     function stateToConfig() {
         const config = {
@@ -1096,7 +1073,7 @@ import { createPlotView, PRODUCT_MIME } from './plot-view.js';
         // zero-width instant -- left alone it silently produces a request the backend
         // rejects as invalid every time this link is opened.
         if (startDate && stopDate && stopDate.getTime() <= startDate.getTime()) {
-            stopDate = new Date(startDate.getTime() + 86400000);
+            stopDate = new Date(startDate.getTime() + DAY_MS);
         }
         plotState.time_range.start = startDate ? startDate.toISOString() : null;
         plotState.time_range.stop = stopDate ? stopDate.toISOString() : null;
@@ -1241,29 +1218,16 @@ import { createPlotView, PRODUCT_MIME } from './plot-view.js';
             const presets = await resp.json();
             if (presets.length === 0) return;
 
-            const container = document.getElementById('presets-container');
             const list = document.getElementById('presets-list');
-            const toggle = document.getElementById('presets-toggle');
-            const arrow = document.getElementById('presets-arrow');
-
-            toggle.addEventListener('click', () => {
-                const open = list.style.display !== 'none';
-                list.style.display = open ? 'none' : 'block';
-                arrow.style.transform = open ? '' : 'rotate(90deg)';
-            });
-
             for (const preset of presets) {
                 const item = document.createElement('div');
-                item.style.cssText = 'padding:4px 8px;cursor:pointer;border-radius:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:0.85rem;';
+                item.className = 'side-item';
                 item.textContent = preset.name;
                 item.title = preset.description || preset.name;
-                item.addEventListener('mouseenter', () => { item.style.background = '#1e2640'; });
-                item.addEventListener('mouseleave', () => { item.style.background = ''; });
                 item.addEventListener('click', () => applyConfig(preset.config));
                 list.appendChild(item);
             }
-
-            container.style.display = '';
+            document.getElementById('presets-container').hidden = false;
         } catch (e) {
             console.error('Failed to load presets:', e);
         }
@@ -1271,59 +1235,37 @@ import { createPlotView, PRODUCT_MIME } from './plot-view.js';
 
     // ===== Events Panel =====
 
+    const fmtEventDate = (d) => new Date(d).toISOString().replace('T', ' ').replace(/:\d{2}\.\d+Z$/, '');
+
     function updateEventsPanel() {
-        const container = document.getElementById('events-container');
         const list = document.getElementById('events-list');
-        const toggle = document.getElementById('events-toggle');
-        const arrow = document.getElementById('events-arrow');
-
         list.innerHTML = '';
-
-        if (plotState.intervals.length === 0) {
-            container.style.display = 'none';
-            return;
-        }
-
-        if (!toggle._bound) {
-            toggle.addEventListener('click', () => {
-                const open = list.style.display !== 'none';
-                list.style.display = open ? 'none' : 'block';
-                arrow.style.transform = open ? '' : 'rotate(90deg)';
-            });
-            toggle._bound = true;
-        }
+        document.getElementById('events-container').hidden = plotState.intervals.length === 0;
 
         const sorted = [...plotState.intervals].sort((a, b) => new Date(a.start) - new Date(b.start));
         for (const iv of sorted) {
-            const fmtDate = d => new Date(d).toISOString().replace('T', ' ').replace(/:\d{2}\.\d+Z$/, '');
-            const dateRange = fmtDate(iv.start) + ' — ' + fmtDate(iv.stop);
-            const tooltip = dateRange + (iv.label ? '\n' + iv.label : '');
-
+            const dateRange = fmtEventDate(iv.start) + ' — ' + fmtEventDate(iv.stop);
             const item = document.createElement('div');
-            item.style.cssText = 'padding:4px 8px;cursor:pointer;border-radius:4px;font-size:0.85rem;display:flex;align-items:center;gap:6px;';
+            item.className = 'side-item';
+            item.title = dateRange + (iv.label ? '\n' + iv.label : '');
             const swatch = document.createElement('span');
-            swatch.style.cssText = 'width:10px;height:10px;border-radius:2px;flex-shrink:0;background:' + iv.color + ';';
+            swatch.className = 'side-swatch';
+            swatch.style.background = iv.color;
             const text = document.createElement('span');
-            text.style.cssText = 'overflow:hidden;text-overflow:ellipsis;white-space:nowrap;';
             text.textContent = dateRange;
             item.appendChild(swatch);
             item.appendChild(text);
-            item.title = tooltip;
-            item.addEventListener('mouseenter', () => { item.style.background = '#1e2640'; });
-            item.addEventListener('mouseleave', () => { item.style.background = ''; });
             item.addEventListener('click', () => centerOnInterval(iv));
             list.appendChild(item);
         }
-
-        container.style.display = '';
     }
 
+    // The event fills the middle third of the view.
     function centerOnInterval(iv) {
-        const start = new Date(iv.start).getTime();
-        const end = new Date(iv.stop).getTime();
-        const duration = end - start;
-        const padding = duration * 1.0;
-        const view = { start: start - padding, end: end + padding };
+        const start = Date.parse(iv.start);
+        const end = Date.parse(iv.stop);
+        const pad = end - start;
+        const view = { start: start - pad, end: end + pad };
         plotView.setView(view);
         onViewChange(view);
     }
@@ -1354,6 +1296,6 @@ import { createPlotView, PRODUCT_MIME } from './plot-view.js';
         updateShareURL, mergeProductData, applyScaleHints, applyConfig, getPlotView: () => plotView,
         renderProductParams, collectProductParams, selectProduct, onProductParamsChanged, loadInventory,
         subplotAction, setSelectedProduct: (path) => { selectedProduct = path; },
-        replotOverRange, loadFromURLParams, base64ToConfig, onSearchInput,
+        replotOverRange, loadFromURLParams, base64ToConfig, onSearchInput, onMultiZoomPan,
         __resetCdpp3dviewFramesCache: () => { cdpp3dviewFramesPromise = null; },
     };

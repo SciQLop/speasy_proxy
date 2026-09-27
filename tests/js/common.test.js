@@ -1,17 +1,8 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import {
-  toLocalISOString, escapeHtml, formatDateInput, parseDateInput, setDateInput,
+  escapeHtml, formatDateInput, parseDateInput, setDateInput,
   installErrorBoundary, runWithConcurrency,
 } from '../../speasy_proxy/static/js/common.js';
-
-describe('toLocalISOString', () => {
-  it('formats local datetime with zero-padded seconds', () => {
-    expect(toLocalISOString(new Date(2018, 0, 5, 3, 7, 9))).toBe('2018-01-05T03:07:09');
-  });
-  it('includes seconds even when zero (the drift fix)', () => {
-    expect(toLocalISOString(new Date(2020, 10, 30, 23, 0, 0))).toBe('2020-11-30T23:00:00');
-  });
-});
 
 // The time inputs are UTC, like the plot axes and the data: in local time a user east
 // of Greenwich typing 00:00 got data from the previous day.

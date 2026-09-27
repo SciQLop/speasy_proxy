@@ -6,7 +6,7 @@
 // draws it and reports back: time-window changes through onViewChange, subplot edits
 // (log toggles, removals, dropped products) through onAction({ type, index, path }).
 import uPlot from './vendor/uPlot.esm.js';
-import { CHART_COLORS } from './common.js';
+import { CHART_COLORS, escapeHtml } from './common.js';
 import {
   lineTable, nearestIndex, fmtTick, productTitle,
   computeValueRange, renderableRange,
@@ -96,10 +96,6 @@ export function createPlotView(root, { onViewChange, onAction = () => {} }) {
       c.colorbar?.update();
       c.u.redraw(false);
     }
-  }
-
-  function resize() {
-    fitHeights();
   }
 
   // Titles and legends are DOM rows whose height depends on fonts and wrapping, so
@@ -226,7 +222,7 @@ export function createPlotView(root, { onViewChange, onAction = () => {} }) {
     placeTooltip(tooltip, root, u, left, u.cursor.top);
   }
 
-  return { render, update, setView, getView: () => ({ ...view }), refreshHeatmaps, resize, clear, toDataURL };
+  return { render, update, setView, getView: () => ({ ...view }), resize: fitHeights, clear, toDataURL };
 }
 
 // --- layout ----------------------------------------------------------------------
@@ -450,16 +446,16 @@ function createTools(subplot, isHeatmap, act) {
   const bar = el('div', 'pv-tools');
   bar.style.right = (CHART_PADDING[1] + BADGE_INSET_PX) + 'px';
   bar.style.top = (CHART_PADDING[0] + BADGE_INSET_PX) + 'px';
-  const toolClass = (on) => (on ? 'pv-tool active' : 'pv-tool');
+  const toolClass = (on, extra = '') => 'pv-tool' + (on ? ' active' : '') + extra;
   const buttons = {};
   const tools = [
     { label: 'auto Y', type: 'autoY', on: !subplot._yOverride, title: 'Fit Y to the visible data (off: keep the current Y range)' },
     { label: 'log Y', type: 'logY', on: !!subplot.y_axis.log, title: 'Y axis: logarithmic / linear' },
     isHeatmap && { label: 'log Z', type: 'logZ', on: !!subplot.logScale, title: 'Colour scale: logarithmic / linear' },
-    { label: '✕', type: 'remove', on: false, title: 'Remove this subplot' },
+    { label: '✕', type: 'remove', on: false, title: 'Remove this subplot', extra: ' remove' },
   ].filter(Boolean);
   for (const t of tools) {
-    const b = el('button', toolClass(t.on));
+    const b = el('button', toolClass(t.on, t.extra));
     b.textContent = t.label;
     b.title = t.title;
     b.addEventListener('click', () => act(t.type));
@@ -598,9 +594,6 @@ function placeTooltip(tooltip, root, u, left, top) {
 const swatch = (color, radius) =>
   '<span style="display:inline-block;width:10px;height:10px;border-radius:' + radius + 'px;background:' + escapeHtml(color) + ';margin-right:4px;"></span>';
 
-function escapeHtml(s) {
-  return String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-}
 
 // --- PNG export -------------------------------------------------------------------------
 

@@ -574,8 +574,8 @@ describe('subplot toolbar', () => {
 
     const made = dom.created.slice(before).filter((e) => e.tagName === 'BUTTON' && e.className.startsWith('pv-tool'));
     expect(made.map((b) => [b.textContent, b.className])).toEqual([
-      ['auto Y', 'pv-tool active'], ['log Y', 'pv-tool active'], ['✕', 'pv-tool'],
-      ['auto Y', 'pv-tool active'], ['log Y', 'pv-tool'], ['log Z', 'pv-tool active'], ['✕', 'pv-tool'],
+      ['auto Y', 'pv-tool active'], ['log Y', 'pv-tool active'], ['✕', 'pv-tool remove'],
+      ['auto Y', 'pv-tool active'], ['log Y', 'pv-tool'], ['log Z', 'pv-tool active'], ['✕', 'pv-tool remove'],
     ]);
   });
 
@@ -889,5 +889,20 @@ describe('product search', () => {
     await plot.__test__.loadInventory();
 
     expect(inputs()).toBe(once);
+  });
+});
+
+describe('time fields follow the view', () => {
+  it('a pan or zoom updates the start/stop fields, so chips and Now work from what is shown', async () => {
+    initChart();
+    plotState.plots = [{ products: [{ path: 'cda/b' }], y_axis: { log: false }, plotType: 'line',
+      productData: { 'cda/b': { ...lineCache('cda/b', ''), intervals: [[0, 1e12]], fetchSpan: 1e12 } } }];
+    renderAllSubplots();
+    plot.__test__.getPlotView().setView({ start: Date.parse('2020-01-01T04:00:00Z'), end: Date.parse('2020-01-01T10:00:00Z') });
+
+    await plot.__test__.onMultiZoomPan();
+
+    expect(dom.getById('start-time').value).toBe('01-01-2020 04:00:00');
+    expect(dom.getById('stop-time').value).toBe('01-01-2020 10:00:00');
   });
 });

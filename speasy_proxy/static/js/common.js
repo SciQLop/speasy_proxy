@@ -1,14 +1,6 @@
 // Shared UI helpers + time formatting for the viewer pages.
 // Plain ES module: imported by page modules and by Vitest.
 
-export function toLocalISOString(date) {
-  const pad = (n) => String(n).padStart(2, '0');
-  return (
-    date.getFullYear() + '-' + pad(date.getMonth() + 1) + '-' + pad(date.getDate()) +
-    'T' + pad(date.getHours()) + ':' + pad(date.getMinutes()) + ':' + pad(date.getSeconds())
-  );
-}
-
 // Day-first display for the date inputs: "DD-MM-YYYY HH:MM:SS", in UTC like the plot
 // axes and the data (local time shifted every typed time by the browser's offset).
 // Native datetime-local inputs render in the browser locale (often M/D/Y), so the
