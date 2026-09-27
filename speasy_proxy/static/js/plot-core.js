@@ -35,6 +35,8 @@ export function createProductCache(path) {
   };
 }
 
+// Scales are saved only once chosen explicitly; one still following the ISTP hint is
+// left out so a reload re-reads the hint (see subplotFromConfig).
 export function subplotToConfig(sp) {
   return {
     products: sp.products.map((p) => ({
@@ -42,8 +44,8 @@ export function subplotToConfig(sp) {
       coordinate_system: p.coordinateSystem,
       product_inputs: p.productInputs,
     })),
-    y_axis: { log: sp.y_axis.log },
-    log_z: sp.logScale,
+    ...(sp._yScaleAuto ? {} : { y_axis: { log: sp.y_axis.log } }),
+    ...(sp._zScaleAuto ? {} : { log_z: sp.logScale }),
   };
 }
 

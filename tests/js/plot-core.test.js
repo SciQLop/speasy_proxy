@@ -440,12 +440,27 @@ describe('factories', () => {
     sp.products.push({ path: 'amda/imf', label: 'IMF' });
     sp.y_axis.log = true;
     sp.logScale = false;
+    sp._yScaleAuto = false;  // clicked
+    sp._zScaleAuto = false;
     const cfg = subplotToConfig(sp);
     expect(cfg).toEqual({ products: [{ path: 'amda/imf', label: 'IMF' }], y_axis: { log: true }, log_z: false });
     const restored = subplotFromConfig(cfg);
     expect(restored.products).toEqual([{ path: 'amda/imf', label: 'IMF' }]);
     expect(restored.y_axis.log).toBe(true);
     expect(restored.logScale).toBe(false);
+  });
+  it('a scale still following the ISTP hint is not saved, so a reload keeps following it', () => {
+    // Adding a product saves the URL before its data (and SCALETYP) arrives: saving the
+    // default log=false there made every reload or shared link come back linear.
+    const sp = createSubplotData();
+    sp.products.push({ path: 'cda/spec', label: 'spec' });
+    sp.y_axis.log = true;  // set by the hint, not by a click
+    const cfg = subplotToConfig(sp);
+    expect(cfg.y_axis).toBeUndefined();
+    expect(cfg.log_z).toBeUndefined();
+    const restored = subplotFromConfig(cfg);
+    expect(restored._yScaleAuto).toBe(true);
+    expect(restored._zScaleAuto).toBe(true);
   });
   it('subplotFromConfig treats a loaded/shared config as a deliberate choice', () => {
     const restored = subplotFromConfig({ products: [], y_axis: { log: true }, log_z: false });
