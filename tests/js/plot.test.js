@@ -478,7 +478,7 @@ describe('removing a product from a subplot', () => {
 });
 
 describe('Enter in a time field', () => {
-  it('applies the typed window to every subplot instead of replotting from scratch', () => {
+  it('applies the typed UTC window to every subplot, keeping the subplots', () => {
     initChart();
     bindControls();
     plotState.plots = [heatmapSubplot(), heatmapSubplot()];
@@ -490,9 +490,8 @@ describe('Enter in a time field', () => {
     for (const fn of keydown) fn({ key: 'Enter', preventDefault: vi.fn() });
 
     expect(plotState.plots).toHaveLength(2);
-    // The inputs are read in local time.
-    expect(plotState.time_range.start).toBe(new Date(2024, 0, 1).toISOString());
-    expect(plotState.time_range.stop).toBe(new Date(2024, 0, 2).toISOString());
+    expect(plotState.time_range.start).toBe('2024-01-01T00:00:00.000Z');
+    expect(plotState.time_range.stop).toBe('2024-01-02T00:00:00.000Z');
   });
 });
 
@@ -765,5 +764,130 @@ describe('spectrogram colour bar', () => {
     expect(made.some((e) => e.className === 'pv-colorbar')).toBe(true);
     expect(made.filter((e) => e.className === 'pv-colorbar-label').map((e) => e.textContent))
       .toEqual(['23.8', '7.68e7', 'keV/(cm^2 s sr keV)']);
+  });
+});
+
+describe('fetches that finish after the state moved on', () => {
+  const deferred = () => { let resolve; const promise = new Promise((r) => { resolve = r; }); return { promise, resolve }; };
+  const lineResponse = (t0, value) => ({
+    axes: [{ values: [t0 * 1e6, (t0 + 1000) * 1e6] }], columns: ['v'],
+    values: { values: [[value], [value]], meta: { UNITS: 'nT' } },
+  });
+  const flush = async () => { for (let i = 0; i < 5; i++) await Promise.resolve(); };
+
+  beforeEach(() => {
+    initChart();
+    apiClient.fetchData.mockReset();
+    dom.getById('start-time').value = '01-01-2020 00:00';
+    dom.getById('stop-time').value = '02-01-2020 00:00';
+  });
+
+  it('a product fetch never lands in a cache that was replaced meanwhile (params change, new range)', async () => {
+    const slow = deferred();
+    apiClient.fetchData.mockReturnValueOnce(slow.promise);
+    plot.__test__.subplotAction({ type: 'addProduct', index: null, path: 'ssc/ace' });
+    const sp = plotState.plots[0];
+    const fresh = createEmptyCache('ssc/ace');
+    sp.productData['ssc/ace'] = fresh;  // what a coordinate-system change or a new range does
+
+    slow.resolve(lineResponse(1000, 1));
+    await flush();
+
+    expect(fresh.times).toEqual([]);
+  });
+
+  it('an older full refetch finishing last does not land in the caches of a newer range', async () => {
+    const slow = deferred();
+    apiClient.fetchData.mockReturnValueOnce(slow.promise).mockResolvedValueOnce(lineResponse(5000, 2));
+    applyConfig({ version: 1, time_range: { start: '1970-01-01T00:00:00Z', stop: '1970-01-01T00:00:03Z' },
+      plots: [{ products: [{ path: 'cda/b' }] }] });
+    plot.__test__.replotOverRange(4000, 7000);  // e.g. a quick-range chip while the first load runs
+    await flush();
+    const cache = plotState.plots[0].productData['cda/b'];
+    const timesAfterNewest = [...cache.times];
+
+    slow.resolve(lineResponse(1000, 1));
+    await flush();
+
+    expect(cache.times).toEqual(timesAfterNewest);
+    expect(cache.intervals).toEqual([[4000, 7000]]);
+  });
+
+  it('the loading dot follows its subplot when an earlier subplot is removed', async () => {
+    const slow = deferred();
+    apiClient.fetchData.mockResolvedValueOnce(lineResponse(1000, 1)).mockReturnValueOnce(slow.promise);
+    plot.__test__.subplotAction({ type: 'addProduct', index: null, path: 'cda/a' });
+    await flush();
+    plot.__test__.subplotAction({ type: 'addProduct', index: null, path: 'cda/b' });
+    const before = dom.created.length;
+
+    plot.__test__.subplotAction({ type: 'remove', index: 0 });
+
+    const titles = dom.created.slice(before).filter((e) => e.className === 'pv-header-title').map((e) => e.dataset.text);
+    expect(titles).toEqual(['b ●']);
+    slow.resolve(null);
+    await flush();
+  });
+
+  it('adding a product refuses a stop before the start', () => {
+    dom.getById('start-time').value = '02-01-2020 00:00';
+    dom.getById('stop-time').value = '01-01-2020 00:00';
+
+    plot.__test__.subplotAction({ type: 'addProduct', index: null, path: 'cda/a' });
+
+    expect(plotState.plots).toHaveLength(0);
+  });
+});
+
+describe('URL state', () => {
+  const lastSavedConfig = () => {
+    const url = window.history.replaceState.mock.calls.at(-1)[2];
+    return plot.__test__.base64ToConfig(new URL(url, 'https://host').searchParams.get('config'));
+  };
+
+  beforeEach(() => { initChart(); window.history.replaceState.mockClear(); });
+
+  it('applying a preset saves it in the URL, so a reload shows the preset', () => {
+    applyConfig({ version: 1, time_range: { start: '2020-06-15T00:00:00Z', stop: '2020-06-16T00:00:00Z' },
+      plots: [{ products: [{ path: 'amda/imf' }] }] });
+
+    expect(lastSavedConfig().plots[0].products[0].path).toBe('amda/imf');
+  });
+
+  it('an old ?path= link leaves the scales to the ISTP hints', () => {
+    window.location.search = '?path=amda/imf&start=2020-01-01&stop=2020-01-02';
+
+    plot.__test__.loadFromURLParams();
+
+    expect(plotState.plots[0]._yScaleAuto).toBe(true);
+    window.location.search = '';
+  });
+});
+
+describe('product search', () => {
+  it('shows each result\'s path once, not ending in a repeat of its own name', async () => {
+    apiClient.fetchInventory.mockResolvedValueOnce({
+      cda: { __spz_type__: 'ProviderIndex', ACE: { __spz_type__: 'DatasetIndex', __spz_name__: 'ACE',
+        GSE_LAT: { __spz_type__: 'ParameterIndex', __spz_provider__: 'cda', __spz_uid__: 'AC/GSE_LAT', __spz_name__: 'GSE_LAT' } } },
+    });
+    await plot.__test__.loadInventory();
+    const before = dom.created.length;
+
+    plot.__test__.onSearchInput({ target: { value: 'gse_lat' } });
+
+    const prefix = dom.created.slice(before).find((e) => e.tagName === 'SPAN');
+    expect(prefix.textContent).toBe('cda / ACE / ');
+  });
+
+  it('binds its input listener once, even when the inventory is loaded again (Retry)', async () => {
+    apiClient.fetchInventory.mockResolvedValue({});
+    const box = dom.getById('search-box');
+    const inputs = () => box.addEventListener.mock.calls.filter(([type]) => type === 'input').length;
+    await plot.__test__.loadInventory();
+    const once = inputs();
+
+    await plot.__test__.loadInventory();
+
+    expect(inputs()).toBe(once);
   });
 });

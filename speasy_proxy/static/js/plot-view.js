@@ -65,7 +65,7 @@ export function createPlotView(root, { onViewChange, onAction = () => {} }) {
     view = { ...nextView };
     intervals = (opts.intervals || []).map((iv) => ({ ...iv, t0: Date.parse(iv.start), t1: Date.parse(iv.stop) }));
     const heights = layoutHeights(plots, root.clientHeight);
-    charts = plots.map((sp, i) => createChart(sp, i, heights[i], opts.loading?.has(i)));
+    charts = plots.map((sp, i) => createChart(sp, i, heights[i], opts.loading?.has(sp)));
     fitHeights();
     refreshHeatmaps();
   }

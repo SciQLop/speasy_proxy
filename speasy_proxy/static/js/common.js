@@ -9,14 +9,15 @@ export function toLocalISOString(date) {
   );
 }
 
-// Day-first display for the date inputs: "DD-MM-YYYY HH:MM:SS" (local time).
+// Day-first display for the date inputs: "DD-MM-YYYY HH:MM:SS", in UTC like the plot
+// axes and the data (local time shifted every typed time by the browser's offset).
 // Native datetime-local inputs render in the browser locale (often M/D/Y), so the
 // viewer uses plain text fields with this explicit, unambiguous day-first format.
 export function formatDateInput(date) {
   const pad = (n) => String(n).padStart(2, '0');
   return (
-    pad(date.getDate()) + '-' + pad(date.getMonth() + 1) + '-' + date.getFullYear() +
-    ' ' + pad(date.getHours()) + ':' + pad(date.getMinutes()) + ':' + pad(date.getSeconds())
+    pad(date.getUTCDate()) + '-' + pad(date.getUTCMonth() + 1) + '-' + date.getUTCFullYear() +
+    ' ' + pad(date.getUTCHours()) + ':' + pad(date.getUTCMinutes()) + ':' + pad(date.getUTCSeconds())
   );
 }
 
@@ -34,15 +35,17 @@ export function attachDatePicker(el) {
   });
 }
 
-// Set a date field, keeping the flatpickr calendar in sync when present.
+// Set a date field, keeping the flatpickr calendar in sync when present. flatpickr only
+// knows local time, so it gets the UTC text rather than the Date: the field then shows
+// UTC, and whatever it holds is read back by parseDateInput as UTC.
 export function setDateInput(el, date) {
   if (!el) return;
-  if (el._flatpickr) el._flatpickr.setDate(date, false);
+  if (el._flatpickr) el._flatpickr.setDate(formatDateInput(date), false, 'd-m-Y H:i:S');
   else el.value = formatDateInput(date);
 }
 
 // Parse "DD-MM-YYYY HH:MM[:SS]" (separators -, / or .; seconds optional; time optional)
-// as local time. Returns a Date, or null if malformed / out of range.
+// as UTC. Returns a Date, or null if malformed / out of range.
 export function parseDateInput(str) {
   const m = String(str).trim().match(
     /^(\d{1,2})[-/.](\d{1,2})[-/.](\d{4})(?:[ T](\d{1,2}):(\d{2})(?::(\d{2}))?)?$/,
@@ -50,9 +53,9 @@ export function parseDateInput(str) {
   if (!m) return null;
   const [day, month, year, hh, mm, ss] =
     [m[1], m[2], m[3], m[4] || 0, m[5] || 0, m[6] || 0].map(Number);
-  const date = new Date(year, month - 1, day, hh, mm, ss);
+  const date = new Date(Date.UTC(year, month - 1, day, hh, mm, ss));
   // Reject overflow (e.g. 32-13-2020 rolling over) and out-of-range time.
-  if (date.getFullYear() !== year || date.getMonth() !== month - 1 || date.getDate() !== day
+  if (date.getUTCFullYear() !== year || date.getUTCMonth() !== month - 1 || date.getUTCDate() !== day
       || hh > 23 || mm > 59 || ss > 59) {
     return null;
   }

@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import {
-  toLocalISOString, escapeHtml, formatDateInput, parseDateInput,
+  toLocalISOString, escapeHtml, formatDateInput, parseDateInput, setDateInput,
   installErrorBoundary, runWithConcurrency,
 } from '../../speasy_proxy/static/js/common.js';
 
@@ -13,26 +13,31 @@ describe('toLocalISOString', () => {
   });
 });
 
+// The time inputs are UTC, like the plot axes and the data: in local time a user east
+// of Greenwich typing 00:00 got data from the previous day.
 describe('formatDateInput', () => {
-  it('formats day-first DD-MM-YYYY HH:MM:SS, zero-padded', () => {
-    expect(formatDateInput(new Date(2016, 5, 1, 3, 7, 9))).toBe('01-06-2016 03:07:09');
+  it('formats day-first DD-MM-YYYY HH:MM:SS in UTC, zero-padded', () => {
+    expect(formatDateInput(new Date(Date.UTC(2016, 5, 1, 3, 7, 9)))).toBe('01-06-2016 03:07:09');
   });
 });
 
 describe('parseDateInput', () => {
+  it('reads the fields as UTC', () => {
+    expect(parseDateInput('01-01-2020 00:00').toISOString()).toBe('2020-01-01T00:00:00.000Z');
+  });
   it('round-trips with formatDateInput', () => {
-    const d = new Date(2016, 5, 1, 3, 7, 9);
+    const d = new Date(Date.UTC(2016, 5, 1, 3, 7, 9));
     expect(parseDateInput(formatDateInput(d)).getTime()).toBe(d.getTime());
   });
   it('parses day-first as day then month (not swapped)', () => {
     const d = parseDateInput('02-06-2016 00:00');
-    expect(d.getDate()).toBe(2);
-    expect(d.getMonth()).toBe(5); // June
+    expect(d.getUTCDate()).toBe(2);
+    expect(d.getUTCMonth()).toBe(5); // June
   });
   it('accepts / and . separators and optional seconds/time', () => {
-    expect(parseDateInput('02/06/2016 01:02').getMinutes()).toBe(2);
-    expect(parseDateInput('02.06.2016 01:02:03').getSeconds()).toBe(3);
-    expect(parseDateInput('02-06-2016').getHours()).toBe(0);
+    expect(parseDateInput('02/06/2016 01:02').getUTCMinutes()).toBe(2);
+    expect(parseDateInput('02.06.2016 01:02:03').getUTCSeconds()).toBe(3);
+    expect(parseDateInput('02-06-2016').getUTCHours()).toBe(0);
   });
   it('rejects malformed or out-of-range input', () => {
     expect(parseDateInput('')).toBeNull();
@@ -40,6 +45,14 @@ describe('parseDateInput', () => {
     expect(parseDateInput('32-06-2016 00:00')).toBeNull();
     expect(parseDateInput('02-13-2016 00:00')).toBeNull();
     expect(parseDateInput('02-06-2016 25:00')).toBeNull();
+  });
+});
+
+describe('setDateInput', () => {
+  it('shows the UTC time in a flatpickr field too', () => {
+    const el = { _flatpickr: { setDate: vi.fn() } };
+    setDateInput(el, new Date(Date.UTC(2020, 0, 1, 0, 0, 0)));
+    expect(el._flatpickr.setDate).toHaveBeenCalledWith('01-01-2020 00:00:00', false, 'd-m-Y H:i:S');
   });
 });
 

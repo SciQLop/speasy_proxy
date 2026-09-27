@@ -37,7 +37,7 @@ import { createPlotView, PRODUCT_MIME } from './plot-view.js';
     let fetchController = null;
     let panFetchQueued = false;  // a pan/zoom arrived while a fetch was in flight — rerun once after it
     let lastStructureKey = null;  // structure of the last full chart build; used to pick merge vs rebuild
-    const loadingSubplots = new Set();  // subplot indices currently fetching data (for the spinner)
+    const loadingSubplots = new Set();  // subplots currently fetching data (for the spinner)
 
     // ===== Task 4: Inventory Tree =====
 
@@ -49,7 +49,8 @@ import { createPlotView, PRODUCT_MIME } from './plot-view.js';
             // (see renderProductParams) instead of version 1's stringified repr.
             inventory = await fetchInventory(API_BASE, 'all', 2);
             renderTree(inventory);
-            setupSearch();
+            leafIndex = [];
+            buildLeafIndex(inventory, []);
             // Restore the params box for a product already selected by the time this
             // resolves (a ?config=/?path= URL applies before the inventory fetch
             // finishes) -- otherwise a page refresh with e.g. a chosen coordinate_system
@@ -354,33 +355,26 @@ import { createPlotView, PRODUCT_MIME } from './plot-view.js';
 
     // ===== Task 5: Search/Filter =====
 
-    function setupSearch() {
-        leafIndex = [];
-        buildLeafIndex(inventory, []);
-
-        document.getElementById('search-box').addEventListener('input', function() {
-            const query = this.value.trim().toLowerCase();
-            if (query.length < 2) {
-                renderTree(inventory);
-                return;
-            }
-            renderSearchResults(query);
-        });
+    // Bound once in bindControls: loadInventory can run again (Retry).
+    function onSearchInput(e) {
+        if (!inventory) return;
+        const query = e.target.value.trim().toLowerCase();
+        if (query.length < 2) renderTree(inventory);
+        else renderSearchResults(query);
     }
 
     function buildLeafIndex(node, breadcrumb) {
         if (!node || typeof node !== 'object') return;
         if (shouldSkipNode(node)) return;
 
+        // The breadcrumb already ends with this product's own name (added by the parent).
         if (isSelectableProduct(node)) {
-            const displayName = node.__spz_name__ || node.name || '';
-            const bc = breadcrumb.concat(displayName);
             leafIndex.push({
-                name: bc.join(' / ').toLowerCase(),
-                displayName: displayName,
-                breadcrumb: bc,
-                node: node,
-                path: getProductPath(node)
+                name: breadcrumb.join(' / ').toLowerCase(),
+                displayName: breadcrumb[breadcrumb.length - 1],
+                breadcrumb,
+                node,
+                path: getProductPath(node),
             });
             return;
         }
@@ -446,6 +440,7 @@ import { createPlotView, PRODUCT_MIME } from './plot-view.js';
         attachDatePicker(document.getElementById('start-time'));
         attachDatePicker(document.getElementById('stop-time'));
 
+        document.getElementById('search-box').addEventListener('input', onSearchInput);
         for (const id of ['start-time', 'stop-time']) {
             document.getElementById(id).addEventListener('keydown', (e) => {
                 if (e.key === 'Enter') applyTypedRange();
@@ -578,11 +573,9 @@ import { createPlotView, PRODUCT_MIME } from './plot-view.js';
     // arguments) come from the sidebar panel, which describes the selected product only.
     function addProductToPlot(product, subplotIndex) {
         if (!plotView) { setStatus('Chart not available — check network connection.'); return; }
-        const startDate = parseDateInput(document.getElementById('start-time').value);
-        const stopDate = parseDateInput(document.getElementById('stop-time').value);
-
         if (!product) { setStatus('No product selected.'); return; }
-        if (!startDate || !stopDate) { setStatus('Please set valid start and stop times (DD-MM-YYYY HH:MM).'); return; }
+        const range = typedRange();
+        if (!range) return;
 
         const existing = subplotIndex === null ? null : plotState.plots[subplotIndex];
         if (existing && existing.products.some(p => p.path === product)) {
@@ -590,8 +583,8 @@ import { createPlotView, PRODUCT_MIME } from './plot-view.js';
             return;
         }
 
-        plotState.time_range.start = startDate.toISOString();
-        plotState.time_range.stop = stopDate.toISOString();
+        plotState.time_range.start = range.start.toISOString();
+        plotState.time_range.stop = range.stop.toISOString();
 
         const subplot = existing || createSubplotData();
         if (!existing) plotState.plots.push(subplot);
@@ -600,7 +593,7 @@ import { createPlotView, PRODUCT_MIME } from './plot-view.js';
         subplot.productData[product] = createProductCache(product);
 
         updateURL();
-        fetchProductAndRender(plotState.plots.indexOf(subplot), product);
+        fetchProductAndRender(subplot, product);
     }
 
     function removeSubplot(index) {
@@ -657,43 +650,51 @@ import { createPlotView, PRODUCT_MIME } from './plot-view.js';
         document.getElementById('share-url').value = fullUrl;
     }
 
-    async function fetchProductAndRender(subplotIndex, productPath) {
-        showLoading(true);
-        loadingSubplots.add(subplotIndex);
+    async function fetchProductAndRender(subplot, productPath) {
+        const cache = subplot.productData[productPath];
+        const prod = subplot.products.find(p => p.path === productPath);
+        const startMs = Date.parse(plotState.time_range.start);
+        const stopMs = Date.parse(plotState.time_range.stop);
+        trackLoading(+1);
+        loadingSubplots.add(subplot);
         setStatus('Fetching ' + productPath + '...');
-
-        const startTime = plotState.time_range.start;
-        const stopTime = plotState.time_range.stop;
-        const startISO = new Date(startTime).toISOString();
-        const stopISO = new Date(stopTime).toISOString();
-        const fetchStartMs = new Date(startTime).getTime();
-        const fetchStopMs = new Date(stopTime).getTime();
-
-        // Held by reference: the subplot's index shifts if another one is removed mid-fetch.
-        const subplot = plotState.plots[subplotIndex];
         try {
-            const prod = subplot?.products.find(p => p.path === productPath);
-            const data = await fetchData(productPath, startISO, stopISO, undefined, prod);
-            if (!plotState.plots.includes(subplot) || !subplot.productData[productPath]) return;
-            if (!data || !data.values || !data.axes || data.axes.length === 0) {
-                setStatus('No data returned for ' + productPath);
-                return;
-            }
-            mergeProductData(subplot.productData[productPath], data, fetchStartMs, fetchStopMs);
-            if (subplot.products[0].path === productPath) {
-                subplot.plotType = detectPlotType(data);
-                applyScaleHints(subplot, data);
-            }
+            const data = await fetchData(productPath, startMs, stopMs, undefined, prod);
+            if (!isLive(subplot, productPath, cache)) return;
+            if (!hasData(data)) { setStatus('No data returned for ' + productPath); return; }
+            ingest(subplot, productPath, cache, data, startMs, stopMs);
             setStatus('Added ' + productPath);
         } catch (e) {
             setStatus('Error fetching ' + productPath + ': ' + e.message);
             console.error(e);
         } finally {
-            showLoading(false);
-            loadingSubplots.delete(subplotIndex);
+            trackLoading(-1);
+            loadingSubplots.delete(subplot);
             // Also on failure: the subplot is drawn empty, with its ✕, instead of lingering unseen.
             if (plotState.plots.length > 0) renderAllSubplots(true);
         }
+    }
+
+    // A fetch result still belongs on screen only if its cache is the live one: a new
+    // range, a params change or a remove/re-add replaces the cache while it is in flight.
+    const isLive = (subplot, path, cache) =>
+        plotState.plots.includes(subplot) && subplot.productData[path] === cache;
+
+    const hasData = (data) => !!data?.values && data.axes?.length > 0;
+
+    // The first product of a subplot decides its plot type and scale hints.
+    function ingest(subplot, path, cache, data, startMs, stopMs) {
+        mergeProductData(cache, data, startMs, stopMs);
+        if (subplot.products[0].path !== path) return;
+        subplot.plotType = detectPlotType(data);
+        applyScaleHints(subplot, data);
+    }
+
+    // Several loads can overlap; the overlay stays up until the last one ends.
+    let activeLoads = 0;
+    function trackLoading(delta) {
+        activeLoads += delta;
+        showLoading(activeLoads > 0);
     }
 
     // ===== Time navigation (quick-range chips + pan) =====
@@ -735,14 +736,18 @@ import { createPlotView, PRODUCT_MIME } from './plot-view.js';
         replotOverRange(start + dir * width, stop + dir * width);
     }
 
-    function applyTypedRange() {
+    // The start/stop fields as Dates, or null (with a status message) when invalid.
+    function typedRange() {
         const start = parseDateInput(document.getElementById('start-time').value);
         const stop = parseDateInput(document.getElementById('stop-time').value);
-        if (!start || !stop || stop <= start) {
-            setStatus('Please set valid start and stop times (DD-MM-YYYY HH:MM).');
-            return;
-        }
-        replotOverRange(start.getTime(), stop.getTime());
+        if (start && stop && stop > start) return { start, stop };
+        setStatus('Please set a valid UTC start and stop (DD-MM-YYYY HH:MM), stop after start.');
+        return null;
+    }
+
+    function applyTypedRange() {
+        const range = typedRange();
+        if (range) replotOverRange(range.start.getTime(), range.stop.getTime());
     }
 
     async function fetchData(product, startTime, stopTime, signal, extraParams) {
@@ -1066,14 +1071,7 @@ import { createPlotView, PRODUCT_MIME } from './plot-view.js';
         const start = params.get('start');
         const stop = params.get('stop');
         if (path) {
-            const config = {
-                version: 1,
-                time_range: { start: start, stop: stop },
-                plots: [{ products: [{ path: path }], y_axis: { log: false } }]
-            };
-            const encoded = configToBase64(config);
-            history.replaceState(null, '', window.location.pathname + '?config=' + encoded);
-            applyConfig(config);
+            applyConfig({ version: 1, time_range: { start, stop }, plots: [{ products: [{ path }] }] });
             return;
         }
 
@@ -1122,72 +1120,46 @@ import { createPlotView, PRODUCT_MIME } from './plot-view.js';
             showProductPanel(selectedProduct);
         }
 
-        // initChart() runs synchronously earlier in the DOMContentLoaded handler, so
-        // the chart already exists here — no need to defer the first fetch.
+        // Presets land here too: the URL must describe what is now on screen.
+        updateURL();
         fetchAllAndRender();
     }
 
     async function fetchAllAndRender() {
         if (!plotView) { setStatus('Chart not available — check network connection.'); return; }
-        showLoading(true);
+        const startMs = Date.parse(plotState.time_range.start);
+        const stopMs = Date.parse(plotState.time_range.stop);
+        if (!Number.isFinite(startMs) || !Number.isFinite(stopMs)) return;
+
+        trackLoading(+1);
         setStatus('Fetching data...');
-
-        const startTime = plotState.time_range.start;
-        const stopTime = plotState.time_range.stop;
-        if (!startTime || !stopTime) { showLoading(false); return; }
-
-        const startISO = new Date(startTime).toISOString();
-        const stopISO = new Date(stopTime).toISOString();
-        const fetchStartMs = new Date(startTime).getTime();
-        const fetchStopMs = new Date(stopTime).getTime();
-
-        // Fetch all products in parallel
-        const fetchPromises = [];
-        for (const subplot of plotState.plots) {
-            for (const prod of subplot.products) {
-                fetchPromises.push(
-                    fetchData(prod.path, startISO, stopISO, undefined, prod)
-                        .then(data => ({ subplot, path: prod.path, data }))
-                        .catch(e => ({ subplot, path: prod.path, error: e }))
-                );
-            }
-        }
-
-        const results = await Promise.all(fetchPromises);
+        const jobs = plotState.plots.flatMap(subplot => subplot.products.map(prod => {
+            const job = { subplot, path: prod.path, cache: subplot.productData[prod.path] };
+            return fetchData(prod.path, startMs, stopMs, undefined, prod)
+                .then(data => ({ ...job, data }), error => ({ ...job, error }));
+        }));
+        const results = (await Promise.all(jobs)).filter(r => isLive(r.subplot, r.path, r.cache));
+        trackLoading(-1);
+        if (results.length === 0 && jobs.length > 0) return;  // superseded by a newer load
 
         const errors = [];
-        let loadedCount = 0;
-        for (const result of results) {
-            if (result.error) {
-                console.error('Fetch error for', result.path, result.error);
-                errors.push(result.path + ' (' + result.error.message + ')');
-                continue;
-            }
-            const { subplot, path, data } = result;
-            if (!data || !data.values || !data.axes || data.axes.length === 0) {
-                errors.push(path + ' (no data returned)');
-                continue;
-            }
-
-            const cache = subplot.productData[path];
-            mergeProductData(cache, data, fetchStartMs, fetchStopMs);
-            loadedCount++;
-
-            // Detect plot type from first product
-            if (subplot.products[0].path === path) {
-                subplot.plotType = detectPlotType(data);
-                applyScaleHints(subplot, data);
+        for (const r of results) {
+            if (r.error) {
+                console.error('Fetch error for', r.path, r.error);
+                errors.push(r.path + ' (' + r.error.message + ')');
+            } else if (!hasData(r.data)) {
+                errors.push(r.path + ' (no data returned)');
+            } else {
+                ingest(r.subplot, r.path, r.cache, r.data, startMs, stopMs);
             }
         }
 
-        currentView = { start: fetchStartMs, end: fetchStopMs };
+        currentView = { start: startMs, end: stopMs };
         renderAllSubplots();
-
         const totalProducts = plotState.plots.reduce((n, sp) => n + sp.products.length, 0);
-        let msg = 'Loaded ' + loadedCount + '/' + totalProducts + ' product(s) across ' + plotState.plots.length + ' subplot(s)';
-        if (errors.length > 0) msg += '. Errors: ' + errors.join('; ');
-        setStatus(msg);
-        showLoading(false);
+        const loaded = results.length - errors.length;
+        setStatus('Loaded ' + loaded + '/' + totalProducts + ' product(s) across ' + plotState.plots.length + ' subplot(s)'
+            + (errors.length > 0 ? '. Errors: ' + errors.join('; ') : ''));
     }
 
     // ===== Sidebar Resize =====
@@ -1382,5 +1354,6 @@ import { createPlotView, PRODUCT_MIME } from './plot-view.js';
         updateShareURL, mergeProductData, applyScaleHints, applyConfig, getPlotView: () => plotView,
         renderProductParams, collectProductParams, selectProduct, onProductParamsChanged, loadInventory,
         subplotAction, setSelectedProduct: (path) => { selectedProduct = path; },
+        replotOverRange, loadFromURLParams, base64ToConfig, onSearchInput,
         __resetCdpp3dviewFramesCache: () => { cdpp3dviewFramesPromise = null; },
     };
