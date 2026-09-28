@@ -1,41 +1,54 @@
 {
-  "name": "Space Weather Overview",
-  "description": "IMF, AE index, solar wind pressure and beta from OMNI 1-min",
+  "name": "Gannon superstorm (May 2024)",
+  "description": "OMNI view of the strongest storm in 20 years: CME shock at 17:05 UT, hours of strongly southward IMF, SYM-H down to about -520 nT and auroral electrojets above 4000 nT.",
   "version": 1,
   "time_range": {
-    "start": "2025-01-15T00:00:00Z",
-    "stop": "2025-01-16T00:00:00Z"
+    "start": "2024-05-10T12:00:00Z",
+    "stop": "2024-05-12T12:00:00Z"
   },
   "intervals": [
     {
-      "start": "2025-01-15T06:00:00Z",
-      "stop": "2025-01-15T10:00:00Z",
-      "color": "rgba(255, 120, 80, 0.12)",
-      "label": "Storm main phase"
-    },
-    {
-      "start": "2025-01-15T14:00:00Z",
-      "stop": "2025-01-15T18:00:00Z",
-      "color": "rgba(100, 220, 140, 0.12)",
-      "label": "Recovery phase"
+      "start": "2024-05-10T17:05:00Z",
+      "stop": "2024-05-11T02:00:00Z",
+      "color": "rgba(255, 120, 80, 0.15)",
+      "label": "Main phase (SSC to Dst min)"
     }
   ],
   "plots": [
     {
-      "products": [{ "path": "amda/omni_hro2_1min_b_gse", "label": "OMNI B GSE" }],
-      "y_axis": { "log": false }
+      "products": [
+        {
+          "path": "amda/omni_hro2_1min_b_gse"
+        }
+      ]
     },
     {
-      "products": [{ "path": "amda/omni_hro2_1min_ae_index", "label": "AE Index" }],
-      "y_axis": { "log": false }
+      "products": [
+        {
+          "path": "amda/omni_hro2_1min_sw_vb"
+        }
+      ]
     },
     {
-      "products": [{ "path": "amda/omni_hro2_1min_sw_p", "label": "SW RAM Pressure" }],
-      "y_axis": { "log": false }
+      "products": [
+        {
+          "path": "amda/omni_hro2_1min_sw_p"
+        }
+      ]
     },
     {
-      "products": [{ "path": "amda/omni_hro2_1min_beta", "label": "SW Beta" }],
-      "y_axis": { "log": true }
+      "products": [
+        {
+          "path": "cda/OMNI_HRO2_1MIN/SYM_H"
+        }
+      ]
+    },
+    {
+      "products": [
+        {
+          "path": "amda/omni_hro2_1min_ae_index"
+        }
+      ]
     }
   ]
 }

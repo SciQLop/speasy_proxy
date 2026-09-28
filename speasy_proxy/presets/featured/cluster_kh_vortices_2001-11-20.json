@@ -1,0 +1,51 @@
+{
+  "name": "Cluster: Kelvin-Helmholtz vortices (Nov 2001)",
+  "description": "On the dusk flank magnetopause under northward IMF, Cluster 1 flips between magnetosheath and magnetospheric plasma every ~3 minutes as rolled-up Kelvin-Helmholtz vortices sweep past.",
+  "version": 1,
+  "time_range": {
+    "start": "2001-11-20T20:00:00Z",
+    "stop": "2001-11-20T21:00:00Z"
+  },
+  "intervals": [
+    {
+      "start": "2001-11-20T20:26:00Z",
+      "stop": "2001-11-20T20:42:00Z",
+      "color": "rgba(90, 160, 255, 0.15)",
+      "label": "Rolled-up vortices"
+    }
+  ],
+  "plots": [
+    {
+      "products": [
+        {
+          "path": "csa/C1_CP_FGM_5VPS/B_vec_xyz_gse__C1_CP_FGM_5VPS"
+        }
+      ]
+    },
+    {
+      "products": [
+        {
+          "path": "csa/C1_CP_CIS-HIA_HS_1D_PEF/flux__C1_CP_CIS-HIA_HS_1D_PEF"
+        }
+      ],
+      "log_z": true,
+      "y_axis": {
+        "log": true
+      }
+    },
+    {
+      "products": [
+        {
+          "path": "csa/C1_CP_CIS-HIA_ONBOARD_MOMENTS/density__C1_CP_CIS-HIA_ONBOARD_MOMENTS"
+        }
+      ]
+    },
+    {
+      "products": [
+        {
+          "path": "csa/C1_CP_CIS-HIA_ONBOARD_MOMENTS/velocity_gse__C1_CP_CIS-HIA_ONBOARD_MOMENTS"
+        }
+      ]
+    }
+  ]
+}

@@ -1,4 +1,6 @@
 import json
+from datetime import datetime
+from pathlib import Path
 
 import pytest
 
@@ -54,3 +56,26 @@ def test_result_is_cached(tmp_path):
     first = load_presets(tmp_path)
     _write_preset(tmp_path, "b.json", {"name": "B"})
     assert load_presets(tmp_path) is first
+
+
+SHIPPED_PRESETS = sorted((Path(presets_mod.__file__).parent.parent / "presets").rglob("*.json"))
+
+
+def _utc(stamp):
+    assert stamp.endswith("Z"), f"{stamp} must be UTC with a trailing Z"
+    return datetime.fromisoformat(stamp)
+
+
+# A broken shipped preset is only logged and skipped at load time, so it would silently
+# vanish from the home page: check each one here instead.
+@pytest.mark.parametrize("path", SHIPPED_PRESETS, ids=lambda p: p.name)
+def test_shipped_preset_is_well_formed(path):
+    preset = json.loads(path.read_text())
+    assert preset["name"] and preset["description"]
+    tr = preset["time_range"]
+    assert _utc(tr["start"]) < _utc(tr["stop"])
+    for iv in preset.get("intervals", []):
+        assert _utc(tr["start"]) <= _utc(iv["start"]) < _utc(iv["stop"]) <= _utc(tr["stop"])
+    assert preset["plots"]
+    for plot in preset["plots"]:
+        assert plot["products"] and all(p["path"].count("/") >= 1 for p in plot["products"])

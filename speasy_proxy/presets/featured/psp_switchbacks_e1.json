@@ -1,0 +1,33 @@
+{
+  "name": "Parker Solar Probe: switchbacks (Nov 2018)",
+  "description": "Around its first perihelion (35.7 solar radii, 6 Nov 03:27 UT), PSP sees the radial field flip sign again and again; each flip comes with a jump in radial speed: magnetic switchbacks.",
+  "version": 1,
+  "time_range": {
+    "start": "2018-11-05T12:00:00Z",
+    "stop": "2018-11-06T12:00:00Z"
+  },
+  "plots": [
+    {
+      "products": [
+        {
+          "path": "cda/PSP_FLD_L2_MAG_RTN_4_SA_PER_CYC/psp_fld_l2_mag_RTN_4_Sa_per_Cyc"
+        }
+      ]
+    },
+    {
+      "products": [
+        {
+          "path": "cda/PSP_SWP_SPC_L3I/vp_moment_RTN_gd"
+        }
+      ]
+    },
+    {
+      "products": [
+        {
+          "path": "cda/PSP_SWP_SPI_SF00_L3_MOM/EFLUX_VS_ENERGY"
+        }
+      ],
+      "log_z": true
+    }
+  ]
+}

@@ -1,0 +1,49 @@
+{
+  "name": "THEMIS: substorm onset (Feb 2008)",
+  "description": "THEMIS-B at -21 RE sees fast tailward then earthward flows while THEMIS-D at -11 RE sees the field dipolarize and the plasma sheet heat: the event used to argue that tail reconnection triggers substorms.",
+  "version": 1,
+  "time_range": {
+    "start": "2008-02-26T04:30:00Z",
+    "stop": "2008-02-26T05:20:00Z"
+  },
+  "intervals": [
+    {
+      "start": "2008-02-26T04:50:03Z",
+      "stop": "2008-02-26T04:51:39Z",
+      "color": "rgba(255, 120, 80, 0.15)",
+      "label": "Reconnection onset to auroral brightening"
+    }
+  ],
+  "plots": [
+    {
+      "products": [
+        {
+          "path": "cda/THB_L2_MOM/thb_peim_velocity_gsm"
+        }
+      ]
+    },
+    {
+      "products": [
+        {
+          "path": "cda/THD_L2_FGM/thd_fgs_gsm"
+        }
+      ]
+    },
+    {
+      "products": [
+        {
+          "path": "cda/THD_L2_ESA/thd_peir_en_eflux"
+        }
+      ],
+      "log_z": true
+    },
+    {
+      "products": [
+        {
+          "path": "cda/THD_L2_ESA/thd_peer_en_eflux"
+        }
+      ],
+      "log_z": true
+    }
+  ]
+}

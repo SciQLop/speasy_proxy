@@ -1,0 +1,42 @@
+{
+  "name": "Voyager 1 leaves the heliosphere (2012)",
+  "description": "At 122 AU, the heliospheric particles vanish and |B| jumps on 25 August 2012, after a month of back-and-forth excursions: Voyager 1 crosses the heliopause into interstellar space.",
+  "version": 1,
+  "time_range": {
+    "start": "2012-06-01T00:00:00Z",
+    "stop": "2012-10-15T00:00:00Z"
+  },
+  "intervals": [
+    {
+      "start": "2012-07-28T00:00:00Z",
+      "stop": "2012-08-25T00:00:00Z",
+      "color": "rgba(90, 160, 255, 0.15)",
+      "label": "Boundary excursions"
+    },
+    {
+      "start": "2012-08-25T00:00:00Z",
+      "stop": "2012-08-26T00:00:00Z",
+      "color": "rgba(255, 120, 80, 0.15)",
+      "label": "Heliopause"
+    }
+  ],
+  "plots": [
+    {
+      "products": [
+        {
+          "path": "amda/vo1_lecp_flux"
+        }
+      ],
+      "y_axis": {
+        "log": true
+      }
+    },
+    {
+      "products": [
+        {
+          "path": "amda/vo1_bmag_full"
+        }
+      ]
+    }
+  ]
+}

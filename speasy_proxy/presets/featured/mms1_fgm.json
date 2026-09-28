@@ -1,0 +1,56 @@
+{
+  "name": "MMS: magnetopause reconnection (Oct 2015)",
+  "description": "MMS1 goes from the magnetosheath into the magnetosphere and back, crossing the electron diffusion region of dayside reconnection at 13:07:02 UT, where |B| drops to about 2 nT.",
+  "version": 1,
+  "time_range": {
+    "start": "2015-10-16T12:50:00Z",
+    "stop": "2015-10-16T13:15:00Z"
+  },
+  "intervals": [
+    {
+      "start": "2015-10-16T13:06:58Z",
+      "stop": "2015-10-16T13:07:06Z",
+      "color": "rgba(255, 120, 80, 0.15)",
+      "label": "EDR crossing"
+    }
+  ],
+  "plots": [
+    {
+      "products": [
+        {
+          "path": "cda/MMS1_FGM_SRVY_L2/mms1_fgm_b_gse_srvy_l2"
+        }
+      ]
+    },
+    {
+      "products": [
+        {
+          "path": "cda/MMS1_FPI_FAST_L2_DIS-MOMS/mms1_dis_energyspectr_omni_fast"
+        }
+      ],
+      "log_z": true
+    },
+    {
+      "products": [
+        {
+          "path": "cda/MMS1_FPI_FAST_L2_DES-MOMS/mms1_des_energyspectr_omni_fast"
+        }
+      ],
+      "log_z": true
+    },
+    {
+      "products": [
+        {
+          "path": "cda/MMS1_FPI_FAST_L2_DIS-MOMS/mms1_dis_numberdensity_fast"
+        }
+      ]
+    },
+    {
+      "products": [
+        {
+          "path": "cda/MMS1_FPI_FAST_L2_DIS-MOMS/mms1_dis_bulkv_gse_fast"
+        }
+      ]
+    }
+  ]
+}

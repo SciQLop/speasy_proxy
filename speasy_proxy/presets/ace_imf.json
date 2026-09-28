@@ -1,0 +1,46 @@
+{
+  "name": "ACE: shock and magnetic cloud (Nov 2003)",
+  "description": "ACE at L1 sees an interplanetary shock, a turbulent sheath, then a magnetic cloud with Bz near -50 nT for hours and cold plasma: the driver of the biggest storm of solar cycle 23.",
+  "version": 1,
+  "time_range": {
+    "start": "2003-11-20T00:00:00Z",
+    "stop": "2003-11-21T12:00:00Z"
+  },
+  "plots": [
+    {
+      "products": [
+        {
+          "path": "amda/imf_gsm"
+        }
+      ]
+    },
+    {
+      "products": [
+        {
+          "path": "amda/imf_mag"
+        }
+      ]
+    },
+    {
+      "products": [
+        {
+          "path": "amda/sw_vb"
+        }
+      ]
+    },
+    {
+      "products": [
+        {
+          "path": "amda/sw_n"
+        }
+      ]
+    },
+    {
+      "products": [
+        {
+          "path": "amda/sw_t"
+        }
+      ]
+    }
+  ]
+}

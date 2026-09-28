@@ -43,7 +43,7 @@ Build system: **hatchling** (pyproject.toml), managed with **uv**. Version bumps
   - `inventory_updater.py` — `InventoryManager`. Eagerly pre-serializes the common inventory variants (JSON + pickle protocol 3 × versions 1..2, per provider plus a synthetic `"all"`) and keeps **only their zstd-compressed copies** in memory (raw copies were ~93% of ~620 MB per worker): zstd requests are O(1), uncompressed ones decompress on demand in the threadpool, never memoized. Rarer valid combinations (pickle protocols 1, 2, 4, 5) are built lazily on first request and memoized. Refreshes both periodically (default every 2h) and lazily per-request (the `trigger_inventory_check` dependency on `/get_data`, self-throttled by `update_interval`). Supports `If-Modified-Since` → 304 and sends `Last-Modified` on 200s. No locks; refresh runs via `asyncio.to_thread` / BackgroundTask.
   - `resample.py` — Server-side downsampling for `max_points` requests. Dispatches to a pluggable backend: `_resample_numba.py` (`@njit`, optional `[fast]` extra) if importable, else `_resample_numpy.py`. Two strategies: `min_max` (preserves per-bucket extremes) and `lttb` (Largest-Triangle-Three-Buckets, per column). Spectrograms (a variable with a second axis) bypass both: one real row per time bucket (`max_points/2` buckets, the most intense row), so the `/plot` image keeps an even time coverage. Both backends MUST return identical indices — `test_resample.py` enforces this with equivalence tests. NaN handling is subtle; keep the two backends in lock-step when editing.
   - `bokeh_backend.py` — Generates interactive Bokeh HTML for the `html_bokeh` output format. Line plots via bokeh; spectrograms rendered through matplotlib pcolormesh → RGBA image → `image_rgba`. Embeds a JS callback that re-fetches `/get_data?format=json` on zoom.
-  - `presets.py` — Loads plot preset JSON files from `SPEASY_PROXY_PRESETS_PATH` (default `<repo>/presets/`, which does not exist by default → `[]`). Result cached in a module global.
+  - `presets.py` — Loads plot preset JSON files from `SPEASY_PROXY_PRESETS_PATH` (default `speasy_proxy/presets/`, shipped in the package: root files show in the /plot sidebar, `featured/` ones also as home-page cards). Result cached in a module global.
 - **`config/`** — Configuration via speasy's `ConfigSection`. Settings controlled by environment variables (see below).
 - **`index/`** — Persistent key-value state using `diskcache.Index` (tracks `up_since`).
 - **`api/pickle.py`** — Shared pickle serialization utility (clamps requested protocol to `pickle.HIGHEST_PROTOCOL`).
@@ -70,7 +70,7 @@ Error codes: upstream fetch failure → **502**, encode failure → **500** (bot
 - `SPEASY_PROXY_CORE_INVENTORY_UPDATE_INTERVAL` — Seconds between inventory refreshes (default: 7200)
 - `SPEASY_PROXY_COLLAB_ENDPOINT_ENABLE` — Enable WebSocket collaboration endpoint
 - `SPEASY_PROXY_LOG_CONFIG_FILE` — Path to logging YAML config
-- `SPEASY_PROXY_PRESETS_PATH` — Directory of plot preset JSON files (default `<repo>/presets/`)
+- `SPEASY_PROXY_PRESETS_PATH` — Directory of plot preset JSON files (default `speasy_proxy/presets/`)
 - `SPEASY_PROXY_INDEX_PATH` — `diskcache.Index` location for the proxy's own state (default `/tmp`)
 - `SPEASY_PROXY_WORKERS` — gunicorn worker count in the Docker entry point (default `2 × nproc`)
 - `SPEASY_CACHE_PATH`, `SPEASY_INDEX_PATH` — speasy storage paths (used in Docker)
