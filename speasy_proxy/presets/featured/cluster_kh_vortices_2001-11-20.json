@@ -28,10 +28,7 @@
           "path": "csa/C1_CP_CIS-HIA_HS_1D_PEF/flux__C1_CP_CIS-HIA_HS_1D_PEF"
         }
       ],
-      "log_z": true,
-      "y_axis": {
-        "log": true
-      }
+      "log_z": true
     },
     {
       "products": [

@@ -9,6 +9,7 @@ import {
   detectPlotType, mergeSorted, mergeSortedRows, mergeIntervals, evictProductCache,
   configToBase64, base64ToConfig, isCovered, resolutionSufficient, rangesOverlap, trimCacheWindow, cacheToCsv,
   structureKey, resampleTarget, plotTypeFromCache, computeValueRange, mergeValueRange, cleanText, distinctCrumbs,
+  logHintFromRange,
 } from './plot-core.js';
 import { ascendingSpectrogram } from './spectrogram.js';
 import { fetchData as apiFetchData, fetchInventory } from './api-client.js';
@@ -786,7 +787,9 @@ import { createPlotView, PRODUCT_MIME } from './plot-view.js';
             const yMeta = subplot.plotType === 'heatmap' && data.axes.length >= 2
                 ? data.axes[1].meta
                 : (data.values && data.values.meta);
-            const yHint = scaleTypToLog(yMeta);
+            const yHint = scaleTypToLog(yMeta) ?? (subplot.plotType === 'heatmap' && data.axes.length >= 2
+                ? logHintFromRange(data.axes[1].values)
+                : null);
             if (yHint !== null) subplot.y_axis.log = yHint;
         }
     }

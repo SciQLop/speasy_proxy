@@ -345,6 +345,16 @@ export function pinchRange(view0, [f1, f2], [g1, g2], minSpan) {
   return { start, end: start + span };
 }
 
+// Fallback for a spectrogram axis with no SCALETYP hint: true (log) when its values are
+// all positive and span more than a decade, else null (no opinion). Energy tables may be
+// 2-D (one row per time).
+export function logHintFromRange(values) {
+  const finite = (values || []).flat().filter(Number.isFinite);
+  if (finite.length === 0) return null;
+  const lo = Math.min(...finite), hi = Math.max(...finite);
+  return lo > 0 && hi / lo > 10 ? true : null;
+}
+
 const DEFAULT_PLOT_WIDTH_PX = 2000; // fallback when the chart hasn't been laid out yet
 const MIN_RESAMPLE_POINTS = 2000;   // floor so a tiny/unsized plot still fetches usable detail
 

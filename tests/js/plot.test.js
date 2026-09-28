@@ -652,6 +652,39 @@ describe('ISTP SCALETYP scale hints', () => {
     expect(subplot.y_axis.log).toBe(true);
   });
 
+  // Many spectrograms (AMDA, Cluster HIA, Solar Orbiter PAS) carry no SCALETYP on their
+  // energy table: drawn linear, a 10 eV - 30 keV table squashes all the physics at the bottom.
+  const unhinted = (energies) => ({ values: { meta: {} }, axes: [{ values: [] }, { meta: {}, values: energies }] });
+
+  it('draws an unhinted spectrogram axis spanning over a decade on a log scale', () => {
+    const subplot = autoSubplot('heatmap');
+    applyScaleHints(subplot, unhinted([10, 100, 1000, 30000]));
+    expect(subplot.y_axis.log).toBe(true);
+  });
+
+  it('reads a time-varying (2-D) energy table too', () => {
+    const subplot = autoSubplot('heatmap');
+    applyScaleHints(subplot, unhinted([[10, 100], [12, 30000]]));
+    expect(subplot.y_axis.log).toBe(true);
+  });
+
+  it('keeps an unhinted axis linear when it spans less than a decade or reaches zero', () => {
+    const narrow = autoSubplot('heatmap');
+    applyScaleHints(narrow, unhinted([500, 900, 1900]));
+    expect(narrow.y_axis.log).toBe(false);
+    const withZero = autoSubplot('heatmap');
+    applyScaleHints(withZero, unhinted([0, 10, 30000]));
+    expect(withZero.y_axis.log).toBe(false);
+  });
+
+  it('lets an explicit SCALETYP linear win over a wide range', () => {
+    const subplot = autoSubplot('heatmap');
+    const data = unhinted([10, 30000]);
+    data.axes[1].meta.SCALETYP = 'linear';
+    applyScaleHints(subplot, data);
+    expect(subplot.y_axis.log).toBe(false);
+  });
+
   it('never overwrites an explicit user Log Y / Log Z choice', () => {
     const subplot = autoSubplot('heatmap');
     subplot._yScaleAuto = false;
