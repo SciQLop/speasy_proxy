@@ -9,7 +9,7 @@ import uPlot from './vendor/uPlot.esm.js';
 import { CHART_COLORS, escapeHtml, parseUtc } from './common.js';
 import {
   lineTable, nearestIndex, fmtTick, productTitle, dropZone,
-  paramValue, zRangeOf,
+  paramValue, zRangeOf, outOfCoverage,
 } from './plot-core.js';
 import { binRowRects, computeYEdges, lowestPositiveEdge, renderSpectrogramImage, spectrogramValueAt, COLORMAPS, colormapLut } from './spectrogram.js';
 import { bindGestures } from './plot-gestures.js';
@@ -40,7 +40,8 @@ const lineProducts = (sp) => sp.products
 const fmtValue = (v) => String(Number(v.toPrecision(4)));
 
 // paramSpecsOf(path): the product's extra parameters (inventory-tree.js paramSpecs).
-export function createPlotView(root, { onViewChange, onAction = () => {}, paramSpecsOf = () => [] }) {
+// coverageOf(path): the product's { start, stop } time coverage in ms, or null.
+export function createPlotView(root, { onViewChange, onAction = () => {}, paramSpecsOf = () => [], coverageOf = () => null }) {
   const plotsEl = el('div', 'pv-plots');
   const tooltip = el('div', 'pv-tooltip');
   const dropNew = el('div', 'pv-drop-new');
@@ -82,13 +83,44 @@ export function createPlotView(root, { onViewChange, onAction = () => {}, paramS
       });
     }
     refreshHeatmaps();
+    refreshCoverageNotes();
   }
 
   function setView(next) {
     view = { start: next.start, end: next.end };
     for (const c of charts) c.u.setScale('x', { min: view.start, max: view.end });
+    refreshCoverageNotes();
     clearTimeout(heatmapTimer);
     heatmapTimer = setTimeout(refreshHeatmaps, HEATMAP_REFRESH_MS);
+  }
+
+  // A subplot whose window lies wholly before or after a product's data says so, with
+  // a button to the nearest data (same window length).
+  function refreshCoverageNotes() {
+    for (const c of charts) {
+      c.note?.remove();
+      c.note = coverageNote(c.subplot);
+      if (c.note) c.u.root.appendChild(c.note);
+    }
+  }
+
+  function coverageNote(subplot) {
+    for (const prod of subplot.products) {
+      const coverage = coverageOf(prod.path);
+      const out = outOfCoverage(coverage, view.start, view.end);
+      if (!out) continue;
+      const note = el('div', 'pv-nodata');
+      const name = prod.path.split('/').pop();
+      const text = el('span', 'pv-nodata-text');
+      text.textContent = 'No data here: ' + name + ' covers ' + utcDay(coverage.start) + ' → ' + utcDay(coverage.stop);
+      note.appendChild(text);
+      const jump = el('button', 'pv-tool active');
+      jump.textContent = out.side === 'after' ? 'Go to last data' : 'Go to first data';
+      jump.addEventListener('click', () => onAction({ type: 'jumpTo', value: out.range }));
+      note.appendChild(jump);
+      return note;
+    }
+    return null;
   }
 
   function refreshHeatmaps() {
@@ -182,6 +214,8 @@ export function createPlotView(root, { onViewChange, onAction = () => {}, paramS
     const colorbar = isHeatmap ? createColorbar(subplot, setZ) : null;
     u.root.appendChild(createBadge(u, createTitle(subplot, isHeatmap, loading, (path) => act('removeProduct', path)), colorbar));
     u.root.appendChild(tools.bar);
+    const note = coverageNote(subplot);
+    if (note) u.root.appendChild(note);
     bindDropTarget(u.root, (path, zone) => {
       if (zone === 'into') act('addProduct', path);
       else onAction({ type: 'insertProduct', index: zone === 'before' ? index : index + 1, path });
@@ -201,7 +235,7 @@ export function createPlotView(root, { onViewChange, onAction = () => {}, paramS
       setY: (min, max) => setY({ min, max }),
       resetY: () => setY(null),
     });
-    return { u, subplot, meta, colorbar };
+    return { u, subplot, meta, colorbar, note };
   }
 
   function resetY(u, subplot) {
@@ -736,6 +770,8 @@ function drawLegendRow(ctx, u, meta, x, y) {
     x += 24 + ctx.measureText(meta[i].label).width;
   }
 }
+
+const utcDay = (ms) => new Date(ms).toISOString().slice(0, 10);
 
 function el(tag, className) {
   const node = document.createElement(tag);

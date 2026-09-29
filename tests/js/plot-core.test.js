@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   mergeSorted, spliceRows, mergeIntervals, evictProductCache,
   detectPlotType, configToBase64, base64ToConfig, isCovered, resolutionSufficient, rangesOverlap, trimCacheWindow, cacheToCsv,
-  createSubplotData, createProductCache, subplotToConfig, subplotFromConfig, paramValue, withParam, editedRange, zRangeOf, formatSpan,
+  createSubplotData, createProductCache, subplotToConfig, subplotFromConfig, paramValue, withParam, editedRange, zRangeOf, outOfCoverage, formatSpan,
   normalizeWheelDelta, wheelIntent, zoomRange, panRange, zoomToward, pinchRange, structureKey, resampleTarget,
   plotTypeFromCache, computeValueRange, mergeValueRange, renderableRange,
   nearestIndex, lineTable, yRangeFromPixels, fmtTick, cleanText, productTitle, dropZone, distinctCrumbs,
@@ -693,5 +693,21 @@ describe('colour (Z) range', () => {
     expect(subplotFromConfig(cfg)._zOverride).toEqual({ vMin: 3, vMax: 30 });
     expect(subplotToConfig(createSubplotData()).z_range).toBeUndefined();
     expect(subplotFromConfig({ products: [] })._zOverride).toBeUndefined();
+  });
+});
+
+describe('outOfCoverage', () => {
+  const D = 86400000;
+  const coverage = { start: 100 * D, stop: 200 * D };
+  it('is null when the window overlaps the coverage', () => {
+    expect(outOfCoverage(coverage, 150 * D, 160 * D)).toBeNull();
+    expect(outOfCoverage(coverage, 195 * D, 205 * D)).toBeNull();
+    expect(outOfCoverage(null, 0, D)).toBeNull();
+  });
+  it('after the coverage: a window of the same length ending at its last data', () => {
+    expect(outOfCoverage(coverage, 300 * D, 302 * D)).toEqual({ side: 'after', range: [198 * D, 200 * D] });
+  });
+  it('before the coverage: a window of the same length starting at its first data', () => {
+    expect(outOfCoverage(coverage, 10 * D, 13 * D)).toEqual({ side: 'before', range: [100 * D, 103 * D] });
   });
 });

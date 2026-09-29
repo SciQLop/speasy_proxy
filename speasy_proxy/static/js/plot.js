@@ -302,6 +302,19 @@ import { createPlotView, PRODUCT_MIME } from './plot-view.js';
         }
     }
 
+    // A product's time coverage from the inventory ({ start, stop } ms), or null; cached
+    // because the view asks on every pan frame.
+    const coverageCache = new Map();
+    function coverageOf(path) {
+        if (!coverageCache.has(path)) {
+            const node = leafIndex.find(l => l.path === path)?.node;
+            if (!node) return null;  // inventory not loaded yet: ask again later
+            const start = parseUtc(node.start_date).getTime(), stop = parseUtc(node.stop_date).getTime();
+            coverageCache.set(path, Number.isFinite(start) && Number.isFinite(stop) ? { start, stop } : null);
+        }
+        return coverageCache.get(path);
+    }
+
     // The toolbar's dropdowns for a plotted product; [] until the inventory is loaded.
     // A 3DView product asks for the frame list once, then redraws with it.
     let frames3dRequested = false;
@@ -401,7 +414,7 @@ import { createPlotView, PRODUCT_MIME } from './plot-view.js';
 
     function initChart() {
         const el = document.getElementById('chart');
-        plotView = createPlotView(el, { onViewChange, onAction: subplotAction, paramSpecsOf });
+        plotView = createPlotView(el, { onViewChange, onAction: subplotAction, paramSpecsOf, coverageOf });
         let resizeRaf = 0;
         new ResizeObserver(() => {
             if (resizeRaf) return;
@@ -523,6 +536,7 @@ import { createPlotView, PRODUCT_MIME } from './plot-view.js';
         }),
         colormap: ({ index, value }) => editSubplot(index, (sp) => { sp.colormap = value; }),
         productParam: ({ index, path, key, value }) => setProductParam(index, path, key, value),
+        jumpTo: ({ value: [start, stop] }) => replotOverRange(start, stop),
         remove: ({ index }) => removeSubplot(index),
         removeProduct: ({ index, path }) => removeProductFromSubplot(index, path),
         addProduct: ({ index, path }) => addProductToPlot(path, index === null ? {} : { into: index }),

@@ -516,3 +516,14 @@ export function formatSpan(ms) {
   }
   return parts.slice(0, 2).filter(([n]) => n > 0).map(([n, unit]) => n + unit).join(' ') || '0s';
 }
+
+// Where a window sits against a product's coverage ({ start, stop } in ms): null when
+// they overlap, else the side it is on and the window of the same length at the
+// coverage's nearest edge.
+export function outOfCoverage(coverage, startMs, stopMs) {
+  if (!coverage) return null;
+  const width = stopMs - startMs;
+  if (startMs >= coverage.stop) return { side: 'after', range: [coverage.stop - width, coverage.stop] };
+  if (stopMs <= coverage.start) return { side: 'before', range: [coverage.start, coverage.start + width] };
+  return null;
+}

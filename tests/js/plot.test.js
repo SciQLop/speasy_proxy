@@ -494,6 +494,44 @@ describe('product parameters in the subplot toolbar', () => {
   });
 });
 
+describe('a window outside a product coverage', () => {
+  const pspTree = { cda: { PSP: { __spz_type__: 'DatasetIndex', __spz_name__: 'PSP',
+    hfr: { __spz_type__: 'ParameterIndex', __spz_provider__: 'cda', __spz_uid__: 'PSP/hfr', __spz_name__: 'hfr',
+      start_date: '2018-10-02 03:48:16', stop_date: '2026-03-15 23:59:53' } } } };
+  const pspSubplot = () => ({ products: [{ path: 'cda/PSP/hfr' }], y_axis: { log: false }, plotType: 'line',
+    productData: { 'cda/PSP/hfr': lineCache('cda/PSP/hfr', '') } });
+
+  it('offers to jump to the last data, keeping the window length', async () => {
+    apiClient.fetchInventory.mockResolvedValueOnce(pspTree);
+    await plot.__test__.loadInventory();
+    initChart();
+    plotState.plots = [pspSubplot()];
+    plotState.time_range = { start: '2026-06-01T00:00:00.000Z', stop: '2026-06-03T00:00:00.000Z' };
+    const before = dom.created.length;
+
+    renderAllSubplots();
+
+    const note = dom.created.slice(before).find((e) => e.className === 'pv-nodata-text');
+    expect(note.textContent).toContain('2018-10-02 → 2026-03-15');
+    const jump = dom.created.slice(before).find((e) => e.textContent === 'Go to last data');
+    jump.addEventListener.mock.calls.find(([t]) => t === 'click')[1]();
+    expect(plotState.time_range).toEqual({ start: '2026-03-13T23:59:53.000Z', stop: '2026-03-15T23:59:53.000Z' });
+  });
+
+  it('says nothing while the window overlaps the coverage', async () => {
+    apiClient.fetchInventory.mockResolvedValueOnce(pspTree);
+    await plot.__test__.loadInventory();
+    initChart();
+    plotState.plots = [pspSubplot()];
+    plotState.time_range = { start: '2026-03-14T00:00:00.000Z', stop: '2026-03-16T00:00:00.000Z' };
+    const before = dom.created.length;
+
+    renderAllSubplots();
+
+    expect(dom.created.slice(before).some((e) => e.className === 'pv-nodata')).toBe(false);
+  });
+});
+
 describe('share URL behind a reverse-proxy prefix', () => {
   it('does not duplicate the root_path prefix', () => {
     initChart();
