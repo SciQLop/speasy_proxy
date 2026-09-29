@@ -157,6 +157,11 @@ describe('user presets', () => {
     expect(saved.config).toEqual(view('cda/a'));
   });
 
+  it('keeps the description of a preset saved again under its own name (a modified preset)', () => {
+    const opened = { ...view('cda/b'), name: 'THEMIS substorm', description: 'Onset.' };
+    expect(savePreset([], 'THEMIS substorm', opened)).toEqual([{ name: 'THEMIS substorm', description: 'Onset.', config: view('cda/b') }]);
+  });
+
   it('ignores a blank name', () => {
     expect(savePreset([], '   ', view('cda/a'))).toEqual([]);
   });

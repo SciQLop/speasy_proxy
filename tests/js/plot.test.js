@@ -1332,6 +1332,18 @@ describe('presets saved in the browser', () => {
     expect(plotState.plots[0].products[0].path).toBe('cda/a');
   });
 
+  it('offers to save a modified preset under its own name, keeping its description', () => {
+    vi.stubGlobal('localStorage', memoryStorage());
+    applyConfig({ ...view, name: 'THEMIS substorm', description: 'Onset.' });
+    expect(dom.getById('preset-name').value).toBe('THEMIS substorm');
+
+    applyConfig({ ...view, name: 'THEMIS substorm', description: 'Onset.', time_range: { start: '2020-01-01T06:00:00Z', stop: '2020-01-01T12:00:00Z' } });
+    click(dom.getById('btn-save-preset'));
+
+    const [saved] = JSON.parse(localStorage.getItem('speasy-plot-presets'));
+    expect(saved).toMatchObject({ name: 'THEMIS substorm', description: 'Onset.', config: { time_range: { start: '2020-01-01T06:00:00.000Z' } } });
+  });
+
   it('deletes a saved preset', () => {
     vi.stubGlobal('localStorage', memoryStorage());
     applyConfig(view);

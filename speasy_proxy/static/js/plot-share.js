@@ -56,13 +56,15 @@ export function recentLabel(config) {
 // --- presets the user saved in this browser ------------------------------------------
 // Same shape as the server's presets ({ name, config }), so presetConfig opens them too.
 
-// The view saved under name, first; a preset of that name gives way to it. The story of
-// the view it came from is dropped: the new name is its story now.
+// The view saved under name, first; a preset of that name gives way to it. Saved under
+// the name of the preset it came from (a modified preset), it keeps that preset's
+// description; under a new name, the old story is dropped: the new name is its story.
 export function savePreset(presets, name, config) {
   const trimmed = name.trim();
   if (!trimmed) return presets;
-  const { name: _, description: __, ...view } = config;
-  return [{ name: trimmed, config: view }, ...removePreset(presets, trimmed)];
+  const { name: storyName, description, ...view } = config;
+  const kept = trimmed === storyName && description ? { description } : {};
+  return [{ name: trimmed, ...kept, config: view }, ...removePreset(presets, trimmed)];
 }
 
 export const removePreset = (presets, name) => presets.filter((p) => p.name !== name);

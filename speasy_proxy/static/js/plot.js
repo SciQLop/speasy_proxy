@@ -1443,6 +1443,8 @@ import { presetConfig, configStory, pythonSnippet, dataUrls, historyMode, addRec
         document.getElementById('preset-story').hidden = !story;
         document.getElementById('preset-story-name').textContent = story ? story.name : '';
         document.getElementById('preset-story-desc').textContent = story ? story.description : '';
+        // Saving a view opened from a preset updates it (or copies a server one) by default.
+        document.getElementById('preset-name').value = story ? story.name : '';
     }
 
     // ===== Events Panel =====
