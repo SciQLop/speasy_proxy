@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterAll } from 'vitest';
 import { installPlotDom } from './helpers/dom-mock.js';
+import { configToBase64 } from '../../speasy_proxy/static/js/plot-core.js';
 
 import * as apiClient from '../../speasy_proxy/static/js/api-client.js';
 import uPlot from '../../speasy_proxy/static/js/vendor/uPlot.esm.js';
@@ -1159,6 +1160,71 @@ describe('time fields follow the view', () => {
 
     expect(dom.getById('start-time').value).toBe('2020-01-01 04:00:00');
     expect(dom.getById('stop-time').value).toBe('2020-01-01 10:00:00');
+  });
+});
+
+describe('Back and Forward walk the views', () => {
+  const T0 = Date.parse('2020-01-01T00:00:00Z'), HOUR = 3600000;
+  const oneLinePlot = () => [{ products: [{ path: 'cda/b' }], y_axis: { log: false }, plotType: 'line',
+    productData: { 'cda/b': { ...lineCache('cda/b', ''), intervals: [[0, 1e13]], fetchSpan: 1e13 } } }];
+  const configUrl = (config) => '?config=' + configToBase64(config);
+  const clearHistory = () => { window.history.pushState.mockClear(); window.history.replaceState.mockClear(); };
+
+  beforeEach(() => initChart());
+
+  it('a zoom gesture makes one history entry, however many steps it takes', async () => {
+    plotState.plots = oneLinePlot();
+    renderAllSubplots();
+    plot.__test__.replotOverRange(T0, T0 + 24 * HOUR);  // an edit: the gesture below starts afresh
+    plotState.plots = oneLinePlot();
+    clearHistory();
+
+    for (const hours of [12, 6, 3]) {
+      plot.__test__.getPlotView().setView({ start: T0, end: T0 + hours * HOUR });
+      await plot.__test__.onMultiZoomPan();
+    }
+
+    expect(window.history.pushState).toHaveBeenCalledTimes(1);
+    expect(window.history.replaceState).toHaveBeenCalledTimes(2);
+  });
+
+  it('a new time range and a removed subplot are history entries; Clear leaves a bare /plot', () => {
+    plotState.plots = oneLinePlot();
+    renderAllSubplots();
+    clearHistory();
+
+    plot.__test__.replotOverRange(T0, T0 + HOUR);
+    window.location.search = '?config=shown';  // what the browser's URL now carries
+    plot.__test__.subplotAction({ type: 'remove', index: 0 });
+
+    expect(window.history.pushState).toHaveBeenCalledTimes(2);
+    expect(window.history.pushState.mock.calls.at(-1)[2]).toBe('/cache/plot');
+    window.location.search = '';
+  });
+
+  it('going back applies that entry without adding one', () => {
+    window.location.search = configUrl({ version: 1, time_range: { start: '2020-01-01T00:00:00Z', stop: '2020-01-02T00:00:00Z' },
+      plots: [{ products: [{ path: 'cda/a' }] }, { products: [{ path: 'cda/b' }] }] });
+    clearHistory();
+
+    plot.__test__.onPopState();
+
+    expect(plotState.plots.map((sp) => sp.products[0].path)).toEqual(['cda/a', 'cda/b']);
+    expect(window.history.pushState).not.toHaveBeenCalled();
+    expect(window.history.replaceState).not.toHaveBeenCalled();
+    window.location.search = '';
+  });
+
+  it('going back to a bare /plot empties the view', () => {
+    plotState.plots = oneLinePlot();
+    renderAllSubplots();
+    window.location.search = '';
+    clearHistory();
+
+    plot.__test__.onPopState();
+
+    expect(plotState.plots).toEqual([]);
+    expect(window.history.pushState).not.toHaveBeenCalled();
   });
 });
 

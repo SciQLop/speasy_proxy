@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { presetConfig, configStory, pythonSnippet, dataUrls } from '../../speasy_proxy/static/js/plot-share.js';
+import { presetConfig, configStory, pythonSnippet, dataUrls, historyMode } from '../../speasy_proxy/static/js/plot-share.js';
 
 describe('presetConfig', () => {
   const preset = {
@@ -61,6 +61,31 @@ describe('pythonSnippet', () => {
     const twice = { ...view, plots: [{ products: [{ path: 'ssc/ace', coordinate_system: 'gse' }, { path: 'ssc/ace', coordinate_system: 'gsm' }, { path: 'amda/1-min.b' }] }] };
     const names = pythonSnippet(twice).split("\n").slice(2, 5).map((l) => l.split(' = ')[0]);
     expect(names).toEqual(['ace', 'ace_2', '_1_min_b']);
+  });
+});
+
+describe('historyMode', () => {
+  const SETTLE = 1000;
+
+  it('replaces the entry for a tweak (log scale, colormap, a product selected)', () => {
+    expect(historyMode('tweak', null, 0, SETTLE)).toBe('replace');
+    expect(historyMode('tweak', { kind: 'edit', at: 0 }, 5000, SETTLE)).toBe('replace');
+  });
+
+  it('adds an entry for every discrete edit, even a quick one', () => {
+    expect(historyMode('edit', null, 0, SETTLE)).toBe('push');
+    expect(historyMode('edit', { kind: 'edit', at: 0 }, 10, SETTLE)).toBe('push');
+    expect(historyMode('edit', { kind: 'gesture', at: 0 }, 10, SETTLE)).toBe('push');
+  });
+
+  it('adds one entry per gesture: its later steps replace it until it settles', () => {
+    expect(historyMode('gesture', null, 0, SETTLE)).toBe('push');
+    expect(historyMode('gesture', { kind: 'gesture', at: 0 }, 300, SETTLE)).toBe('replace');
+    expect(historyMode('gesture', { kind: 'gesture', at: 0 }, 1000, SETTLE)).toBe('push');
+  });
+
+  it('never folds a gesture into the edit before it', () => {
+    expect(historyMode('gesture', { kind: 'edit', at: 0 }, 10, SETTLE)).toBe('push');
   });
 });
 

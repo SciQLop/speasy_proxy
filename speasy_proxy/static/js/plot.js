@@ -15,7 +15,7 @@ import {
 import { ascendingSpectrogram } from './spectrogram.js';
 import { fetchData as apiFetchData, fetchInventory } from './api-client.js';
 import { createPlotView, PRODUCT_MIME } from './plot-view.js';
-import { presetConfig, configStory, pythonSnippet, dataUrls } from './plot-share.js';
+import { presetConfig, configStory, pythonSnippet, dataUrls, historyMode } from './plot-share.js';
 
     const BASE_URL = (window.SPEASY_BASE_URL || '').replace(/\/$/, '');
     const API_BASE = BASE_URL + '/';
@@ -617,7 +617,7 @@ import { presetConfig, configStory, pythonSnippet, dataUrls } from './plot-share
         subplot.products.push({ path: product, label: product, ...params });
         subplot.productData[product] = createProductCache(product);
 
-        updateURL();
+        updateURL('edit');
         fetchProductAndRender(subplot, product);
     }
 
@@ -628,7 +628,7 @@ import { presetConfig, configStory, pythonSnippet, dataUrls } from './plot-share
             return;
         }
         renderAllSubplots(true);
-        updateURL();
+        updateURL('edit');
     }
 
     function removeProductFromSubplot(subplotIndex, productPath) {
@@ -642,18 +642,25 @@ import { presetConfig, configStory, pythonSnippet, dataUrls } from './plot-share
             // The first product drives the plot type: re-detect in case it was the one removed.
             subplot.plotType = plotTypeFromCache(subplot.productData[subplot.products[0].path]);
             renderAllSubplots(true);
-            updateURL();
+            updateURL('edit');
         }
     }
 
+    // A history entry of its own, so Back undoes it.
     function clearAllPlots() {
+        resetPlots();
+        writeHistory(window.location.pathname, 'edit');
+        setStatus('Ready');
+    }
+
+    function resetPlots() {
         plotState.plots = [];
+        plotState.intervals = [];
         plotState.story = null;
         showStory();
+        updateEventsPanel();
         plotView.clear();
         syncBarActions();
-        history.replaceState(null, '', window.location.pathname);
-        setStatus('Ready');
     }
 
     // The top bar's actions need something plotted; disabling (not hiding) them keeps
@@ -744,7 +751,7 @@ import { presetConfig, configStory, pythonSnippet, dataUrls } from './plot-share
         for (const sp of plotState.plots) {
             for (const prod of sp.products) sp.productData[prod.path] = createProductCache(prod.path);
         }
-        updateURL();
+        updateURL('edit');
         fetchAllAndRender();
     }
 
@@ -957,7 +964,7 @@ import { presetConfig, configStory, pythonSnippet, dataUrls } from './plot-share
         currentView.end = view.end;
 
         setTimeRange(view.start, view.end);
-        updateURL();
+        updateURL('gesture');
 
         const viewRange = view.end - view.start;
         const buffer = viewRange * BUFFER_RATIO;
@@ -1087,41 +1094,63 @@ import { presetConfig, configStory, pythonSnippet, dataUrls } from './plot-share
         return plotState.story ? { ...plotState.story, ...config } : config;
     }
 
-    function updateURL() {
+    // kind: how the change enters the browser history, see historyMode.
+    function updateURL(kind = 'tweak') {
         if (plotState.plots.length === 0) return;
-        const config = stateToConfig();
-        const encoded = configToBase64(config);
-        const newUrl = window.location.pathname + '?config=' + encoded;
-        history.replaceState(null, '', newUrl);
+        writeHistory(window.location.pathname + '?config=' + configToBase64(stateToConfig()), kind);
         refreshOpenPopovers();
     }
 
+    const HISTORY_SETTLE_MS = 1000;  // a gesture pausing longer than this starts a new entry
+    let lastHistoryWrite = null;     // { kind, at } of the last edit or gesture
+
+    function writeHistory(url, kind) {
+        const now = performance.now();
+        const unchanged = url === window.location.pathname + window.location.search;
+        const mode = unchanged ? 'replace' : historyMode(kind, lastHistoryWrite, now, HISTORY_SETTLE_MS);
+        if (kind !== 'tweak') lastHistoryWrite = { kind, at: now };
+        if (mode === 'push') history.pushState(null, '', url);
+        else history.replaceState(null, '', url);
+    }
+
+    // Back/Forward: show that entry's view, without writing history.
+    function onPopState() {
+        clearTimeout(zoomDebounceTimer);
+        lastHistoryWrite = null;
+        const config = configFromURL();
+        if (config) applyConfig(config, 'none');
+        else resetPlots();
+    }
+
     function loadFromURLParams() {
+        const config = configFromURL();
+        if (config) applyConfig(config);
+    }
+
+    // The config in the page URL, or null.
+    function configFromURL() {
         const params = new URLSearchParams(window.location.search);
 
-        // Backward compat: redirect old ?path=&start=&stop= to ?config=
+        // Backward compat: old ?path=&start=&stop= links
         const path = params.get('path');
-        const start = params.get('start');
-        const stop = params.get('stop');
         if (path) {
-            applyConfig({ version: 1, time_range: { start, stop }, plots: [{ products: [{ path }] }] });
-            return;
+            return { version: 1, time_range: { start: params.get('start'), stop: params.get('stop') }, plots: [{ products: [{ path }] }] };
         }
 
-        // New format: ?config=base64
         const configParam = params.get('config');
-        if (configParam) {
-            try {
-                const config = base64ToConfig(configParam);
-                applyConfig(config);
-            } catch (e) {
-                console.error('Invalid config URL:', e);
-                setStatus('Invalid config in URL.');
-            }
+        if (!configParam) return null;
+        try {
+            return base64ToConfig(configParam);
+        } catch (e) {
+            console.error('Invalid config URL:', e);
+            setStatus('Invalid config in URL.');
+            return null;
         }
     }
 
-    function applyConfig(config) {
+    // historyKind: 'tweak' (page load: the URL already says this), 'edit' (a preset or
+    // recent view picked), 'none' (Back/Forward).
+    function applyConfig(config, historyKind = 'tweak') {
         const startDate = config.time_range.start ? parseUtc(config.time_range.start) : null;
         let stopDate = config.time_range.stop ? parseUtc(config.time_range.stop) : null;
         // A bare "YYYY-MM-DD" (e.g. the legacy ?start=&stop= link format, both parsed as
@@ -1157,7 +1186,7 @@ import { presetConfig, configStory, pythonSnippet, dataUrls } from './plot-share
         }
 
         // Presets land here too: the URL must describe what is now on screen.
-        updateURL();
+        if (historyKind !== 'none') updateURL(historyKind);
         fetchAllAndRender();
     }
 
@@ -1299,7 +1328,7 @@ import { presetConfig, configStory, pythonSnippet, dataUrls } from './plot-share
                 item.className = 'side-item';
                 item.textContent = preset.name;
                 item.title = preset.description || preset.name;
-                item.addEventListener('click', () => { applyConfig(presetConfig(preset)); closeDrawer(); });
+                item.addEventListener('click', () => { applyConfig(presetConfig(preset), 'edit'); closeDrawer(); });
                 list.appendChild(item);
             }
             document.getElementById('presets-container').hidden = false;
@@ -1375,6 +1404,7 @@ import { presetConfig, configStory, pythonSnippet, dataUrls } from './plot-share
             setStatus('Chart library failed to load — plotting unavailable. Check network connection.');
         }
         loadFromURLParams();
+        window.addEventListener('popstate', onPopState);
     });
 
     // Seam for the Vitest suite: the page glue above is not otherwise reachable from a
@@ -1384,6 +1414,6 @@ import { presetConfig, configStory, pythonSnippet, dataUrls } from './plot-share
         updateShareURL, mergeProductData, applyScaleHints, applyConfig, getPlotView: () => plotView,
         renderProductParams, collectProductParams, selectProduct, onProductParamsChanged, loadInventory,
         subplotAction, setSelectedProduct: (path) => { selectedProduct = path; },
-        replotOverRange, loadFromURLParams, base64ToConfig, onSearchInput, onMultiZoomPan,
+        replotOverRange, loadFromURLParams, onPopState, base64ToConfig, onSearchInput, onMultiZoomPan,
         __resetCdpp3dviewFramesCache: () => { cdpp3dviewFramesPromise = null; frames3d = []; frames3dRequested = false; },
     };

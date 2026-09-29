@@ -17,6 +17,19 @@ export function configStory(config) {
   return name ? { name, description: config.description || '' } : null;
 }
 
+// --- browser history ----------------------------------------------------------------
+
+// How a view change enters the browser history, so Back/Forward walk the views:
+// 'tweak' (log scale, colormap...) rewrites the current entry, 'edit' (new time range,
+// subplot added/removed) adds one, and a 'gesture' (wheel zoom, drag pan) adds one when
+// it starts, its later steps rewriting it until settleMs pass without a step.
+// lastWrite: { kind, at } of the last edit or gesture, or null.
+export function historyMode(kind, lastWrite, nowMs, settleMs) {
+  if (kind === 'tweak') return 'replace';
+  const sameGesture = kind === 'gesture' && lastWrite?.kind === 'gesture' && nowMs - lastWrite.at < settleMs;
+  return sameGesture ? 'replace' : 'push';
+}
+
 // --- code for the current view ------------------------------------------------------
 
 // Each product once, even when two subplots show it; the same path with other
