@@ -120,11 +120,13 @@ function bindTimeDrag(u, ctx) {
 }
 
 // Shift+drag: a band follows the mouse; on release the covered span becomes an event.
+// Pointer events throughout: preventDefault on pointerdown suppresses the mouse events.
 function markDrag(u, ctx, e) {
   e.preventDefault();
   const rect = u.over.getBoundingClientRect();
   const frac = (x) => (x - rect.left) / (rect.width || 1);
   const f0 = frac(e.clientX);
+  const view = ctx.getView();
   const band = document.createElement('div');
   band.className = 'pv-marking';
   u.over.appendChild(band);
@@ -133,13 +135,20 @@ function markDrag(u, ctx, e) {
     band.style.left = (a * 100) + '%';
     band.style.width = ((b - a) * 100) + '%';
   };
-  drawBand(f0);
-  const view = ctx.getView();
-  onDrag((m) => drawBand(frac(m.clientX)), (m) => {
+  const move = (m) => drawBand(frac(m.clientX));
+  const finish = (m) => {
+    u.over.removeEventListener('pointermove', move);
+    u.over.removeEventListener('pointerup', finish);
+    u.over.removeEventListener('pointercancel', finish);
     band.remove();
-    const range = rangeFromDrag(view, f0, frac(m.clientX));
+    const range = m.type === 'pointerup' ? rangeFromDrag(view, f0, frac(m.clientX)) : null;
     if (range) ctx.markRange(range.start, range.end);
-  });
+  };
+  drawBand(f0);
+  u.over.setPointerCapture(e.pointerId);
+  u.over.addEventListener('pointermove', move);
+  u.over.addEventListener('pointerup', finish);
+  u.over.addEventListener('pointercancel', finish);
 }
 
 // Anchored to the scale at mousedown: the drag keeps changing the live scale, so reading
@@ -154,13 +163,12 @@ function dragY(u, ctx, e) {
   });
 }
 
-function onDrag(move, end = () => {}) {
+function onDrag(move) {
   document.body.style.userSelect = 'none';
-  const up = (e) => {
+  const up = () => {
     document.body.style.userSelect = '';
     window.removeEventListener('mousemove', move);
     window.removeEventListener('mouseup', up);
-    end(e);
   };
   window.addEventListener('mousemove', move);
   window.addEventListener('mouseup', up);
