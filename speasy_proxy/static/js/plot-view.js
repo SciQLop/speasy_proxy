@@ -9,7 +9,7 @@ import uPlot from './vendor/uPlot.esm.js';
 import { CHART_COLORS, escapeHtml, parseUtc } from './common.js';
 import {
   lineTable, nearestIndex, fmtTick, productTitle, dropZone,
-  computeValueRange, renderableRange, paramValue,
+  paramValue, zRangeOf,
 } from './plot-core.js';
 import { binRowRects, computeYEdges, lowestPositiveEdge, renderSpectrogramImage, spectrogramValueAt, COLORMAPS, colormapLut } from './spectrogram.js';
 import { bindGestures } from './plot-gestures.js';
@@ -173,9 +173,13 @@ export function createPlotView(root, { onViewChange, onAction = () => {}, paramS
       tools.show('autoY', !subplot._yOverride);
     };
     const toggleAutoY = () => setY(subplot._yOverride ? null : { min: u.scales.y.min, max: u.scales.y.max });
+    // Auto Z off freezes the colour range on screen; back on, it follows the data again.
+    const setZ = (range) => onAction({ type: 'zRange', index, value: range });
+    const toggleAutoZ = () => setZ(subplot._zOverride ? null : zRangeOf(subplot, firstCache(subplot)));
+    const localTools = { autoY: toggleAutoY, autoZ: toggleAutoZ };
     const tools = createTools(subplot, isHeatmap, paramSpecsOf,
-      (type, value, extra) => (type === 'autoY' ? toggleAutoY() : onAction({ type, index, value, ...extra })));
-    const colorbar = isHeatmap ? createColorbar(subplot) : null;
+      (type, value, extra) => (localTools[type] ? localTools[type]() : onAction({ type, index, value, ...extra })));
+    const colorbar = isHeatmap ? createColorbar(subplot, setZ) : null;
     u.root.appendChild(createBadge(u, createTitle(subplot, isHeatmap, loading, (path) => act('removeProduct', path)), colorbar));
     u.root.appendChild(tools.bar);
     bindDropTarget(u.root, (path, zone) => {
@@ -409,30 +413,64 @@ function createBadge(u, title, colorbar) {
 // Lives in the badge so spectrograms don't need a wider right gutter than line plots
 // (every subplot shares one plot-area width, or the time axes misalign).
 // update() re-reads the range: refetches widen it without rebuilding the chart.
-function createColorbar(subplot) {
+// Clicking a limit edits it; setZ(range) receives the new colour range.
+function createColorbar(subplot, setZ) {
   const node = el('span', 'pv-colorbar');
-  const lo = el('span', 'pv-colorbar-label');
+  const lo = el('span', 'pv-colorbar-label pv-colorbar-limit');
   const canvas = gradientCanvas(colormapLut(subplot.colormap));
-  const hi = el('span', 'pv-colorbar-label');
+  const hi = el('span', 'pv-colorbar-label pv-colorbar-limit');
   const unit = el('span', 'pv-colorbar-label');
   node.appendChild(lo);
   node.appendChild(canvas);
   node.appendChild(hi);
   node.appendChild(unit);
+  const range = () => zRangeOf(subplot, firstCache(subplot));
+  const limitEdit = (key) => (value) => {
+    const next = { ...range(), [key]: value };
+    if (next.vMin < next.vMax && !(subplot.logScale && next.vMin <= 0)) setZ(next);
+  };
+  editOnClick(lo, limitEdit('vMin'));
+  editOnClick(hi, limitEdit('vMax'));
   const colorbar = {
     node, canvas,
     labels: () => [lo.textContent, hi.textContent, unit.textContent],
     update() {
       const cache = firstCache(subplot);
-      const { vMin, vMax } = renderableRange(cache?.valueRange || computeValueRange(cache?.rows || []));
+      const { vMin, vMax } = range();
       lo.textContent = colorbarTick(vMin);
       hi.textContent = colorbarTick(vMax);
       unit.textContent = cache?.unit || '';
-      node.title = (subplot.logScale ? 'Logarithmic' : 'Linear') + ' colour scale';
+      node.title = (subplot.logScale ? 'Logarithmic' : 'Linear') + ' colour scale'
+        + (subplot._zOverride ? ', range set by hand' : ', following the data') + '. Click a limit to change it.';
     },
   };
   colorbar.update();
   return colorbar;
+}
+
+// Click a number to type a new one: Enter or leaving the field applies it, Escape keeps
+// the old one. onValue gets a finite number; anything else is ignored.
+function editOnClick(label, onValue) {
+  label.addEventListener('click', () => {
+    const input = el('input', 'pv-colorbar-input');
+    input.value = label.textContent;
+    let done = false;
+    const finish = (apply) => {
+      if (done) return;
+      done = true;
+      const value = Number(input.value.trim());
+      input.replaceWith(label);
+      if (apply && input.value.trim() !== '' && Number.isFinite(value)) onValue(value);
+    };
+    input.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') finish(true);
+      else if (e.key === 'Escape') finish(false);
+    });
+    input.addEventListener('blur', () => finish(true));
+    label.replaceWith(input);
+    input.focus();
+    input.select();
+  });
 }
 
 // Three significant digits: the bar is a rough guide, the tooltip gives exact values.
@@ -463,6 +501,7 @@ function createTools(subplot, isHeatmap, paramSpecsOf, act) {
   const tools = [
     { label: 'auto Y', type: 'autoY', on: !subplot._yOverride, title: 'Fit Y to the visible data (off: keep the current Y range)' },
     { label: 'log Y', type: 'logY', on: !!subplot.y_axis.log, title: 'Y axis: logarithmic / linear' },
+    isHeatmap && { label: 'auto Z', type: 'autoZ', on: !subplot._zOverride, title: 'Colour range follows the data (off: keep it; or click a colour bar limit to type one)' },
     isHeatmap && { label: 'log Z', type: 'logZ', on: !!subplot.logScale, title: 'Colour scale: logarithmic / linear' },
     { label: '✕', type: 'remove', on: false, title: 'Remove this subplot', extra: ' remove' },
   ].filter(Boolean);
@@ -567,7 +606,7 @@ function chartData(subplot) {
 function heatmapImage(subplot, view) {
   const cache = firstCache(subplot);
   if (!cache || !cache.yAxis || cache.rows.length === 0) return null;
-  const { vMin, vMax } = renderableRange(cache.valueRange || computeValueRange(cache.rows));
+  const { vMin, vMax } = zRangeOf(subplot, cache);
   return renderSpectrogramImage(cache.times, cache.rows, binsOf(cache), vMin, vMax, subplot.logScale, view, subplot.colormap);
 }
 

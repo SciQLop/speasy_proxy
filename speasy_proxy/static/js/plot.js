@@ -516,6 +516,10 @@ import { createPlotView, PRODUCT_MIME } from './plot-view.js';
         logZ: ({ index }) => editSubplot(index, (sp) => {
             sp.logScale = !sp.logScale;
             sp._zScaleAuto = false;
+            if (sp.logScale && sp._zOverride?.vMin <= 0) delete sp._zOverride;  // no position on a log scale
+        }),
+        zRange: ({ index, value }) => editSubplot(index, (sp) => {
+            if (value) sp._zOverride = value; else delete sp._zOverride;
         }),
         colormap: ({ index, value }) => editSubplot(index, (sp) => { sp.colormap = value; }),
         productParam: ({ index, path, key, value }) => setProductParam(index, path, key, value),

@@ -61,6 +61,7 @@ export function subplotToConfig(sp) {
     ...(sp._yScaleAuto ? {} : { y_axis: { log: sp.y_axis.log } }),
     ...(sp._zScaleAuto ? {} : { log_z: sp.logScale }),
     ...(sp.colormap === 'viridis' ? {} : { colormap: sp.colormap }),
+    ...(sp._zOverride ? { z_range: [sp._zOverride.vMin, sp._zOverride.vMax] } : {}),
   };
 }
 
@@ -71,6 +72,9 @@ export function subplotFromConfig(plotDef) {
   // actually specified one; an old/malformed config with no y_axis is still a fresh state.
   if (plotDef.y_axis?.log !== undefined) subplot._yScaleAuto = false;
   if (plotDef.colormap) subplot.colormap = plotDef.colormap;
+  if (Array.isArray(plotDef.z_range) && plotDef.z_range.length === 2) {
+    subplot._zOverride = { vMin: plotDef.z_range[0], vMax: plotDef.z_range[1] };
+  }
   if (plotDef.log_z !== undefined) {
     subplot.logScale = plotDef.log_z;
     subplot._zScaleAuto = false;
@@ -137,6 +141,12 @@ export function mergeValueRange(cachedRange, cacheRows, newValues) {
 
 // Color scale actually handed to the renderer: a missing or zero-width range has no
 // usable log10 span, so substitute a decade.
+// The colour range a spectrogram is drawn with: the one set by hand (auto Z off, or a
+// colour bar limit typed in), else the data's.
+export function zRangeOf(subplot, cache) {
+  return subplot._zOverride || renderableRange(cache?.valueRange || computeValueRange(cache?.rows || []));
+}
+
 export function renderableRange(range) {
   if (!range) return { vMin: 1e-30, vMax: 1 };
   return range.vMin === range.vMax ? { vMin: range.vMin, vMax: range.vMin * 10 } : range;

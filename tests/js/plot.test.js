@@ -627,6 +627,22 @@ describe('per-subplot actions (the toolbar on each subplot)', () => {
     expect(plotState.plots.map((sp) => sp.colormap)).toEqual([undefined, 'jet']);
   });
 
+  it('a Z range applies to that spectrogram only; null goes back to auto', () => {
+    plotState.plots = [heatmapSubplot(), heatmapSubplot()];
+
+    plot.__test__.subplotAction({ type: 'zRange', index: 1, value: { vMin: 2, vMax: 8 } });
+    expect(plotState.plots.map((sp) => sp._zOverride)).toEqual([undefined, { vMin: 2, vMax: 8 }]);
+
+    plot.__test__.subplotAction({ type: 'zRange', index: 1, value: null });
+    expect(plotState.plots[1]._zOverride).toBeUndefined();
+  });
+
+  it('log Z drops a set Z range that starts at or below zero', () => {
+    plotState.plots = [{ ...heatmapSubplot(), logScale: false, _zOverride: { vMin: 0, vMax: 8 } }];
+    plot.__test__.subplotAction({ type: 'logZ', index: 0 });
+    expect(plotState.plots[0]._zOverride).toBeUndefined();
+  });
+
   it('remove drops that subplot', () => {
     plotState.plots = [lineSubplot('cda/a'), lineSubplot('cda/b')];
 
@@ -673,7 +689,7 @@ describe('per-subplot actions (the toolbar on each subplot)', () => {
 describe('subplot toolbar', () => {
   beforeEach(() => { uPlot.instances.length = 0; });
 
-  it('offers log Z only on spectrograms and marks the active scales', () => {
+  it('offers auto Z and log Z only on spectrograms and marks the active scales', () => {
     initChart();
     const line = { products: [{ path: 'cda/b' }], y_axis: { log: true }, plotType: 'line', productData: { 'cda/b': lineCache('cda/b', '') } };
     plotState.plots = [line, heatmapSubplot()];
@@ -684,8 +700,24 @@ describe('subplot toolbar', () => {
     const made = dom.created.slice(before).filter((e) => e.tagName === 'BUTTON' && e.className.startsWith('pv-tool'));
     expect(made.map((b) => [b.textContent, b.className])).toEqual([
       ['auto Y', 'pv-tool active'], ['log Y', 'pv-tool active'], ['✕', 'pv-tool remove'],
-      ['auto Y', 'pv-tool active'], ['log Y', 'pv-tool'], ['log Z', 'pv-tool active'], ['✕', 'pv-tool remove'],
+      ['auto Y', 'pv-tool active'], ['log Y', 'pv-tool'], ['auto Z', 'pv-tool active'], ['log Z', 'pv-tool active'], ['✕', 'pv-tool remove'],
     ]);
+  });
+
+  it('auto Z off freezes the shown colour range; the colour bar shows a set range', () => {
+    initChart();
+    plotState.plots = [heatmapSubplot()];
+    let before = dom.created.length;
+    renderAllSubplots();
+    const autoZ = dom.created.slice(before).find((e) => e.textContent === 'auto Z');
+    autoZ.addEventListener.mock.calls.find(([type]) => type === 'click')[1]();
+    expect(plotState.plots[0]._zOverride).toEqual({ vMin: 1, vMax: 9 });
+
+    plotState.plots[0]._zOverride = { vMin: 2, vMax: 500 };
+    before = dom.created.length;
+    renderAllSubplots();
+    const labels = dom.created.slice(before).filter((e) => e.className?.startsWith('pv-colorbar-label')).map((e) => e.textContent);
+    expect(labels.slice(0, 2)).toEqual(['2', '500']);
   });
 
   it('offers a colormap choice only on spectrograms, showing the current one', () => {
@@ -918,7 +950,7 @@ describe('spectrogram colour bar', () => {
 
     const made = dom.created.slice(before);
     expect(made.some((e) => e.className === 'pv-colorbar')).toBe(true);
-    expect(made.filter((e) => e.className === 'pv-colorbar-label').map((e) => e.textContent))
+    expect(made.filter((e) => e.className?.startsWith('pv-colorbar-label')).map((e) => e.textContent))
       .toEqual(['23.8', '7.68e7', 'keV/(cm^2 s sr keV)']);
   });
 });

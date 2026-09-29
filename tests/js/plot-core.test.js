@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   mergeSorted, spliceRows, mergeIntervals, evictProductCache,
   detectPlotType, configToBase64, base64ToConfig, isCovered, resolutionSufficient, rangesOverlap, trimCacheWindow, cacheToCsv,
-  createSubplotData, createProductCache, subplotToConfig, subplotFromConfig, paramValue, withParam, editedRange, formatSpan,
+  createSubplotData, createProductCache, subplotToConfig, subplotFromConfig, paramValue, withParam, editedRange, zRangeOf, formatSpan,
   normalizeWheelDelta, wheelIntent, zoomRange, panRange, zoomToward, pinchRange, structureKey, resampleTarget,
   plotTypeFromCache, computeValueRange, mergeValueRange, renderableRange,
   nearestIndex, lineTable, yRangeFromPixels, fmtTick, cleanText, productTitle, dropZone, distinctCrumbs,
@@ -677,5 +677,21 @@ describe('time window helpers', () => {
     expect(formatSpan(24 * H)).toBe('1d');
     expect(formatSpan(45 * 1000)).toBe('45s');
     expect(formatSpan(400 * 24 * H)).toBe('400d');
+  });
+});
+
+describe('colour (Z) range', () => {
+  const cache = { rows: [[1, 10], [100, 5]], valueRange: { vMin: 1, vMax: 100 } };
+  it('follows the data until a range is set', () => {
+    expect(zRangeOf(createSubplotData(), cache)).toEqual({ vMin: 1, vMax: 100 });
+    expect(zRangeOf({ ...createSubplotData(), _zOverride: { vMin: 3, vMax: 30 } }, cache)).toEqual({ vMin: 3, vMax: 30 });
+  });
+  it('a set range is saved and restored as z_range', () => {
+    const sp = { ...createSubplotData(), _zOverride: { vMin: 3, vMax: 30 } };
+    const cfg = subplotToConfig(sp);
+    expect(cfg.z_range).toEqual([3, 30]);
+    expect(subplotFromConfig(cfg)._zOverride).toEqual({ vMin: 3, vMax: 30 });
+    expect(subplotToConfig(createSubplotData()).z_range).toBeUndefined();
+    expect(subplotFromConfig({ products: [] })._zOverride).toBeUndefined();
   });
 });
