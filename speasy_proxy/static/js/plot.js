@@ -1364,8 +1364,12 @@ import { presetConfig, configStory, pythonSnippet, dataUrls, historyMode, addRec
     function saveCurrentView() {
         const field = document.getElementById('preset-name');
         if (plotState.plots.length === 0 || !field.value.trim()) return;
-        storeUserPresets(list => savePreset(list, field.value, stateToConfig()));
-        field.value = '';
+        let saved = null;
+        storeUserPresets(list => { const next = savePreset(list, field.value, stateToConfig()); saved = next[0]; return next; });
+        // The view is that preset now: its name stays in the field, so the next Save updates it.
+        plotState.story = configStory(presetConfig(saved));
+        showStory();
+        updateURL('tweak');
     }
 
     function renderUserPresets() {

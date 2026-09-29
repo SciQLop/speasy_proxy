@@ -1311,7 +1311,21 @@ describe('presets saved in the browser', () => {
     save('My storm');
 
     expect(mine().map((item) => item.children[0].textContent)).toEqual(['My storm']);
-    expect(dom.getById('preset-name').value).toBe('');
+  });
+
+  it('keeps editing the saved preset: the name stays, and saving again updates it', () => {
+    vi.stubGlobal('localStorage', memoryStorage());
+    applyConfig(view);
+    save('My storm');
+
+    expect(dom.getById('preset-name').value).toBe('My storm');
+    expect(plotState.story.name).toBe('My storm');
+
+    plot.__test__.replotOverRange(Date.parse('2020-01-01T06:00:00Z'), Date.parse('2020-01-01T12:00:00Z'));
+    click(dom.getById('btn-save-preset'));
+
+    const saved = JSON.parse(localStorage.getItem('speasy-plot-presets'));
+    expect(saved.map((p) => [p.name, p.config.time_range.start])).toEqual([['My storm', '2020-01-01T06:00:00.000Z']]);
   });
 
   it('opens a saved preset with its name as the story, from the sidebar and from the empty page', () => {
