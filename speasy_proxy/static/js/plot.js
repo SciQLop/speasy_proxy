@@ -15,7 +15,7 @@ import {
 import { ascendingSpectrogram } from './spectrogram.js';
 import { fetchData as apiFetchData, fetchInventory } from './api-client.js';
 import { createPlotView, PRODUCT_MIME } from './plot-view.js';
-import { presetConfig, configStory, pythonSnippet, dataUrls, historyMode } from './plot-share.js';
+import { presetConfig, configStory, pythonSnippet, dataUrls, historyMode, addRecent, recentsFrom, recentLabel } from './plot-share.js';
 
     const BASE_URL = (window.SPEASY_BASE_URL || '').replace(/\/$/, '');
     const API_BASE = BASE_URL + '/';
@@ -670,6 +670,7 @@ import { presetConfig, configStory, pythonSnippet, dataUrls, historyMode } from 
         for (const id of ['btn-export-png', 'btn-export-csv', 'btn-share', 'btn-code', 'btn-clear']) {
             document.getElementById(id).disabled = none;
         }
+        showEmptyState();
     }
 
     function updateShareURL() {
@@ -1097,7 +1098,9 @@ import { presetConfig, configStory, pythonSnippet, dataUrls, historyMode } from 
     // kind: how the change enters the browser history, see historyMode.
     function updateURL(kind = 'tweak') {
         if (plotState.plots.length === 0) return;
-        writeHistory(window.location.pathname + '?config=' + configToBase64(stateToConfig()), kind);
+        const config = stateToConfig();
+        writeHistory(window.location.pathname + '?config=' + configToBase64(config), kind);
+        rememberView(config);
         refreshOpenPopovers();
     }
 
@@ -1178,6 +1181,7 @@ import { presetConfig, configStory, pythonSnippet, dataUrls, historyMode } from 
         plotState.story = configStory(config);
         showStory();
         updateEventsPanel();
+        syncBarActions();
 
         // Selects the first product so loadInventory can restore its params panel.
         if (plotState.plots.length > 0 && plotState.plots[0].products.length > 0) {
@@ -1319,7 +1323,8 @@ import { presetConfig, configStory, pythonSnippet, dataUrls, historyMode } from 
         try {
             const resp = await fetch(API_BASE + 'get_presets');
             if (!resp.ok) return;
-            const presets = await resp.json();
+            presets = await resp.json();
+            showEmptyState();
             if (presets.length === 0) return;
 
             const list = document.getElementById('presets-list');
@@ -1335,6 +1340,50 @@ import { presetConfig, configStory, pythonSnippet, dataUrls, historyMode } from 
         } catch (e) {
             console.error('Failed to load presets:', e);
         }
+    }
+
+    // ===== Empty state: presets and recent views =====
+
+    let presets = [];
+    const RECENT_KEY = 'speasy-plot-recent';
+
+    // Storage can be missing or blocked (private mode, sandboxed frame): then there are
+    // simply no recent views.
+    function loadRecent() {
+        try { return recentsFrom(localStorage.getItem(RECENT_KEY)); } catch (_) { return []; }
+    }
+
+    function rememberView(config) {
+        try { localStorage.setItem(RECENT_KEY, JSON.stringify(addRecent(loadRecent(), config))); } catch (_) { /* no storage */ }
+    }
+
+    function showEmptyState() {
+        const panel = document.getElementById('empty-state');
+        panel.hidden = plotState.plots.length > 0;
+        if (panel.hidden) return;
+        fillCards('empty-presets', presets.map(p => ({ name: p.name, detail: p.description, config: presetConfig(p) })));
+        fillCards('empty-recent', loadRecent().map(config => ({ ...recentLabel(config), config })));
+    }
+
+    function fillCards(sectionId, cards) {
+        document.getElementById(sectionId).hidden = cards.length === 0;
+        const list = document.getElementById(sectionId + '-list');
+        list.innerHTML = '';
+        for (const card of cards) list.appendChild(viewCard(card));
+    }
+
+    function viewCard({ name, detail, config }) {
+        const card = document.createElement('button');
+        card.className = 'empty-card';
+        card.title = detail ? name + '\n\n' + detail : name;
+        for (const [className, text] of [['empty-card-name', name], ['empty-card-detail', detail || '']]) {
+            const line = document.createElement('div');
+            line.className = className;
+            line.textContent = text;
+            card.appendChild(line);
+        }
+        card.addEventListener('click', () => applyConfig(config, 'edit'));
+        return card;
     }
 
     // ===== Preset caption =====
@@ -1404,6 +1453,7 @@ import { presetConfig, configStory, pythonSnippet, dataUrls, historyMode } from 
             setStatus('Chart library failed to load — plotting unavailable. Check network connection.');
         }
         loadFromURLParams();
+        showEmptyState();
         window.addEventListener('popstate', onPopState);
     });
 
@@ -1414,6 +1464,6 @@ import { presetConfig, configStory, pythonSnippet, dataUrls, historyMode } from 
         updateShareURL, mergeProductData, applyScaleHints, applyConfig, getPlotView: () => plotView,
         renderProductParams, collectProductParams, selectProduct, onProductParamsChanged, loadInventory,
         subplotAction, setSelectedProduct: (path) => { selectedProduct = path; },
-        replotOverRange, loadFromURLParams, onPopState, base64ToConfig, onSearchInput, onMultiZoomPan,
+        replotOverRange, loadFromURLParams, onPopState, loadPresets, base64ToConfig, onSearchInput, onMultiZoomPan,
         __resetCdpp3dviewFramesCache: () => { cdpp3dviewFramesPromise = null; frames3d = []; frames3dRequested = false; },
     };

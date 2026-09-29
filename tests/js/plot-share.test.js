@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { presetConfig, configStory, pythonSnippet, dataUrls, historyMode } from '../../speasy_proxy/static/js/plot-share.js';
+import { presetConfig, configStory, pythonSnippet, dataUrls, historyMode, addRecent, recentsFrom, recentLabel } from '../../speasy_proxy/static/js/plot-share.js';
 
 describe('presetConfig', () => {
   const preset = {
@@ -86,6 +86,38 @@ describe('historyMode', () => {
 
   it('never folds a gesture into the edit before it', () => {
     expect(historyMode('gesture', { kind: 'edit', at: 0 }, 10, SETTLE)).toBe('push');
+  });
+});
+
+describe('recent views', () => {
+  const at = (path, start, stop = '2020-01-02T00:00:00.000Z') =>
+    ({ version: 1, time_range: { start, stop }, plots: [{ products: [{ path }] }] });
+
+  it('puts the newest view first and keeps at most five', () => {
+    let recents = [];
+    for (const p of ['a', 'b', 'c', 'd', 'e', 'f']) recents = addRecent(recents, at('cda/' + p, '2020-01-01T00:00:00.000Z'));
+    expect(recents.map((c) => c.plots[0].products[0].path)).toEqual(['cda/f', 'cda/e', 'cda/d', 'cda/c', 'cda/b']);
+  });
+
+  it('keeps one entry per set of products: its latest window', () => {
+    const first = addRecent([], at('cda/a', '2020-01-01T00:00:00.000Z'));
+    const recents = addRecent(first, at('cda/a', '2020-01-01T12:00:00.000Z'));
+    expect(recents).toHaveLength(1);
+    expect(recents[0].time_range.start).toBe('2020-01-01T12:00:00.000Z');
+  });
+
+  it('reads back only well-formed views, and nothing from garbage', () => {
+    expect(recentsFrom(JSON.stringify([at('cda/a', 'x'), { plots: 3 }, null]))).toEqual([at('cda/a', 'x')]);
+    expect(recentsFrom('not json')).toEqual([]);
+    expect(recentsFrom(null)).toEqual([]);
+    expect(recentsFrom('{"a":1}')).toEqual([]);
+  });
+
+  it('labels a view by its story, else by its products, with its window', () => {
+    const view = { ...at('cda/THB/thb_fgs', '2008-02-26T04:00:00.000Z', '2008-02-26T06:00:00.000Z'),
+      plots: [{ products: [{ path: 'cda/THB/thb_fgs' }, { path: 'amda/imf' }] }, { products: [{ path: 'cda/THB/thb_fgs' }] }] };
+    expect(recentLabel(view)).toEqual({ name: 'thb_fgs, imf', detail: '2008-02-26 04:00 UTC · 2h' });
+    expect(recentLabel({ ...view, name: 'Substorm' }).name).toBe('Substorm');
   });
 });
 

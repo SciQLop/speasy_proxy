@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach, afterAll } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach, afterAll } from 'vitest';
 import { installPlotDom } from './helpers/dom-mock.js';
 import { configToBase64 } from '../../speasy_proxy/static/js/plot-core.js';
 
@@ -1225,6 +1225,60 @@ describe('Back and Forward walk the views', () => {
 
     expect(plotState.plots).toEqual([]);
     expect(window.history.pushState).not.toHaveBeenCalled();
+  });
+});
+
+describe('empty /plot offers presets and recent views', () => {
+  const view = { version: 1, time_range: { start: '2020-01-01T00:00:00Z', stop: '2020-01-02T00:00:00Z' },
+    plots: [{ products: [{ path: 'cda/a' }] }] };
+  const cards = (listId) => dom.getById(listId).children;
+  const memoryStorage = () => {
+    const items = new Map();
+    return { getItem: (k) => items.get(k) ?? null, setItem: (k, v) => items.set(k, String(v)) };
+  };
+
+  beforeEach(() => {
+    initChart();
+    dom.getById('empty-presets-list').children = [];
+    dom.getById('empty-recent-list').children = [];
+  });
+  afterEach(() => vi.unstubAllGlobals());
+
+  it('shows the presets as cards that open them', async () => {
+    vi.stubGlobal('fetch', vi.fn(() => Promise.resolve({ ok: true,
+      json: () => Promise.resolve([{ name: 'Substorm', description: 'Onset.', config: view }]) })));
+    plotState.plots = [];
+
+    await plot.__test__.loadPresets();
+
+    expect(dom.getById('empty-state').hidden).toBe(false);
+    const [card] = cards('empty-presets-list');
+    expect(card.children.map((c) => c.textContent)).toEqual(['Substorm', 'Onset.']);
+    card.addEventListener.mock.calls.find(([t]) => t === 'click')[1]();
+    expect(plotState.plots[0].products[0].path).toBe('cda/a');
+    expect(plotState.story.name).toBe('Substorm');
+    expect(dom.getById('empty-state').hidden).toBe(true);
+  });
+
+  it('remembers the views shown, and offers them once the plot is cleared', () => {
+    vi.stubGlobal('localStorage', memoryStorage());
+    applyConfig(view);
+
+    plot.__test__.subplotAction({ type: 'remove', index: 0 });
+
+    expect(dom.getById('empty-state').hidden).toBe(false);
+    const [card] = cards('empty-recent-list');
+    expect(card.children.map((c) => c.textContent)).toEqual(['a', '2020-01-01 00:00 UTC · 1d']);
+  });
+
+  it('works without storage', () => {
+    vi.stubGlobal('localStorage', { getItem: () => { throw new Error('blocked'); }, setItem: () => { throw new Error('blocked'); } });
+
+    applyConfig(view);
+    plot.__test__.subplotAction({ type: 'remove', index: 0 });
+
+    expect(dom.getById('empty-state').hidden).toBe(false);
+    expect(cards('empty-recent-list')).toEqual([]);
   });
 });
 

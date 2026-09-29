@@ -1,6 +1,9 @@
 // A /plot view as it leaves or re-enters the page: preset stories, code snippets,
 // recent views. Pure functions over the share config (plot.js stateToConfig).
 
+import { parseUtc } from './common.js';
+import { formatSpan } from './plot-core.js';
+
 // The config a preset opens with. The server keeps name and description beside the
 // config; folding them in makes the story travel with the share URL.
 export function presetConfig(preset) {
@@ -15,6 +18,39 @@ export function presetConfig(preset) {
 export function configStory(config) {
   const name = (config.name || '').trim();
   return name ? { name, description: config.description || '' } : null;
+}
+
+// --- recent views (the empty /plot offers them again) -------------------------------
+
+const MAX_RECENT = 5;
+
+const productsKey = (config) =>
+  [...new Set(config.plots.flatMap((sp) => sp.products.map((p) => p.path)))].sort().join('|');
+
+// The view first; an older view of the same products gives way to it.
+export function addRecent(recents, config, max = MAX_RECENT) {
+  const key = productsKey(config);
+  return [config, ...recents.filter((c) => productsKey(c) !== key)].slice(0, max);
+}
+
+// Recent views stored as JSON text; anything unreadable is dropped, never thrown.
+export function recentsFrom(text) {
+  let parsed;
+  try { parsed = JSON.parse(text); } catch (_) { return []; }
+  return Array.isArray(parsed)
+    ? parsed.filter((c) => c && Array.isArray(c.plots) && c.time_range)
+    : [];
+}
+
+// { name, detail } for a recent-view card: the story's name, else the product names;
+// the window's start and length.
+export function recentLabel(config) {
+  const names = [...new Set(config.plots.flatMap((sp) => sp.products.map((p) => p.path.split('/').pop())))];
+  const start = parseUtc(config.time_range.start), stop = parseUtc(config.time_range.stop);
+  const when = Number.isFinite(start.getTime())
+    ? start.toISOString().slice(0, 16).replace('T', ' ') + ' UTC' + (stop > start ? ' · ' + formatSpan(stop - start) : '')
+    : '';
+  return { name: configStory(config)?.name || names.join(', '), detail: when };
 }
 
 // --- browser history ----------------------------------------------------------------

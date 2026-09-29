@@ -223,6 +223,19 @@
         #chart.pv-dragging .pv-drop-new { display: flex; }
         #chart.pv-empty .pv-drop-new { display: flex; top: 0; height: auto; background: transparent; border-color: #1e2640; margin: 16px; }
         .pv-drop-new.pv-drop-target { border-color: #6b8afd; color: #e0e6f0; }
+        /* Bare /plot: the drop hint is one line at the top, preset and recent-view cards
+           below it. The panel lets drags through to the drop target; only cards take clicks. */
+        #chart.pv-empty .pv-drop-new { align-items: flex-start; padding-top: 14px; }
+        .empty-state { position: absolute; top: 56px; left: 32px; right: 32px; bottom: 24px; z-index: 16;
+            overflow-y: auto; pointer-events: none; }
+        .empty-state h3 { margin: 12px 0 8px; color: #8892b0; font-size: 0.8rem; font-weight: 600; }
+        .empty-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 8px; }
+        .empty-card { pointer-events: auto; text-align: left; padding: 8px 10px; border: 1px solid #2a3358;
+            border-radius: 6px; background: #111627; color: #e0e6f0; font: inherit; cursor: pointer; }
+        .empty-card:hover { border-color: #6b8afd; background: #1a2138; }
+        .empty-card-name { font-size: 0.85rem; font-weight: 600; }
+        .empty-card-detail { margin-top: 2px; color: #8892b0; font-size: 0.75rem; overflow: hidden;
+            display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
         .pv-tooltip { position: absolute; display: none; pointer-events: none; z-index: 20;
             background: #1a1f36; border: 1px solid #2a3358; border-radius: 4px; padding: 6px 8px;
             color: #e0e6f0; font-size: 12px; line-height: 1.5; white-space: nowrap; }
@@ -268,6 +281,7 @@
             .controls-bar .dt-input { width: 132px; font-size: 0.8rem; }
             #share-popover, #code-popover { position: fixed !important; top: 50px !important; left: 8px; right: 8px !important; min-width: 0 !important; }
             .pv-tool { padding: 4px 9px; font-size: 13px; }
+            .empty-state { left: 16px; right: 16px; }
             /* The toolbar stays shown on touch: the badge wraps instead of going under it */
             .pv-header { flex-wrap: wrap; white-space: normal; max-width: calc(100% - 250px); }
             .status-bar { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -398,6 +412,10 @@
     <div class="chart-wrapper">
         <div class="fetch-bar" id="fetch-bar"></div>
         <div id="chart"></div>
+        <div class="empty-state" id="empty-state" hidden>
+            <section id="empty-presets" hidden><h3>Presets</h3><div class="empty-cards" id="empty-presets-list"></div></section>
+            <section id="empty-recent" hidden><h3>Recent views</h3><div class="empty-cards" id="empty-recent-list"></div></section>
+        </div>
         <div class="chart-loading-overlay" id="loading-overlay">
             <div class="spinner"></div>
         </div>
