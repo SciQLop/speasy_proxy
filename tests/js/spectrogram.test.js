@@ -1,11 +1,19 @@
 import { describe, it, expect } from 'vitest';
-import { VIRIDIS_LUT, computeYEdges, spectrogramValueAt, renderSpectrogramImage, ascendingSpectrogram, binRowRects, lowestPositiveEdge } from '../../speasy_proxy/static/js/spectrogram.js';
+import { COLORMAPS, colormapLut, computeYEdges, spectrogramValueAt, renderSpectrogramImage, ascendingSpectrogram, binRowRects, lowestPositiveEdge } from '../../speasy_proxy/static/js/spectrogram.js';
 
 describe('spectrogram', () => {
   it('builds a 256-entry RGB viridis LUT with correct endpoints', () => {
-    expect(VIRIDIS_LUT).toHaveLength(256 * 3);
-    expect([VIRIDIS_LUT[0], VIRIDIS_LUT[1], VIRIDIS_LUT[2]]).toEqual([68, 1, 84]);
-    expect([VIRIDIS_LUT[765], VIRIDIS_LUT[766], VIRIDIS_LUT[767]]).toEqual([253, 231, 37]);
+    const lut = colormapLut('viridis');
+    expect(lut).toHaveLength(256 * 3);
+    expect([lut[0], lut[1], lut[2]]).toEqual([68, 1, 84]);
+    expect([lut[765], lut[766], lut[767]]).toEqual([253, 231, 37]);
+  });
+  it('builds a LUT per named colormap, viridis for an unknown name', () => {
+    expect(Object.keys(COLORMAPS)).toContain('jet');
+    const jet = colormapLut('jet');
+    expect([jet[0], jet[1], jet[2]]).toEqual([0, 0, 128]);
+    expect([jet[765], jet[766], jet[767]]).toEqual([128, 0, 0]);
+    expect(colormapLut('no-such-map')).toBe(colormapLut('viridis'));
   });
   it('computes bin edges around centers', () => {
     const edges = computeYEdges([1, 2, 3]);
@@ -185,6 +193,12 @@ describe('spectrogram', () => {
       expect(alphaAt(2500)).toBe(0);
       expect(alphaAt(7000)).toBe(0);
       expect(alphaAt(9150)).toBe(255);
+    });
+
+    it('paints with the requested colormap', () => {
+      const result = renderSpectrogramImage([0, 1000], [[2], [2]], [1], 1, 2, false, null, 'jet');
+      const { data } = result.canvas.imageData;
+      expect([data[0], data[1], data[2]]).toEqual([128, 0, 0]); // jet top of scale
     });
 
     it('returns null for empty data', () => {

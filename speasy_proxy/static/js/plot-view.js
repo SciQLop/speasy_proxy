@@ -11,7 +11,7 @@ import {
   lineTable, nearestIndex, fmtTick, productTitle, dropZone,
   computeValueRange, renderableRange,
 } from './plot-core.js';
-import { binRowRects, computeYEdges, lowestPositiveEdge, renderSpectrogramImage, spectrogramValueAt, VIRIDIS_LUT } from './spectrogram.js';
+import { binRowRects, computeYEdges, lowestPositiveEdge, renderSpectrogramImage, spectrogramValueAt, COLORMAPS, colormapLut } from './spectrogram.js';
 import { bindGestures } from './plot-gestures.js';
 
 const Y_AXIS_PX = 64;      // fixed y-axis gutter so every subplot's plot area lines up
@@ -172,7 +172,8 @@ export function createPlotView(root, { onViewChange, onAction = () => {} }) {
       tools.show('autoY', !subplot._yOverride);
     };
     const toggleAutoY = () => setY(subplot._yOverride ? null : { min: u.scales.y.min, max: u.scales.y.max });
-    const tools = createTools(subplot, isHeatmap, (type) => (type === 'autoY' ? toggleAutoY() : act(type)));
+    const tools = createTools(subplot, isHeatmap,
+      (type, value) => (type === 'autoY' ? toggleAutoY() : onAction({ type, index, value })));
     const colorbar = isHeatmap ? createColorbar(subplot) : null;
     u.root.appendChild(createBadge(u, createTitle(subplot, isHeatmap, loading, (path) => act('removeProduct', path)), colorbar));
     u.root.appendChild(tools.bar);
@@ -403,14 +404,14 @@ function createBadge(u, title, colorbar) {
   return badge;
 }
 
-// Compact horizontal colour bar: low value, viridis gradient, high value, value unit.
+// Compact horizontal colour bar: low value, colormap gradient, high value, value unit.
 // Lives in the badge so spectrograms don't need a wider right gutter than line plots
 // (every subplot shares one plot-area width, or the time axes misalign).
 // update() re-reads the range: refetches widen it without rebuilding the chart.
 function createColorbar(subplot) {
   const node = el('span', 'pv-colorbar');
   const lo = el('span', 'pv-colorbar-label');
-  const canvas = gradientCanvas();
+  const canvas = gradientCanvas(colormapLut(subplot.colormap));
   const hi = el('span', 'pv-colorbar-label');
   const unit = el('span', 'pv-colorbar-label');
   node.appendChild(lo);
@@ -436,7 +437,7 @@ function createColorbar(subplot) {
 // Three significant digits: the bar is a rough guide, the tooltip gives exact values.
 const colorbarTick = (v) => fmtTick(Number(v.toPrecision(3)));
 
-function gradientCanvas() {
+function gradientCanvas(lut) {
   const canvas = document.createElement('canvas');
   canvas.className = 'pv-colorbar-gradient';
   canvas.width = 256;
@@ -444,7 +445,7 @@ function gradientCanvas() {
   const ctx = canvas.getContext('2d');
   const img = ctx.createImageData(256, 1);
   for (let i = 0; i < 256; i++) {
-    img.data.set([VIRIDIS_LUT[i * 3], VIRIDIS_LUT[i * 3 + 1], VIRIDIS_LUT[i * 3 + 2], 255], i * 4);
+    img.data.set([lut[i * 3], lut[i * 3 + 1], lut[i * 3 + 2], 255], i * 4);
   }
   ctx.putImageData(img, 0, 0);
   return canvas;
@@ -472,7 +473,22 @@ function createTools(subplot, isHeatmap, act) {
     bar.appendChild(b);
     buttons[t.type] = b;
   }
+  if (isHeatmap) bar.insertBefore(colormapPicker(subplot, act), buttons.remove);
   return { bar, show: (type, on) => { buttons[type].className = toolClass(on); } };
+}
+
+function colormapPicker(subplot, act) {
+  const select = el('select', 'pv-tool');
+  select.title = 'Colour map';
+  for (const name of Object.keys(COLORMAPS)) {
+    const option = document.createElement('option');
+    option.value = name;
+    option.textContent = name;
+    select.appendChild(option);
+  }
+  select.value = subplot.colormap || 'viridis';
+  select.addEventListener('change', () => act('colormap', select.value));
+  return select;
 }
 
 // --- drag and drop of products from the tree ---------------------------------------
@@ -533,7 +549,7 @@ function heatmapImage(subplot, view) {
   const cache = firstCache(subplot);
   if (!cache || !cache.yAxis || cache.rows.length === 0) return null;
   const { vMin, vMax } = renderableRange(cache.valueRange || computeValueRange(cache.rows));
-  return renderSpectrogramImage(cache.times, cache.rows, binsOf(cache), vMin, vMax, subplot.logScale, view);
+  return renderSpectrogramImage(cache.times, cache.rows, binsOf(cache), vMin, vMax, subplot.logScale, view, subplot.colormap);
 }
 
 function drawHeatmapImage(u, img) {

@@ -1,26 +1,45 @@
-// Spectrogram rendering: viridis colormap + offscreen-canvas image.
+// Spectrogram rendering: colormaps + offscreen-canvas image.
 
-const VIRIDIS = [
-  [0.0, [68, 1, 84]], [0.1, [72, 40, 120]], [0.2, [62, 73, 137]],
-  [0.3, [49, 104, 142]], [0.4, [38, 130, 142]], [0.5, [31, 158, 137]],
-  [0.6, [53, 183, 121]], [0.7, [110, 206, 88]], [0.8, [181, 222, 43]],
-  [0.9, [229, 228, 32]], [1.0, [253, 231, 37]],
-];
+// Eleven evenly spaced stops per map, sampled from matplotlib (linear interpolation
+// between them is visually indistinguishable from the full 256-entry tables).
+export const COLORMAPS = {
+  viridis: [[68, 1, 84], [72, 36, 117], [65, 68, 135], [53, 95, 141], [42, 120, 142], [33, 145, 140],
+    [34, 168, 132], [68, 191, 112], [122, 209, 81], [189, 223, 38], [253, 231, 37]],
+  plasma: [[13, 8, 135], [65, 4, 157], [106, 0, 168], [143, 13, 164], [177, 42, 144], [204, 71, 120],
+    [225, 100, 98], [242, 132, 75], [252, 166, 54], [252, 206, 37], [240, 249, 33]],
+  inferno: [[0, 0, 4], [22, 11, 57], [66, 10, 104], [106, 23, 110], [147, 38, 103], [188, 55, 84],
+    [221, 81, 58], [243, 120, 25], [252, 165, 10], [246, 215, 70], [252, 255, 164]],
+  magma: [[0, 0, 4], [20, 14, 54], [59, 15, 112], [100, 26, 128], [140, 41, 129], [183, 55, 121],
+    [222, 73, 104], [247, 112, 92], [254, 159, 109], [254, 207, 146], [252, 253, 191]],
+  cividis: [[0, 34, 78], [8, 51, 112], [53, 69, 108], [79, 87, 108], [102, 105, 112], [125, 124, 120],
+    [148, 142, 119], [174, 163, 113], [200, 184, 102], [229, 207, 82], [254, 232, 56]],
+  turbo: [[48, 18, 59], [69, 89, 203], [62, 155, 254], [25, 213, 205], [70, 248, 132], [164, 252, 60],
+    [225, 221, 55], [254, 164, 49], [240, 91, 18], [195, 37, 3], [122, 4, 3]],
+  jet: [[0, 0, 128], [0, 0, 241], [0, 76, 255], [0, 176, 255], [41, 255, 206], [125, 255, 122],
+    [206, 255, 41], [255, 196, 0], [255, 104, 0], [241, 8, 0], [128, 0, 0]],
+};
 
-export const VIRIDIS_LUT = (() => {
+export const DEFAULT_COLORMAP = 'viridis';
+
+function buildLut(stops) {
   const lut = new Uint8Array(256 * 3);
+  const last = stops.length - 1;
   for (let i = 0; i < 256; i++) {
-    const t = i / 255;
-    let j = 0;
-    for (; j < VIRIDIS.length - 1; j++) { if (t <= VIRIDIS[j + 1][0]) break; }
-    const f = (t - VIRIDIS[j][0]) / (VIRIDIS[j + 1][0] - VIRIDIS[j][0]);
-    const a = VIRIDIS[j][1], c = VIRIDIS[j + 1][1];
-    lut[i * 3] = Math.round(a[0] + f * (c[0] - a[0]));
-    lut[i * 3 + 1] = Math.round(a[1] + f * (c[1] - a[1]));
-    lut[i * 3 + 2] = Math.round(a[2] + f * (c[2] - a[2]));
+    const pos = (i / 255) * last;
+    const j = Math.min(Math.floor(pos), last - 1);
+    const f = pos - j;
+    for (let ch = 0; ch < 3; ch++) {
+      lut[i * 3 + ch] = Math.round(stops[j][ch] + f * (stops[j + 1][ch] - stops[j][ch]));
+    }
   }
   return lut;
-})();
+}
+
+const LUTS = Object.fromEntries(Object.entries(COLORMAPS).map(([name, stops]) => [name, buildLut(stops)]));
+
+// 256 RGB triplets for a colormap name; an unknown name (old or hand-edited config)
+// falls back to the default.
+export const colormapLut = (name) => LUTS[name] || LUTS[DEFAULT_COLORMAP];
 
 // Energy tables often come high-to-low (AMDA/CSA ion spectrometers). Every consumer
 // (edges, image rows, cursor lookup) assumes low-to-high, so flip once at ingestion.
@@ -123,10 +142,10 @@ function cadence(t) {
   return diffs[diffs.length >> 1];
 }
 
-// view: { start, end } in ms (nullable); returns { canvas, tStart, tEnd, yMin, yMax, yEdges }
+// view: { start, end } in ms (nullable); colormap: a COLORMAPS name. Returns { canvas, tStart, tEnd, yMin, yMax, yEdges }
 // or null. Columns are laid out in time, from tStart to tEnd, so samples land at their
 // own time whatever their spacing.
-export function renderSpectrogramImage(times, rows, yBinsFlat, vMin, vMax, logScale, view) {
+export function renderSpectrogramImage(times, rows, yBinsFlat, vMin, vMax, logScale, view, colormap = DEFAULT_COLORMAP) {
   const v = (view && view.start != null && view.end != null)
     ? { start: view.start, end: view.end }
     : { start: times[0], end: times[times.length - 1] };
@@ -159,7 +178,7 @@ export function renderSpectrogramImage(times, rows, yBinsFlat, vMin, vMax, logSc
   canvas.height = nY;
   const ctx = canvas.getContext('2d');
   const imgData = ctx.createImageData(width, nY);
-  paintColumns(imgData.data, colMax, width, nY, vMin, vMax, logScale);
+  paintColumns(imgData.data, colMax, width, nY, vMin, vMax, logScale, colormapLut(colormap));
   ctx.putImageData(imgData, 0, 0);
   return {
     canvas,
@@ -216,8 +235,8 @@ function columnMaxima(t, rows, nY, width, colOf, dt, tEnd) {
   return colMax;
 }
 
-// Colour each (column, bin) through viridis; empty or non-positive cells stay transparent.
-function paintColumns(pixels, colMax, width, nY, vMin, vMax, logScale) {
+// Colour each (column, bin) through the colormap's LUT; empty or non-positive cells stay transparent.
+function paintColumns(pixels, colMax, width, nY, vMin, vMax, logScale, lut) {
   const logVMin = Math.log10(Math.max(vMin, 1e-30));
   const logVMax = Math.log10(vMax);
   for (let c = 0; c < width; c++) {
@@ -229,9 +248,9 @@ function paintColumns(pixels, colMax, width, nY, vMin, vMax, logScale) {
         : (val - vMin) / (vMax - vMin);
       const li = Math.max(0, Math.min(255, Math.round(norm * 255))) * 3;
       const idx = ((nY - 1 - y) * width + c) * 4;
-      pixels[idx] = VIRIDIS_LUT[li];
-      pixels[idx + 1] = VIRIDIS_LUT[li + 1];
-      pixels[idx + 2] = VIRIDIS_LUT[li + 2];
+      pixels[idx] = lut[li];
+      pixels[idx + 1] = lut[li + 1];
+      pixels[idx + 2] = lut[li + 2];
       pixels[idx + 3] = 255;
     }
   }

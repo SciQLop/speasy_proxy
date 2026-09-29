@@ -5,6 +5,7 @@ export function createSubplotData() {
     products: [],
     y_axis: { log: false },
     logScale: true,
+    colormap: 'viridis',
     plotType: 'line',
     lastHeatmapImg: null,
     productData: {},
@@ -46,6 +47,7 @@ export function subplotToConfig(sp) {
     })),
     ...(sp._yScaleAuto ? {} : { y_axis: { log: sp.y_axis.log } }),
     ...(sp._zScaleAuto ? {} : { log_z: sp.logScale }),
+    ...(sp.colormap === 'viridis' ? {} : { colormap: sp.colormap }),
   };
 }
 
@@ -55,6 +57,7 @@ export function subplotFromConfig(plotDef) {
   // A shared/loaded config is a deliberate choice, not a default — but only when it
   // actually specified one; an old/malformed config with no y_axis is still a fresh state.
   if (plotDef.y_axis?.log !== undefined) subplot._yScaleAuto = false;
+  if (plotDef.colormap) subplot.colormap = plotDef.colormap;
   if (plotDef.log_z !== undefined) {
     subplot.logScale = plotDef.log_z;
     subplot._zScaleAuto = false;

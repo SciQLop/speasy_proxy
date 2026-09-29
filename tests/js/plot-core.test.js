@@ -485,6 +485,15 @@ describe('factories', () => {
     expect(restored._yScaleAuto).toBe(true);
     expect(restored._zScaleAuto).toBe(true);
   });
+  it('saves a colormap only when it is not the default', () => {
+    const sp = createSubplotData();
+    expect(subplotToConfig(sp).colormap).toBeUndefined();
+    sp.colormap = 'jet';
+    const cfg = subplotToConfig(sp);
+    expect(cfg.colormap).toBe('jet');
+    expect(subplotFromConfig(cfg).colormap).toBe('jet');
+    expect(subplotFromConfig({ products: [] }).colormap).toBe('viridis');
+  });
   it('subplotFromConfig treats a loaded/shared config as a deliberate choice', () => {
     const restored = subplotFromConfig({ products: [], y_axis: { log: true }, log_z: false });
     expect(restored._yScaleAuto).toBe(false);

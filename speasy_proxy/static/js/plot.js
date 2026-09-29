@@ -536,15 +536,16 @@ import { createPlotView, PRODUCT_MIME } from './plot-view.js';
 
     // Per-subplot edits reported by the chart (its toolbar, title chips and drop targets).
     const subplotActions = {
-        logY: ({ index }) => toggleScale(index, (sp) => {
+        logY: ({ index }) => editSubplot(index, (sp) => {
             sp.y_axis.log = !sp.y_axis.log;
             sp._yScaleAuto = false;
             delete sp._yOverride;  // a manual linear range can start at <= 0, invalid on log
         }),
-        logZ: ({ index }) => toggleScale(index, (sp) => {
+        logZ: ({ index }) => editSubplot(index, (sp) => {
             sp.logScale = !sp.logScale;
             sp._zScaleAuto = false;
         }),
+        colormap: ({ index, value }) => editSubplot(index, (sp) => { sp.colormap = value; }),
         remove: ({ index }) => removeSubplot(index),
         removeProduct: ({ index, path }) => removeProductFromSubplot(index, path),
         addProduct: ({ index, path }) => addProductToPlot(path, index === null ? {} : { into: index }),
@@ -555,10 +556,10 @@ import { createPlotView, PRODUCT_MIME } from './plot-view.js';
         subplotActions[action.type]?.(action);
     }
 
-    function toggleScale(index, flip) {
+    function editSubplot(index, edit) {
         const subplot = plotState.plots[index];
         if (!subplot) return;
-        flip(subplot);
+        edit(subplot);
         renderAllSubplots(true);
         updateURL();
     }

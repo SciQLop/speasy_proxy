@@ -532,6 +532,14 @@ describe('per-subplot actions (the toolbar on each subplot)', () => {
     expect(plotState.plots.map((sp) => sp.logScale)).toEqual([false, true]);
   });
 
+  it('a colormap pick changes only the spectrogram it belongs to', () => {
+    plotState.plots = [heatmapSubplot(), heatmapSubplot()];
+
+    plot.__test__.subplotAction({ type: 'colormap', index: 1, value: 'jet' });
+
+    expect(plotState.plots.map((sp) => sp.colormap)).toEqual([undefined, 'jet']);
+  });
+
   it('remove drops that subplot', () => {
     plotState.plots = [lineSubplot('cda/a'), lineSubplot('cda/b')];
 
@@ -591,6 +599,19 @@ describe('subplot toolbar', () => {
       ['auto Y', 'pv-tool active'], ['log Y', 'pv-tool active'], ['✕', 'pv-tool remove'],
       ['auto Y', 'pv-tool active'], ['log Y', 'pv-tool'], ['log Z', 'pv-tool active'], ['✕', 'pv-tool remove'],
     ]);
+  });
+
+  it('offers a colormap choice only on spectrograms, showing the current one', () => {
+    initChart();
+    const line = { products: [{ path: 'cda/b' }], y_axis: { log: false }, plotType: 'line', productData: { 'cda/b': lineCache('cda/b', '') } };
+    plotState.plots = [line, { ...heatmapSubplot(), colormap: 'turbo' }];
+    const before = dom.created.length;
+
+    renderAllSubplots();
+
+    const selects = dom.created.slice(before).filter((e) => e.tagName === 'SELECT');
+    expect(selects).toHaveLength(1);
+    expect(selects[0].value).toBe('turbo');
   });
 
   it('auto Y off freezes the current Y range, back on lets it refit', () => {
