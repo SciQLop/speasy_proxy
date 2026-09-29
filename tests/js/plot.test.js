@@ -448,6 +448,52 @@ describe('restoring the params box after a page refresh', () => {
   });
 });
 
+describe('product parameters in the subplot toolbar', () => {
+  const sscTree = { ssc: { Trajectories: { ace: {
+    __spz_type__: 'ParameterIndex', __spz_provider__: 'ssc', __spz_uid__: 'ace', __spz_name__: 'ACE',
+  } } } };
+  const sscSubplot = (coordinateSystem) => ({
+    products: [{ path: 'ssc/ace', label: 'ace', coordinateSystem }],
+    productData: { 'ssc/ace': lineCache('ssc/ace', '') }, y_axis: { log: false }, plotType: 'line',
+  });
+  const paramSelects = (from) => dom.created.slice(from).filter((e) => e.tagName === 'SELECT' && e.className.includes('pv-param'));
+
+  it('shows each subplot its own product frame, and a change touches only that subplot', async () => {
+    apiClient.fetchInventory.mockResolvedValueOnce(sscTree);
+    await plot.__test__.loadInventory();
+    initChart();
+    plotState.plots = [sscSubplot('gsm'), sscSubplot(undefined)];
+    const before = dom.created.length;
+
+    renderAllSubplots();
+
+    const selects = paramSelects(before);
+    expect(selects.map((s) => s.value)).toEqual(['gsm', 'gse']);
+    selects[1].value = 'sm';
+    selects[1].addEventListener.mock.calls.find(([type]) => type === 'change')[1]();
+    expect(plotState.plots.map((sp) => sp.products[0].coordinateSystem)).toEqual(['gsm', 'sm']);
+  });
+
+  it('keeps the sidebar in step when the changed product is the one selected there', async () => {
+    apiClient.fetchInventory.mockResolvedValueOnce(sscTree);
+    await plot.__test__.loadInventory();
+    plot.__test__.setSelectedProduct('ssc/ace');
+    plotState.plots = [sscSubplot('gsm')];
+
+    plot.__test__.subplotAction({ type: 'productParam', index: 0, path: 'ssc/ace', key: 'coordinate_system', value: 'sm' });
+
+    expect(collectProductParams()).toEqual({ coordinateSystem: 'sm' });
+  });
+
+  it('shows no parameter dropdowns for a plain product', () => {
+    initChart();
+    plotState.plots = [{ products: [{ path: 'cda/b' }], y_axis: { log: false }, plotType: 'line', productData: { 'cda/b': lineCache('cda/b', '') } }];
+    const before = dom.created.length;
+    renderAllSubplots();
+    expect(paramSelects(before)).toHaveLength(0);
+  });
+});
+
 describe('share URL behind a reverse-proxy prefix', () => {
   it('does not duplicate the root_path prefix', () => {
     initChart();

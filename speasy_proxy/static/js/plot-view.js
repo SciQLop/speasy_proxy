@@ -9,7 +9,7 @@ import uPlot from './vendor/uPlot.esm.js';
 import { CHART_COLORS, escapeHtml, parseUtc } from './common.js';
 import {
   lineTable, nearestIndex, fmtTick, productTitle, dropZone,
-  computeValueRange, renderableRange,
+  computeValueRange, renderableRange, paramValue,
 } from './plot-core.js';
 import { binRowRects, computeYEdges, lowestPositiveEdge, renderSpectrogramImage, spectrogramValueAt, COLORMAPS, colormapLut } from './spectrogram.js';
 import { bindGestures } from './plot-gestures.js';
@@ -39,7 +39,8 @@ const lineProducts = (sp) => sp.products
   .filter(({ cache }) => cache && cache.columnNames.length > 0);
 const fmtValue = (v) => String(Number(v.toPrecision(4)));
 
-export function createPlotView(root, { onViewChange, onAction = () => {} }) {
+// paramSpecsOf(path): the product's extra parameters (inventory-tree.js paramSpecs).
+export function createPlotView(root, { onViewChange, onAction = () => {}, paramSpecsOf = () => [] }) {
   const plotsEl = el('div', 'pv-plots');
   const tooltip = el('div', 'pv-tooltip');
   const dropNew = el('div', 'pv-drop-new');
@@ -172,8 +173,8 @@ export function createPlotView(root, { onViewChange, onAction = () => {} }) {
       tools.show('autoY', !subplot._yOverride);
     };
     const toggleAutoY = () => setY(subplot._yOverride ? null : { min: u.scales.y.min, max: u.scales.y.max });
-    const tools = createTools(subplot, isHeatmap,
-      (type, value) => (type === 'autoY' ? toggleAutoY() : onAction({ type, index, value })));
+    const tools = createTools(subplot, isHeatmap, paramSpecsOf,
+      (type, value, extra) => (type === 'autoY' ? toggleAutoY() : onAction({ type, index, value, ...extra })));
     const colorbar = isHeatmap ? createColorbar(subplot) : null;
     u.root.appendChild(createBadge(u, createTitle(subplot, isHeatmap, loading, (path) => act('removeProduct', path)), colorbar));
     u.root.appendChild(tools.bar);
@@ -453,7 +454,7 @@ function gradientCanvas(lut) {
 
 // Controls in the plot's top-right corner. Each acts on its own subplot only.
 // show(type, on) updates a toggle's state without rebuilding the chart.
-function createTools(subplot, isHeatmap, act) {
+function createTools(subplot, isHeatmap, paramSpecsOf, act) {
   const bar = el('div', 'pv-tools');
   bar.style.right = (CHART_PADDING[1] + BADGE_INSET_PX) + 'px';
   bar.style.top = (CHART_PADDING[0] + BADGE_INSET_PX) + 'px';
@@ -473,21 +474,39 @@ function createTools(subplot, isHeatmap, act) {
     bar.appendChild(b);
     buttons[t.type] = b;
   }
+  for (const p of paramPickers(subplot, paramSpecsOf, act)) bar.insertBefore(p, buttons.autoY);
   if (isHeatmap) bar.insertBefore(colormapPicker(subplot, act), buttons.remove);
   return { bar, show: (type, on) => { buttons[type].className = toolClass(on); } };
 }
 
 function colormapPicker(subplot, act) {
-  const select = el('select', 'pv-tool');
-  select.title = 'Colour map';
-  for (const name of Object.keys(COLORMAPS)) {
+  const names = Object.keys(COLORMAPS).map((name) => [name, name]);
+  return picker('Colour map', names, subplot.colormap || 'viridis', (name) => act('colormap', name));
+}
+
+// One dropdown per extra parameter (frame, AMDA template argument) of each product.
+// The name is in the tooltip to keep the toolbar short; overlays prefix the product.
+function paramPickers(subplot, paramSpecsOf, act) {
+  const withParams = subplot.products
+    .map((prod) => ({ prod, specs: paramSpecsOf(prod.path) }))
+    .filter(({ specs }) => specs.length > 0);
+  const prefix = (prod) => (withParams.length > 1 ? (prod.label || prod.path) + ' · ' : '');
+  return withParams.flatMap(({ prod, specs }) => specs.map((spec) => picker(
+    prefix(prod) + spec.label, spec.choices, paramValue(prod, spec),
+    (value) => act('productParam', value, { path: prod.path, key: spec.key }), ' pv-param')));
+}
+
+function picker(title, choices, value, onPick, extraClass = '') {
+  const select = el('select', 'pv-tool' + extraClass);
+  select.title = title;
+  for (const [label, optionValue] of choices) {
     const option = document.createElement('option');
-    option.value = name;
-    option.textContent = name;
+    option.value = optionValue;
+    option.textContent = label;
     select.appendChild(option);
   }
-  select.value = subplot.colormap || 'viridis';
-  select.addEventListener('change', () => act('colormap', select.value));
+  select.value = value;
+  select.addEventListener('change', () => onPick(select.value));
   return select;
 }
 

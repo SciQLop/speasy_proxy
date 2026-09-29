@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   mergeSorted, spliceRows, mergeIntervals, evictProductCache,
   detectPlotType, configToBase64, base64ToConfig, isCovered, resolutionSufficient, rangesOverlap, trimCacheWindow, cacheToCsv,
-  createSubplotData, createProductCache, subplotToConfig, subplotFromConfig,
+  createSubplotData, createProductCache, subplotToConfig, subplotFromConfig, paramValue, withParam,
   normalizeWheelDelta, wheelIntent, zoomRange, panRange, zoomToward, pinchRange, structureKey, resampleTarget,
   plotTypeFromCache, computeValueRange, mergeValueRange, renderableRange,
   nearestIndex, lineTable, yRangeFromPixels, fmtTick, cleanText, productTitle, dropZone, distinctCrumbs,
@@ -639,5 +639,22 @@ describe('distinctCrumbs', () => {
   it('keeps a lone result whole, and paths with nothing in common as they are', () => {
     expect(distinctCrumbs([['cda', 'ACE']])).toEqual(['cda / ACE']);
     expect(distinctCrumbs([['cda', 'ACE'], ['amda', 'ACE']])).toEqual(['cda / ACE', 'amda / ACE']);
+  });
+});
+
+describe('product params', () => {
+  const frame = { key: 'coordinate_system', label: 'Frame', choices: [['gse', 'gse'], ['gsm', 'gsm']], default: 'gse' };
+  const side = { key: 'side', label: 'Side', choices: [['0', '0'], ['1', '1']], default: '0' };
+
+  it('reads the product value, else the default', () => {
+    expect(paramValue({ path: 'ssc/ace' }, frame)).toBe('gse');
+    expect(paramValue({ path: 'ssc/ace', coordinateSystem: 'gsm' }, frame)).toBe('gsm');
+    expect(paramValue({ path: 'amda/x', productInputs: { side: '1' } }, side)).toBe('1');
+  });
+
+  it('sets a coordinate system or one template argument, keeping the others', () => {
+    expect(withParam({ path: 'ssc/ace' }, 'coordinate_system', 'gsm')).toEqual({ path: 'ssc/ace', coordinateSystem: 'gsm' });
+    expect(withParam({ path: 'amda/x', productInputs: { side: '0', level: 'L2' } }, 'side', '1'))
+      .toEqual({ path: 'amda/x', productInputs: { side: '1', level: 'L2' } });
   });
 });

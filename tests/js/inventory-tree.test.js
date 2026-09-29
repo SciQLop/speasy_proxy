@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   SKIP_KEYS, SSC_METADATA_KEYS, getDisplayName, getProductPath, shouldSkipNode,
   isSpzMetaKey, hasVisibleChildren, isParameterIndex, isSelectableProduct, hasSelectableDescendant,
+  paramSpecs,
 } from '../../speasy_proxy/static/js/inventory-tree.js';
 
 describe('inventory primitives', () => {
@@ -77,5 +78,41 @@ describe('hasSelectableDescendant', () => {
   it('is false for scalars and null', () => {
     expect(hasSelectableDescendant(null)).toBe(false);
     expect(hasSelectableDescendant('x')).toBe(false);
+  });
+});
+
+describe('paramSpecs', () => {
+  const amdaNode = {
+    __spz_type__: 'TemplatedParameterIndex', __spz_provider__: 'amda',
+    __spz_arguments__: {
+      __spz_type__: 'ArgumentListIndex',
+      side: { __spz_type__: 'ArgumentIndex', key: 'side', name: 'Side', default: '0', choices: [['Side 0', '0'], ['Side 1', '1']] },
+      level: { __spz_type__: 'ArgumentIndex', key: 'level', name: 'Level', default: 'L2' },
+    },
+  };
+
+  it('lists one dropdown per AMDA template argument', () => {
+    expect(paramSpecs(amdaNode)).toEqual([
+      { key: 'side', label: 'Side', choices: [['Side 0', '0'], ['Side 1', '1']], default: '0' },
+      { key: 'level', label: 'Level', choices: [['L2', 'L2']], default: 'L2' },
+    ]);
+  });
+
+  it('gives SSC trajectories a coordinate_system choice, gse by default', () => {
+    const [spec] = paramSpecs({ __spz_type__: 'ParameterIndex', __spz_provider__: 'ssc' });
+    expect(spec.key).toBe('coordinate_system');
+    expect(spec.default).toBe('gse');
+    expect(spec.choices.map(([, v]) => v)).toContain('gsm');
+  });
+
+  it('gives 3DView the known frames, J2000 until the list arrives', () => {
+    const node = { __spz_type__: 'ParameterIndex', __spz_provider__: 'cdpp3dview' };
+    expect(paramSpecs(node)[0].choices).toEqual([['J2000', 'J2000']]);
+    expect(paramSpecs(node, ['GSE', 'J2000'])[0]).toEqual(
+      { key: 'coordinate_system', label: 'Frame', choices: [['GSE', 'GSE'], ['J2000', 'J2000']], default: 'J2000' });
+  });
+
+  it('has nothing for a plain product', () => {
+    expect(paramSpecs({ __spz_type__: 'ParameterIndex', __spz_provider__: 'cda' })).toEqual([]);
   });
 });

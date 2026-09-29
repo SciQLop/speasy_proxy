@@ -77,3 +77,40 @@ export function hasSelectableDescendant(node) {
   }
   return selectableBelow.get(node);
 }
+
+// SSCWeb trajectories accept a fixed coordinate_system, same choices for every product
+// (see get_data.py's Query enum): unlike AMDA's arguments, not inventory metadata.
+const SSC_COORDINATE_SYSTEMS = ['geo', 'gm', 'gse', 'gsm', 'sm', 'geitod', 'geij2000'];
+
+const pairs = (values) => values.map((v) => [v, v]);
+
+// The extra /get_data parameters a product takes, one dropdown each:
+// [{ key, label, choices: [[label, value], ...], default }]. key is 'coordinate_system'
+// or an AMDA template argument (sent in product_inputs). frames3d: the 3DView frame
+// list once fetched (get_3dview_frames); J2000 until then.
+export function paramSpecs(node, frames3d = []) {
+  if (node?.__spz_type__ === 'TemplatedParameterIndex' && node.__spz_arguments__) {
+    return templateArgSpecs(node.__spz_arguments__);
+  }
+  if (node?.__spz_provider__ === 'ssc') {
+    return [{ key: 'coordinate_system', label: 'Coord.', choices: pairs(SSC_COORDINATE_SYSTEMS), default: 'gse' }];
+  }
+  if (node?.__spz_provider__ === 'cdpp3dview') {
+    const frames = frames3d.length > 0 ? frames3d : ['J2000'];
+    return [{ key: 'coordinate_system', label: 'Frame', choices: pairs(frames), default: frames.includes('J2000') ? 'J2000' : frames[0] }];
+  }
+  return [];
+}
+
+// AMDA's __spz_arguments__ is an ArgumentListIndex of ArgumentIndex nodes
+// (key/name/default/choices); needs inventory version 2 for `choices` to be real JSON.
+function templateArgSpecs(args) {
+  return Object.entries(args)
+    .filter(([name, arg]) => !isSpzMetaKey(name) && name !== 'name' && name !== 'is_public' && arg && typeof arg === 'object')
+    .map(([name, arg]) => ({
+      key: arg.key || name,
+      label: arg.name || arg.key || name,
+      choices: Array.isArray(arg.choices) && arg.choices.length > 0 ? arg.choices : [[arg.default, arg.default]],
+      default: arg.default,
+    }));
+}

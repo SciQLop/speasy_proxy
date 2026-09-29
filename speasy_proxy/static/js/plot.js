@@ -3,13 +3,14 @@ import {
   setStatus, showLoading, showFetchBar, fallbackCopy,
   installErrorBoundary,
 } from './common.js';
-import { getDisplayName, getProductPath, shouldSkipNode, SKIP_KEYS, isSpzMetaKey, isSelectableProduct, browsableChildKeys, hasSelectableDescendant } from './inventory-tree.js';
+import { getDisplayName, getProductPath, shouldSkipNode, SKIP_KEYS, isSpzMetaKey, isSelectableProduct, browsableChildKeys, hasSelectableDescendant, paramSpecs } from './inventory-tree.js';
 import {
   createSubplotData, createProductCache, subplotToConfig, subplotFromConfig,
   detectPlotType, mergeSorted, spliceRows, mergeIntervals, evictProductCache,
   configToBase64, base64ToConfig, isCovered, resolutionSufficient, rangesOverlap, trimCacheWindow, cacheToCsv,
   structureKey, resampleTarget, plotTypeFromCache, computeValueRange, mergeValueRange, cleanText, distinctCrumbs,
   logHintFromRange,
+  paramValue, withParam,
 } from './plot-core.js';
 import { ascendingSpectrogram } from './spectrogram.js';
 import { fetchData as apiFetchData, fetchInventory } from './api-client.js';
@@ -63,6 +64,8 @@ import { createPlotView, PRODUCT_MIME } from './plot-view.js';
             renderTree(inventory);
             leafIndex = [];
             buildLeafIndex(inventory, []);
+            // Subplots drawn before the inventory arrived have no parameter dropdowns yet.
+            if (plotView && plotState.plots.length > 0) renderAllSubplots(true);
             // Restore the params box for a product already selected by the time this
             // resolves (a ?config=/?path= URL applies before the inventory fetch
             // finishes) -- otherwise a page refresh with e.g. a chosen coordinate_system
@@ -199,14 +202,10 @@ import { createPlotView, PRODUCT_MIME } from './plot-view.js';
 
     // ===== Per-product extra parameters (AMDA template args, SSC/3DView frames) =====
 
-    // SSCWeb trajectories accept a fixed coordinate_system, same choices for every
-    // product (see get_data.py's Query enum) -- unlike AMDA's arguments, this isn't
-    // per-product inventory metadata.
-    const SSC_COORDINATE_SYSTEMS = ['geo', 'gm', 'gse', 'gsm', 'sm', 'geitod', 'geij2000'];
-
     let productParamSelects = {};   // key -> <select> currently shown in #product-params
     let productParamsKind = null;   // null | 'product_inputs' (AMDA) | 'coordinate_system' (SSC/3DView)
     let paramsGeneration = 0;       // guards a stale async frame-list fetch from clobbering a later selection
+    let frames3d = [];              // 3DView frames once fetched; paramSpecs shows J2000 until then
 
     let cdpp3dviewFramesPromise = null;
     function get3dViewFrames() {
@@ -220,6 +219,7 @@ import { createPlotView, PRODUCT_MIME } from './plot-view.js';
             // product selection retry instead of being stuck with no frames all session.
             cdpp3dviewFramesPromise.then(frames => {
                 if (frames.length === 0) cdpp3dviewFramesPromise = null;
+                else frames3d = frames;
             });
         }
         return cdpp3dviewFramesPromise;
@@ -268,75 +268,43 @@ import { createPlotView, PRODUCT_MIME } from './plot-view.js';
         }
     }
 
-    // AMDA's TemplatedParameterIndex carries __spz_arguments__ (an ArgumentListIndex
-    // of ArgumentIndex nodes: key/name/type/default/choices) -- render one <select>
-    // per argument. Requires inventory version 2 (see loadInventory) so `choices`
-    // survives as a real [[label, value], ...] array instead of a stringified repr.
-    //
-    // presetValues (optional): { coordinateSystem?, productInputs? } to select instead
-    // of the usual defaults -- used to restore a page-refresh/shared config's actual
-    // choice (see loadInventory) rather than silently resetting it.
+    // The sidebar's dropdowns for the selected product, one per paramSpecs entry.
+    // presetValues (optional): a plotted product ({ coordinateSystem?, productInputs? })
+    // whose choices to show instead of the defaults -- restores a page-refresh/shared
+    // config's actual choice (see loadInventory) rather than silently resetting it.
     function renderProductParams(node, presetValues) {
         const container = document.getElementById('product-params');
-        container.innerHTML = '';
-        productParamSelects = {};
-        productParamsKind = null;
         const myGeneration = ++paramsGeneration;
-
-        const applyPreset = () => {
-            if (!presetValues) return;
-            if (presetValues.coordinateSystem && productParamSelects['coordinate_system']) {
-                productParamSelects['coordinate_system'].value = presetValues.coordinateSystem;
-            }
-            if (presetValues.productInputs) {
-                for (const key of Object.keys(presetValues.productInputs)) {
-                    if (productParamSelects[key]) productParamSelects[key].value = presetValues.productInputs[key];
-                }
+        const draw = (frames) => {
+            container.innerHTML = '';
+            productParamSelects = {};
+            const specs = paramSpecs(node, frames);
+            productParamsKind = specs.length === 0 ? null
+                : specs[0].key === 'coordinate_system' ? 'coordinate_system' : 'product_inputs';
+            for (const spec of specs) {
+                addParamSelect(container, spec.key, spec.label, spec.choices,
+                    presetValues ? paramValue(presetValues, spec) : spec.default);
             }
         };
-
-        if (node.__spz_type__ === 'TemplatedParameterIndex' && node.__spz_arguments__) {
-            productParamsKind = 'product_inputs';
-            const args = node.__spz_arguments__;
-            for (const key of Object.keys(args)) {
-                if (isSpzMetaKey(key) || key === 'name' || key === 'is_public') continue;
-                const arg = args[key];
-                if (!arg || typeof arg !== 'object') continue;
-                const choices = Array.isArray(arg.choices) && arg.choices.length > 0
-                    ? arg.choices : [[arg.default, arg.default]];
-                addParamSelect(container, arg.key || key, arg.name || arg.key || key, choices, arg.default);
-            }
-            applyPreset();
-            return;
-        }
-
-        if (node.__spz_provider__ === 'ssc') {
-            productParamsKind = 'coordinate_system';
-            addParamSelect(container, 'coordinate_system', 'Coord.',
-                SSC_COORDINATE_SYSTEMS.map(c => [c, c]), 'gse');
-            applyPreset();
-            return;
-        }
-
-        if (node.__spz_provider__ === 'cdpp3dview') {
-            productParamsKind = 'coordinate_system';
-            addParamSelect(container, 'coordinate_system', 'Frame', [['J2000', 'J2000']], 'J2000');
-            applyPreset();  // in case the live frame list never arrives
+        draw(frames3d);
+        if (node.__spz_provider__ === 'cdpp3dview' && frames3d.length === 0) {
             get3dViewFrames().then(frames => {
-                if (myGeneration !== paramsGeneration || frames.length === 0) return;
-                const select = productParamSelects['coordinate_system'];
-                if (!select) return;
-                select.innerHTML = '';
-                for (const f of frames) {
-                    const opt = document.createElement('option');
-                    opt.value = f;
-                    opt.textContent = f;
-                    select.appendChild(opt);
-                }
-                select.value = frames.includes('J2000') ? 'J2000' : frames[0];
-                applyPreset();  // re-apply now that the real options exist
+                if (myGeneration === paramsGeneration && frames.length > 0) draw(frames);
             });
         }
+    }
+
+    // The toolbar's dropdowns for a plotted product; [] until the inventory is loaded.
+    // A 3DView product asks for the frame list once, then redraws with it.
+    let frames3dRequested = false;
+    function paramSpecsOf(path) {
+        const leaf = leafIndex.find(l => l.path === path);
+        if (!leaf) return [];
+        if (leaf.node.__spz_provider__ === 'cdpp3dview' && !frames3dRequested) {
+            frames3dRequested = true;
+            get3dViewFrames().then(frames => { if (frames.length > 0) renderAllSubplots(true); });
+        }
+        return paramSpecs(leaf.node, frames3d);
     }
 
     // Read back whatever renderProductParams built, in the shape fetchData() expects.
@@ -425,7 +393,7 @@ import { createPlotView, PRODUCT_MIME } from './plot-view.js';
 
     function initChart() {
         const el = document.getElementById('chart');
-        plotView = createPlotView(el, { onViewChange, onAction: subplotAction });
+        plotView = createPlotView(el, { onViewChange, onAction: subplotAction, paramSpecsOf });
         let resizeRaf = 0;
         new ResizeObserver(() => {
             if (resizeRaf) return;
@@ -546,6 +514,7 @@ import { createPlotView, PRODUCT_MIME } from './plot-view.js';
             sp._zScaleAuto = false;
         }),
         colormap: ({ index, value }) => editSubplot(index, (sp) => { sp.colormap = value; }),
+        productParam: ({ index, path, key, value }) => setProductParam(index, path, key, value),
         remove: ({ index }) => removeSubplot(index),
         removeProduct: ({ index, path }) => removeProductFromSubplot(index, path),
         addProduct: ({ index, path }) => addProductToPlot(path, index === null ? {} : { into: index }),
@@ -554,6 +523,19 @@ import { createPlotView, PRODUCT_MIME } from './plot-view.js';
 
     function subplotAction(action) {
         subplotActions[action.type]?.(action);
+    }
+
+    // Only this subplot's copy of the product changes; its cache is dropped, not merged,
+    // so two frames or template settings never mix in one series.
+    function setProductParam(index, path, key, value) {
+        const subplot = plotState.plots[index];
+        if (!subplot) return;
+        subplot.products = subplot.products.map(p => (p.path === path ? withParam(p, key, value) : p));
+        subplot.productData[path] = createProductCache(path);
+        const leaf = path === selectedProduct && leafIndex.find(l => l.path === path);
+        if (leaf) renderProductParams(leaf.node, subplot.products.find(p => p.path === path));
+        updateURL();
+        fetchAllAndRender();
     }
 
     function editSubplot(index, edit) {
@@ -1322,5 +1304,5 @@ import { createPlotView, PRODUCT_MIME } from './plot-view.js';
         renderProductParams, collectProductParams, selectProduct, onProductParamsChanged, loadInventory,
         subplotAction, setSelectedProduct: (path) => { selectedProduct = path; },
         replotOverRange, loadFromURLParams, base64ToConfig, onSearchInput, onMultiZoomPan,
-        __resetCdpp3dviewFramesCache: () => { cdpp3dviewFramesPromise = null; },
+        __resetCdpp3dviewFramesCache: () => { cdpp3dviewFramesPromise = null; frames3d = []; frames3dRequested = false; },
     };

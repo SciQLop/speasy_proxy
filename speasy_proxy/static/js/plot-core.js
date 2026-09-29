@@ -36,6 +36,19 @@ export function createProductCache(path) {
   };
 }
 
+// A plotted product's value for one paramSpecs entry, else the spec's default.
+export function paramValue(prod, spec) {
+  const value = spec.key === 'coordinate_system' ? prod.coordinateSystem : prod.productInputs?.[spec.key];
+  return value ?? spec.default;
+}
+
+// A copy of the product with one parameter set; other template arguments are kept.
+export function withParam(prod, key, value) {
+  return key === 'coordinate_system'
+    ? { ...prod, coordinateSystem: value }
+    : { ...prod, productInputs: { ...prod.productInputs, [key]: value } };
+}
+
 // Scales are saved only once chosen explicitly; one still following the ISTP hint is
 // left out so a reload re-reads the hint (see subplotFromConfig).
 export function subplotToConfig(sp) {
