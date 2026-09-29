@@ -57,10 +57,10 @@
         .time-range { display: flex; align-items: center; gap: 6px; color: #555e7e; }
         .time-zone { font-size: 0.75rem; }
         .bar-spacer { flex: 1; }
-        /* The preset's name and story: one line, full text on hover or click */
-        .preset-caption { flex: 0 1 auto; min-width: 0; max-width: 40vw; color: #aeb6d4; font-size: 0.8rem;
-            white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: pointer; }
-        .preset-caption.expanded { white-space: normal; max-width: 60vw; }
+        /* The preset's name and story, in the sidebar: the top bar has no room for it */
+        .preset-story { padding: 10px 16px; border-bottom: 1px solid #1e2640; font-size: 0.8rem; }
+        .preset-story-name { color: #e0e6f0; font-weight: 600; }
+        .preset-story-desc { color: #8892b0; margin-top: 4px; line-height: 1.4; }
         .bar-actions { display: flex; align-items: center; gap: 6px; }
 
         /* Selected product (sidebar): its path and per-product params */
@@ -332,6 +332,10 @@
     <div class="sidebar-header">
         <a href="{{ base_url }}/" class="back-link">&larr; Back to dashboard</a>
     </div>
+    <div class="preset-story" id="preset-story" hidden>
+        <div class="preset-story-name" id="preset-story-name"></div>
+        <div class="preset-story-desc" id="preset-story-desc"></div>
+    </div>
     <details class="side-section" id="presets-container" hidden>
         <summary>Presets</summary>
         <div class="side-list" id="presets-list"></div>
@@ -380,7 +384,6 @@
             <span class="time-span" id="time-span" title="Window length"></span>
         </div>
 
-        <span class="preset-caption" id="preset-caption" hidden></span>
         <div class="bar-spacer"></div>
 
         <div class="bar-actions">

@@ -451,9 +451,6 @@ import { presetConfig, configStory, pythonSnippet, dataUrls, historyMode, addRec
             else if (e.key === 'ArrowRight') { e.preventDefault(); panTime(1); }
         });
         document.getElementById('btn-clear').addEventListener('click', clearAllPlots);
-        const caption = document.getElementById('preset-caption');
-        caption.addEventListener('click', () => caption.classList.toggle('expanded'));
-
         document.getElementById('btn-export-png').addEventListener('click', exportPng);
         document.getElementById('btn-export-csv').addEventListener('click', exportCsv);
 
@@ -1390,11 +1387,10 @@ import { presetConfig, configStory, pythonSnippet, dataUrls, historyMode, addRec
 
     // One truncated line in the top bar; the description shows on hover, or in full on click.
     function showStory() {
-        const caption = document.getElementById('preset-caption');
         const story = plotState.story;
-        caption.hidden = !story;
-        caption.textContent = story ? story.name + (story.description ? ' — ' + story.description : '') : '';
-        caption.title = story ? story.name + (story.description ? '\n\n' + story.description : '') : '';
+        document.getElementById('preset-story').hidden = !story;
+        document.getElementById('preset-story-name').textContent = story ? story.name : '';
+        document.getElementById('preset-story-desc').textContent = story ? story.description : '';
     }
 
     // ===== Events Panel =====

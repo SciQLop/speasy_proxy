@@ -1325,13 +1325,12 @@ describe('a preset keeps its story', () => {
 
   beforeEach(() => initChart());
 
-  it('shows the preset name as a caption, the description on hover', () => {
+  it('shows the preset name and description in the sidebar', () => {
     applyConfig(story);
 
-    const caption = dom.getById('preset-caption');
-    expect(caption.hidden).toBe(false);
-    expect(caption.textContent).toContain('THEMIS substorm');
-    expect(caption.title).toContain('Dipolarization at 04:54 UT.');
+    expect(dom.getById('preset-story').hidden).toBe(false);
+    expect(dom.getById('preset-story-name').textContent).toBe('THEMIS substorm');
+    expect(dom.getById('preset-story-desc').textContent).toBe('Dipolarization at 04:54 UT.');
   });
 
   it('keeps name and description in the share URL', () => {
@@ -1352,7 +1351,7 @@ describe('a preset keeps its story', () => {
     applyConfig(story);
     applyConfig({ ...story, name: undefined, description: undefined });
 
-    expect(dom.getById('preset-caption').hidden).toBe(true);
+    expect(dom.getById('preset-story').hidden).toBe(true);
     updateShareURL();
     expect(sharedConfig()).not.toHaveProperty('name');
   });
