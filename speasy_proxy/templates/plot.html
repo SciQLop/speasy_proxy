@@ -285,6 +285,14 @@
         .range-chips #btn-now {
             font-size: 0.78rem;
         }
+
+        .range-chips button.active {
+            color: #fff;
+            background: #3b4f9e;
+            border-color: #6b8afd;
+        }
+
+        .time-span { font-size: 0.75rem; color: #8892b0; white-space: nowrap; }
     </style>
 </head>
 <body>
@@ -325,21 +333,22 @@
         <button class="sidebar-collapse-btn" id="sidebar-collapse-btn" title="Toggle sidebar">&#9664;</button>
         <div class="range-chips" id="range-chips">
             <button class="pan" data-pan="-1" title="Pan earlier (←)">&#9664;</button>
-            <button data-ms="3600000" title="Last hour of the window">1h</button>
-            <button data-ms="21600000">6h</button>
-            <button data-ms="86400000">1d</button>
-            <button data-ms="259200000">3d</button>
-            <button data-ms="604800000">7d</button>
-            <button data-ms="2592000000">30d</button>
+            <button data-ms="3600000" title="Show 1 hour around the current centre">1h</button>
+            <button data-ms="21600000" title="Show 6 hours around the current centre">6h</button>
+            <button data-ms="86400000" title="Show 1 day around the current centre">1d</button>
+            <button data-ms="259200000" title="Show 3 days around the current centre">3d</button>
+            <button data-ms="604800000" title="Show 7 days around the current centre">7d</button>
+            <button data-ms="2592000000" title="Show 30 days around the current centre">30d</button>
             <button class="pan" data-pan="1" title="Pan later (→)">&#9654;</button>
             <button id="btn-now" title="Set stop to now, keep window width">Now</button>
         </div>
 
         <div class="time-range">
-            <input type="text" class="dt-input" id="start-time" aria-label="Start" title="Start, UTC (Enter to apply)" placeholder="DD-MM-YYYY HH:MM" autocomplete="off" spellcheck="false">
+            <input type="text" class="dt-input" id="start-time" aria-label="Start" title="Start, UTC. Type or paste YYYY-MM-DD HH:MM (ISO, or DD-MM-YYYY), or pick in the calendar" placeholder="YYYY-MM-DD HH:MM" autocomplete="off" spellcheck="false">
             <span>→</span>
-            <input type="text" class="dt-input" id="stop-time" aria-label="Stop" title="Stop, UTC (Enter to apply)" placeholder="DD-MM-YYYY HH:MM" autocomplete="off" spellcheck="false">
+            <input type="text" class="dt-input" id="stop-time" aria-label="Stop" title="Stop, UTC. Type or paste YYYY-MM-DD HH:MM (ISO, or DD-MM-YYYY), or pick in the calendar" placeholder="YYYY-MM-DD HH:MM" autocomplete="off" spellcheck="false">
             <span class="time-zone">UTC</span>
+            <span class="time-span" id="time-span" title="Window length"></span>
         </div>
 
         <div class="bar-spacer"></div>

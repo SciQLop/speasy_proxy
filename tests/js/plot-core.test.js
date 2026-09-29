@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   mergeSorted, spliceRows, mergeIntervals, evictProductCache,
   detectPlotType, configToBase64, base64ToConfig, isCovered, resolutionSufficient, rangesOverlap, trimCacheWindow, cacheToCsv,
-  createSubplotData, createProductCache, subplotToConfig, subplotFromConfig, paramValue, withParam,
+  createSubplotData, createProductCache, subplotToConfig, subplotFromConfig, paramValue, withParam, centeredRange, editedRange, formatSpan,
   normalizeWheelDelta, wheelIntent, zoomRange, panRange, zoomToward, pinchRange, structureKey, resampleTarget,
   plotTypeFromCache, computeValueRange, mergeValueRange, renderableRange,
   nearestIndex, lineTable, yRangeFromPixels, fmtTick, cleanText, productTitle, dropZone, distinctCrumbs,
@@ -656,5 +656,25 @@ describe('product params', () => {
     expect(withParam({ path: 'ssc/ace' }, 'coordinate_system', 'gsm')).toEqual({ path: 'ssc/ace', coordinateSystem: 'gsm' });
     expect(withParam({ path: 'amda/x', productInputs: { side: '0', level: 'L2' } }, 'side', '1'))
       .toEqual({ path: 'amda/x', productInputs: { side: '1', level: 'L2' } });
+  });
+});
+
+describe('time window helpers', () => {
+  const H = 3600000;
+  it('centeredRange keeps the centre and sets the width', () => {
+    expect(centeredRange(0, 10 * H, 2 * H)).toEqual([4 * H, 6 * H]);
+  });
+  it('editedRange changes one end, keeping the width when the ends would cross', () => {
+    expect(editedRange('start', 2 * H, 0, 10 * H)).toEqual([2 * H, 10 * H]);
+    expect(editedRange('stop', 5 * H, 0, 10 * H)).toEqual([0, 5 * H]);
+    expect(editedRange('start', 12 * H, 0, 10 * H)).toEqual([12 * H, 22 * H]);
+    expect(editedRange('stop', -1 * H, 0, 10 * H)).toEqual([-11 * H, -1 * H]);
+  });
+  it('formatSpan gives the two largest units', () => {
+    expect(formatSpan(56 * H)).toBe('2d 8h');
+    expect(formatSpan(H + 30 * 60000)).toBe('1h 30m');
+    expect(formatSpan(24 * H)).toBe('1d');
+    expect(formatSpan(45 * 1000)).toBe('45s');
+    expect(formatSpan(400 * 24 * H)).toBe('400d');
   });
 });

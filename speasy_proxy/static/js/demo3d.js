@@ -575,7 +575,7 @@ const API_BASE = (window.SPEASY_BASE_URL || '').replace(/\/$/, '') + '/';
             const stopDate = parseDateInput(document.getElementById('stopTime').value);
             if (!startDate || !stopDate) {
                 cb.checked = false;
-                setStatus('Please set valid start and stop times (DD-MM-YYYY HH:MM).');
+                setStatus('Please set valid start and stop times (YYYY-MM-DD HH:MM).');
                 return;
             }
             const startISO = startDate.toISOString();

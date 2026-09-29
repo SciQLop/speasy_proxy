@@ -29,35 +29,38 @@ describe('parseUtc', () => {
 // The time inputs are UTC, like the plot axes and the data: in local time a user east
 // of Greenwich typing 00:00 got data from the previous day.
 describe('formatDateInput', () => {
-  it('formats day-first DD-MM-YYYY HH:MM:SS in UTC, zero-padded', () => {
-    expect(formatDateInput(new Date(Date.UTC(2016, 5, 1, 3, 7, 9)))).toBe('01-06-2016 03:07:09');
+  it('formats ISO-like YYYY-MM-DD HH:MM:SS in UTC, zero-padded', () => {
+    expect(formatDateInput(new Date(Date.UTC(2016, 5, 1, 3, 7, 9)))).toBe('2016-06-01 03:07:09');
   });
 });
 
 describe('parseDateInput', () => {
   it('reads the fields as UTC', () => {
-    expect(parseDateInput('01-01-2020 00:00').toISOString()).toBe('2020-01-01T00:00:00.000Z');
+    expect(parseDateInput('2020-01-01 00:00').toISOString()).toBe('2020-01-01T00:00:00.000Z');
   });
   it('round-trips with formatDateInput', () => {
     const d = new Date(Date.UTC(2016, 5, 1, 3, 7, 9));
     expect(parseDateInput(formatDateInput(d)).getTime()).toBe(d.getTime());
   });
-  it('parses day-first as day then month (not swapped)', () => {
-    const d = parseDateInput('02-06-2016 00:00');
-    expect(d.getUTCDate()).toBe(2);
-    expect(d.getUTCMonth()).toBe(5); // June
+  // Catalogs, papers and speasy itself write ISO 8601: a pasted time must just work.
+  it('accepts pasted ISO 8601, with T, Z and fractional seconds', () => {
+    expect(parseDateInput('2024-05-10T12:34:56Z').toISOString()).toBe('2024-05-10T12:34:56.000Z');
+    expect(parseDateInput('2024-05-10T12:34:56.789').toISOString()).toBe('2024-05-10T12:34:56.789Z');
+    expect(parseDateInput(' 2024-05-10 ').toISOString()).toBe('2024-05-10T00:00:00.000Z');
   });
-  it('accepts / and . separators and optional seconds/time', () => {
+  it('still accepts day-first DD-MM-YYYY, with - / or . separators', () => {
+    const d = parseDateInput('02-06-2016 00:00');
+    expect([d.getUTCDate(), d.getUTCMonth()]).toEqual([2, 5]); // 2 June
     expect(parseDateInput('02/06/2016 01:02').getUTCMinutes()).toBe(2);
     expect(parseDateInput('02.06.2016 01:02:03').getUTCSeconds()).toBe(3);
-    expect(parseDateInput('02-06-2016').getUTCHours()).toBe(0);
   });
   it('rejects malformed or out-of-range input', () => {
     expect(parseDateInput('')).toBeNull();
-    expect(parseDateInput('2016-06-02 00:00')).toBeNull(); // year-first not accepted
+    expect(parseDateInput('2016-13-02 00:00')).toBeNull();
+    expect(parseDateInput('2016-02-30')).toBeNull();
     expect(parseDateInput('32-06-2016 00:00')).toBeNull();
-    expect(parseDateInput('02-13-2016 00:00')).toBeNull();
-    expect(parseDateInput('02-06-2016 25:00')).toBeNull();
+    expect(parseDateInput('2016-06-02 25:00')).toBeNull();
+    expect(parseDateInput('2016-06-02T10:00+02:00')).toBeNull(); // only UTC
   });
 });
 
@@ -65,7 +68,7 @@ describe('setDateInput', () => {
   it('shows the UTC time in a flatpickr field too', () => {
     const el = { _flatpickr: { setDate: vi.fn() } };
     setDateInput(el, new Date(Date.UTC(2020, 0, 1, 0, 0, 0)));
-    expect(el._flatpickr.setDate).toHaveBeenCalledWith('01-01-2020 00:00:00', false, 'd-m-Y H:i:S');
+    expect(el._flatpickr.setDate).toHaveBeenCalledWith('2020-01-01 00:00:00', false);
   });
 });
 

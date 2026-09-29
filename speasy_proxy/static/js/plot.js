@@ -10,7 +10,7 @@ import {
   configToBase64, base64ToConfig, isCovered, resolutionSufficient, rangesOverlap, trimCacheWindow, cacheToCsv,
   structureKey, resampleTarget, plotTypeFromCache, computeValueRange, mergeValueRange, cleanText, distinctCrumbs,
   logHintFromRange,
-  paramValue, withParam,
+  paramValue, withParam, centeredRange, editedRange, formatSpan,
 } from './plot-core.js';
 import { ascendingSpectrogram } from './spectrogram.js';
 import { fetchData as apiFetchData, fetchInventory } from './api-client.js';
@@ -196,6 +196,7 @@ import { createPlotView, PRODUCT_MIME } from './plot-view.js';
             const startDate = new Date(stopDate.getTime() - 7 * DAY_MS);
             setDateInput(stopEl, stopDate);
             setDateInput(startEl, startDate);
+            showWindowLength();
         }
 
         renderProductParams(node);
@@ -409,15 +410,16 @@ import { createPlotView, PRODUCT_MIME } from './plot-view.js';
     }
 
     function bindControls() {
-        attachDatePicker(document.getElementById('start-time'));
-        attachDatePicker(document.getElementById('stop-time'));
+        // A field applies as soon as it is done with: Enter, leaving it, or closing its
+        // calendar. applyEditedEnd ignores a value that is already the current window.
+        for (const [id, end] of [['start-time', 'start'], ['stop-time', 'stop']]) {
+            const field = document.getElementById(id);
+            attachDatePicker(field, () => applyEditedEnd(end));
+            field.addEventListener('keydown', (e) => { if (e.key === 'Enter') applyEditedEnd(end); });
+            field.addEventListener('change', () => applyEditedEnd(end));
+        }
 
         document.getElementById('search-box').addEventListener('input', onSearchInput);
-        for (const id of ['start-time', 'stop-time']) {
-            document.getElementById(id).addEventListener('keydown', (e) => {
-                if (e.key === 'Enter') applyTypedRange();
-            });
-        }
 
         document.getElementById('range-chips').addEventListener('click', (e) => {
             const btn = e.target.closest('button');
@@ -713,11 +715,40 @@ import { createPlotView, PRODUCT_MIME } from './plot-view.js';
         plotState.time_range.stop = new Date(stopMs).toISOString();
         setDateInput(document.getElementById('start-time'), new Date(startMs));
         setDateInput(document.getElementById('stop-time'), new Date(stopMs));
+        showWindowLength();
+    }
+
+    // The window's length next to the fields, and the span chip that matches it lit.
+    function showWindowLength() {
+        const start = parseDateInput(document.getElementById('start-time').value);
+        const stop = parseDateInput(document.getElementById('stop-time').value);
+        const width = start && stop && stop > start ? stop - start : null;
+        document.getElementById('time-span').textContent = width ? formatSpan(width) : '';
+        for (const chip of document.querySelectorAll('#range-chips button[data-ms]')) {
+            chip.classList.toggle('active', width !== null && Math.abs(width - Number(chip.dataset.ms)) < 1000);
+        }
     }
 
     function applyRelativeRange(spanMs) {
-        const stop = currentStopMs();
-        replotOverRange(stop - spanMs, stop);
+        const [start, stop] = centeredRange(currentStartMs(), currentStopMs(), spanMs);
+        replotOverRange(start, stop);
+    }
+
+    // One end was typed or picked: the window takes both fields, and when they cross,
+    // the edited end wins and drags the other along at the current width.
+    function applyEditedEnd(end) {
+        const edited = parseDateInput(document.getElementById(end + '-time').value);
+        if (!edited) {
+            setStatus('Unreadable ' + end + ' time: use YYYY-MM-DD HH:MM[:SS] (UTC).');
+            return;
+        }
+        const shownStart = Date.parse(plotState.time_range.start), shownStop = Date.parse(plotState.time_range.stop);
+        const typed = typedRange(false);
+        const [start, stop] = typed
+            ? [typed.start.getTime(), typed.stop.getTime()]
+            : editedRange(end, edited.getTime(), shownStart || edited.getTime() - DAY_MS, shownStop || edited.getTime() + DAY_MS);
+        if (start === shownStart && stop === shownStop) return;
+        replotOverRange(start, stop);
     }
 
     function panTime(dir) {
@@ -727,17 +758,12 @@ import { createPlotView, PRODUCT_MIME } from './plot-view.js';
     }
 
     // The start/stop fields as Dates, or null (with a status message) when invalid.
-    function typedRange() {
+    function typedRange(report = true) {
         const start = parseDateInput(document.getElementById('start-time').value);
         const stop = parseDateInput(document.getElementById('stop-time').value);
         if (start && stop && stop > start) return { start, stop };
-        setStatus('Please set a valid UTC start and stop (DD-MM-YYYY HH:MM), stop after start.');
+        if (report) setStatus('Please set a valid UTC start and stop (YYYY-MM-DD HH:MM), stop after start.');
         return null;
-    }
-
-    function applyTypedRange() {
-        const range = typedRange();
-        if (range) replotOverRange(range.start.getTime(), range.stop.getTime());
     }
 
     async function fetchData(product, startTime, stopTime, signal, extraParams) {
@@ -1078,6 +1104,7 @@ import { createPlotView, PRODUCT_MIME } from './plot-view.js';
 
         if (startDate) setDateInput(document.getElementById('start-time'), startDate);
         if (stopDate) setDateInput(document.getElementById('stop-time'), stopDate);
+        showWindowLength();
 
         plotState.intervals = (config.intervals || []).map(iv => ({
             start: iv.start,

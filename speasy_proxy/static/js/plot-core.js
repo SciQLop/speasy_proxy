@@ -480,3 +480,34 @@ export function configToBase64(config) {
 export function base64ToConfig(b64) {
   return JSON.parse(atob(b64.replace(/-/g, '+').replace(/_/g, '/')));
 }
+
+// --- time window -----------------------------------------------------------------
+
+// A window of widthMs around the centre of [startMs, stopMs]: the span chips zoom on
+// what is on screen rather than jumping to one end of it.
+export function centeredRange(startMs, stopMs, widthMs) {
+  const centre = (startMs + stopMs) / 2;
+  return [centre - widthMs / 2, centre + widthMs / 2];
+}
+
+// The window after one end is edited ('start' or 'stop'). An end moved past the other
+// one drags it along at the same width, instead of making an empty window.
+export function editedRange(end, valueMs, startMs, stopMs) {
+  const width = stopMs - startMs;
+  if (end === 'start') return valueMs < stopMs ? [valueMs, stopMs] : [valueMs, valueMs + width];
+  return valueMs > startMs ? [startMs, valueMs] : [valueMs - width, valueMs];
+}
+
+const SPAN_UNITS = [['d', 86400000], ['h', 3600000], ['m', 60000], ['s', 1000]];
+
+// A window length for people: its two largest non-zero units ("2d 8h", "45s").
+export function formatSpan(ms) {
+  let rest = Math.round(ms / 1000) * 1000;
+  const parts = [];
+  for (const [unit, size] of SPAN_UNITS) {
+    const n = Math.floor(rest / size);
+    rest -= n * size;
+    if (n > 0 || parts.length > 0) parts.push([n, unit]);
+  }
+  return parts.slice(0, 2).filter(([n]) => n > 0).map(([n, unit]) => n + unit).join(' ') || '0s';
+}

@@ -546,6 +546,47 @@ describe('Enter in a time field', () => {
   });
 });
 
+describe('time window controls', () => {
+  const fieldListener = (id, type) => dom.getById(id).addEventListener.mock.calls.filter(([t]) => t === type).at(-1)[1];
+  const showWindow = (start, stop) => {
+    plotState.time_range = { start, stop };
+    dom.getById('start-time').value = start.slice(0, 19).replace('T', ' ');
+    dom.getById('stop-time').value = stop.slice(0, 19).replace('T', ' ');
+  };
+
+  beforeEach(() => {
+    initChart();
+    bindControls();
+    plotState.plots = [heatmapSubplot()];
+    showWindow('2024-01-01T00:00:00.000Z', '2024-01-03T00:00:00.000Z');
+  });
+
+  it('a span chip zooms around the centre of the window', () => {
+    const chips = dom.getById('range-chips').addEventListener.mock.calls.filter(([t]) => t === 'click').at(-1)[1];
+    chips({ target: { closest: () => ({ dataset: { ms: String(6 * 3600000) } }) } });
+    expect(plotState.time_range).toEqual({ start: '2024-01-01T21:00:00.000Z', stop: '2024-01-02T03:00:00.000Z' });
+  });
+
+  it('leaving an edited field applies it, no Enter needed', () => {
+    dom.getById('stop-time').value = '2024-01-02T12:00:00Z';
+    fieldListener('stop-time', 'change')();
+    expect(plotState.time_range).toEqual({ start: '2024-01-01T00:00:00.000Z', stop: '2024-01-02T12:00:00.000Z' });
+  });
+
+  it('a start moved past the stop drags the stop along, keeping the width', () => {
+    dom.getById('start-time').value = '2024-02-10 00:00';
+    fieldListener('start-time', 'change')();
+    expect(plotState.time_range).toEqual({ start: '2024-02-10T00:00:00.000Z', stop: '2024-02-12T00:00:00.000Z' });
+  });
+
+  it('shows the window length', () => {
+    fieldListener('start-time', 'change')();  // same window: nothing refetched
+    dom.getById('stop-time').value = '2024-01-03 08:00';
+    fieldListener('stop-time', 'change')();
+    expect(dom.getById('time-span').textContent).toBe('2d 8h');
+  });
+});
+
 describe('per-subplot actions (the toolbar on each subplot)', () => {
   const lineSubplot = (path) => ({
     products: [{ path }], y_axis: { log: false }, plotType: 'line', _yScaleAuto: true, _zScaleAuto: true,
@@ -1046,7 +1087,7 @@ describe('time fields follow the view', () => {
 
     await plot.__test__.onMultiZoomPan();
 
-    expect(dom.getById('start-time').value).toBe('01-01-2020 04:00:00');
-    expect(dom.getById('stop-time').value).toBe('01-01-2020 10:00:00');
+    expect(dom.getById('start-time').value).toBe('2020-01-01 04:00:00');
+    expect(dom.getById('stop-time').value).toBe('2020-01-01 10:00:00');
   });
 });
