@@ -6,7 +6,7 @@ import {
 import { getDisplayName, getProductPath, shouldSkipNode, SKIP_KEYS, isSpzMetaKey, isSelectableProduct, browsableChildKeys, hasSelectableDescendant } from './inventory-tree.js';
 import {
   createSubplotData, createProductCache, subplotToConfig, subplotFromConfig,
-  detectPlotType, mergeSorted, mergeSortedRows, mergeIntervals, evictProductCache,
+  detectPlotType, mergeSorted, spliceRows, mergeIntervals, evictProductCache,
   configToBase64, base64ToConfig, isCovered, resolutionSufficient, rangesOverlap, trimCacheWindow, cacheToCsv,
   structureKey, resampleTarget, plotTypeFromCache, computeValueRange, mergeValueRange, cleanText, distinctCrumbs,
   logHintFromRange,
@@ -844,7 +844,7 @@ import { createPlotView, PRODUCT_MIME } from './plot-view.js';
             }
         } else {
             if (isHeatmap) {
-                const merged = mergeSortedRows(cache.times, newTimes, cache.rows, newValues);
+                const merged = spliceRows(cache.times, cache.rows, newTimes, newValues, fetchStart, fetchStop);
                 cache.times = merged.times;
                 cache.rows = merged.rows;
                 cache.valueRange = mergeValueRange(cache.valueRange, cache.rows, newValues);

@@ -129,18 +129,18 @@ export function renderableRange(range) {
   return range.vMin === range.vMax ? { vMin: range.vMin, vMax: range.vMin * 10 } : range;
 }
 
-export function mergeSortedRows(oldTimes, newTimes, oldRows, newRows) {
-  const resultTimes = [];
-  const resultRows = [];
-  let i = 0, j = 0;
-  while (i < oldTimes.length && j < newTimes.length) {
-    if (oldTimes[i] < newTimes[j]) { resultTimes.push(oldTimes[i]); resultRows.push(oldRows[i]); i++; }
-    else if (oldTimes[i] > newTimes[j]) { resultTimes.push(newTimes[j]); resultRows.push(newRows[j]); j++; }
-    else { resultTimes.push(newTimes[j]); resultRows.push(newRows[j]); i++; j++; }
-  }
-  while (i < oldTimes.length) { resultTimes.push(oldTimes[i]); resultRows.push(oldRows[i]); i++; }
-  while (j < newTimes.length) { resultTimes.push(newTimes[j]); resultRows.push(newRows[j]); j++; }
-  return { times: resultTimes, rows: resultRows };
+// A fetch returns every row of [startMs, stopMs], so it replaces the cached rows there
+// rather than interleaving with them: two resampled fetches sit on different time grids,
+// and interleaving them gives uneven steps that the image draws as dark stripes.
+export function spliceRows(oldTimes, oldRows, newTimes, newRows, startMs, stopMs) {
+  const before = oldTimes.findIndex((t) => t >= startMs);
+  const lo = before === -1 ? oldTimes.length : before;
+  const after = oldTimes.findIndex((t) => t > stopMs);
+  const hi = after === -1 ? oldTimes.length : after;
+  return {
+    times: oldTimes.slice(0, lo).concat(newTimes, oldTimes.slice(hi)),
+    rows: oldRows.slice(0, lo).concat(newRows, oldRows.slice(hi)),
+  };
 }
 
 export function mergeSorted(oldTimes, newTimes, oldColumns, newValues, columnNames) {

@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
-  mergeSorted, mergeSortedRows, mergeIntervals, evictProductCache,
+  mergeSorted, spliceRows, mergeIntervals, evictProductCache,
   detectPlotType, configToBase64, base64ToConfig, isCovered, resolutionSufficient, rangesOverlap, trimCacheWindow, cacheToCsv,
   createSubplotData, createProductCache, subplotToConfig, subplotFromConfig,
   normalizeWheelDelta, wheelIntent, zoomRange, panRange, zoomToward, pinchRange, structureKey, resampleTarget,
@@ -14,10 +14,17 @@ describe('merge', () => {
     expect(r.times).toEqual([1, 2, 3]);
     expect(r.columns.a).toEqual([10, 20, 99]);
   });
-  it('mergeSortedRows interleaves whole rows', () => {
-    const r = mergeSortedRows([1, 4], [2], [[1, 1], [4, 4]], [[2, 2]]);
+  it('spliceRows puts new rows next to old ones outside the fetched window', () => {
+    const r = spliceRows([1, 4], [[1, 1], [4, 4]], [2], [[2, 2]], 2, 3);
     expect(r.times).toEqual([1, 2, 4]);
     expect(r.rows).toEqual([[1, 1], [2, 2], [4, 4]]);
+  });
+  // Two resampled fetches have their own time grids: interleaving them over the same
+  // span made uneven steps that the image drew as dark vertical stripes.
+  it('spliceRows replaces the old rows inside the fetched window', () => {
+    const r = spliceRows([0, 10, 20, 30, 40], [[0], [10], [20], [30], [40]], [15, 25], [[15], [25]], 12, 32);
+    expect(r.times).toEqual([0, 10, 15, 25, 40]);
+    expect(r.rows).toEqual([[0], [10], [15], [25], [40]]);
   });
   it('mergeIntervals coalesces overlaps and sorts', () => {
     expect(mergeIntervals([[5, 10], [1, 3], [2, 6]])).toEqual([[1, 10]]);
