@@ -1282,6 +1282,75 @@ describe('empty /plot offers presets and recent views', () => {
   });
 });
 
+describe('presets saved in the browser', () => {
+  const view = { version: 1, time_range: { start: '2020-01-01T00:00:00Z', stop: '2020-01-02T00:00:00Z' },
+    plots: [{ products: [{ path: 'cda/a' }] }] };
+  const memoryStorage = () => {
+    const items = new Map();
+    return { getItem: (k) => items.get(k) ?? null, setItem: (k, v) => items.set(k, String(v)) };
+  };
+  const click = (el) => el.addEventListener.mock.calls.filter(([t]) => t === 'click').at(-1)[1]();
+  const save = (name) => {
+    dom.getById('preset-name').value = name;
+    click(dom.getById('btn-save-preset'));
+  };
+  const mine = () => dom.getById('user-presets-list').children;
+
+  beforeEach(() => {
+    initChart();
+    bindControls();
+    dom.getById('user-presets-list').children = [];
+    dom.getById('empty-mine-list').children = [];
+  });
+  afterEach(() => vi.unstubAllGlobals());
+
+  it('saves the current view under a name and lists it in the sidebar', () => {
+    vi.stubGlobal('localStorage', memoryStorage());
+    applyConfig(view);
+
+    save('My storm');
+
+    expect(mine().map((item) => item.children[0].textContent)).toEqual(['My storm']);
+    expect(dom.getById('preset-name').value).toBe('');
+  });
+
+  it('opens a saved preset with its name as the story, from the sidebar and from the empty page', () => {
+    vi.stubGlobal('localStorage', memoryStorage());
+    applyConfig(view);
+    save('My storm');
+    plot.__test__.subplotAction({ type: 'remove', index: 0 });
+
+    const [card] = dom.getById('empty-mine-list').children;
+    expect(card.children[0].textContent).toBe('My storm');
+    click(card);
+    expect(plotState.plots[0].products[0].path).toBe('cda/a');
+    expect(plotState.story.name).toBe('My storm');
+
+    plot.__test__.subplotAction({ type: 'remove', index: 0 });
+    document.querySelector.mockImplementationOnce(() => ({ classList: { remove: vi.fn() } }));  // the drawer it closes
+    click(mine()[0].children[0]);
+    expect(plotState.plots[0].products[0].path).toBe('cda/a');
+  });
+
+  it('deletes a saved preset', () => {
+    vi.stubGlobal('localStorage', memoryStorage());
+    applyConfig(view);
+    save('My storm');
+
+    click(mine()[0].children[1]);
+
+    expect(mine()).toEqual([]);
+  });
+
+  it('works without storage', () => {
+    vi.stubGlobal('localStorage', { getItem: () => { throw new Error('blocked'); }, setItem: () => { throw new Error('blocked'); } });
+    applyConfig(view);
+
+    expect(() => save('My storm')).not.toThrow();
+    expect(mine()).toEqual([]);
+  });
+});
+
 describe('Code button', () => {
   const click = (id) => dom.getById(id).addEventListener.mock.calls.filter(([t]) => t === 'click').at(-1)[1]();
 

@@ -53,6 +53,29 @@ export function recentLabel(config) {
   return { name: configStory(config)?.name || names.join(', '), detail: when };
 }
 
+// --- presets the user saved in this browser ------------------------------------------
+// Same shape as the server's presets ({ name, config }), so presetConfig opens them too.
+
+// The view saved under name, first; a preset of that name gives way to it. The story of
+// the view it came from is dropped: the new name is its story now.
+export function savePreset(presets, name, config) {
+  const trimmed = name.trim();
+  if (!trimmed) return presets;
+  const { name: _, description: __, ...view } = config;
+  return [{ name: trimmed, config: view }, ...removePreset(presets, trimmed)];
+}
+
+export const removePreset = (presets, name) => presets.filter((p) => p.name !== name);
+
+// Saved presets stored as JSON text; anything unreadable is dropped, never thrown.
+export function userPresetsFrom(text) {
+  let parsed;
+  try { parsed = JSON.parse(text); } catch (_) { return []; }
+  return Array.isArray(parsed)
+    ? parsed.filter((p) => p && typeof p.name === 'string' && p.config && Array.isArray(p.config.plots))
+    : [];
+}
+
 // --- browser history ----------------------------------------------------------------
 
 // How a view change enters the browser history, so Back/Forward walk the views:

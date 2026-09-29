@@ -11,6 +11,7 @@ export function elStub(tag = 'div') {
     querySelectorAll: vi.fn(() => []),
     closest: vi.fn(() => null),
     appendChild(child) { this.children.push(child); return child; },
+    replaceChildren(...kids) { this.children = kids; },
     removeChild: vi.fn(),
     insertBefore: vi.fn(),
     style: {},

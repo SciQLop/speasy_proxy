@@ -84,6 +84,15 @@
         .side-item { display: flex; align-items: center; gap: 6px; padding: 4px 8px; border-radius: 4px;
             font-size: 0.85rem; cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
         .side-item:hover { background: #1e2640; }
+        .preset-save { display: flex; gap: 6px; padding: 0 16px 8px; }
+        .preset-save input { flex: 1; min-width: 0; padding: 4px 8px; border: 1px solid #2a3358; border-radius: 4px;
+            background: #0b0e17; color: #e0e6f0; font-size: 0.8rem; outline: none; }
+        .preset-save button { padding: 4px 10px; border: 1px solid #2a3358; border-radius: 4px; background: #1a2138;
+            color: #aeb6d4; font-size: 0.8rem; cursor: pointer; }
+        .preset-save button:disabled { color: #3a4468; cursor: default; }
+        .user-preset-name { flex: 1; overflow: hidden; text-overflow: ellipsis; }
+        .user-preset-delete { border: none; background: none; color: #555e7e; cursor: pointer; padding: 0 2px; }
+        .user-preset-delete:hover { color: #ee6666; }
         .side-swatch { width: 10px; height: 10px; border-radius: 2px; flex-shrink: 0; }
         .tree-branch { margin-left: 4px; }
         .tree-children { margin-left: 12px; }
@@ -336,9 +345,16 @@
         <div class="preset-story-name" id="preset-story-name"></div>
         <div class="preset-story-desc" id="preset-story-desc"></div>
     </div>
-    <details class="side-section" id="presets-container" hidden>
+    <details class="side-section" id="presets-container">
         <summary>Presets</summary>
-        <div class="side-list" id="presets-list"></div>
+        <div class="preset-save">
+            <input type="text" id="preset-name" placeholder="Name this view" aria-label="Preset name" autocomplete="off">
+            <button id="btn-save-preset" disabled title="Save the current view as a preset, in this browser only">Save</button>
+        </div>
+        <div class="side-list">
+            <div id="user-presets-list"></div>
+            <div id="presets-list"></div>
+        </div>
     </details>
     <details class="side-section" id="events-container" hidden>
         <summary>Events</summary>
@@ -416,6 +432,7 @@
         <div class="fetch-bar" id="fetch-bar"></div>
         <div id="chart"></div>
         <div class="empty-state" id="empty-state" hidden>
+            <section id="empty-mine" hidden><h3>My presets</h3><div class="empty-cards" id="empty-mine-list"></div></section>
             <section id="empty-presets" hidden><h3>Presets</h3><div class="empty-cards" id="empty-presets-list"></div></section>
             <section id="empty-recent" hidden><h3>Recent views</h3><div class="empty-cards" id="empty-recent-list"></div></section>
         </div>

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { presetConfig, configStory, pythonSnippet, dataUrls, historyMode, addRecent, recentsFrom, recentLabel } from '../../speasy_proxy/static/js/plot-share.js';
+import { presetConfig, configStory, pythonSnippet, dataUrls, historyMode, addRecent, recentsFrom, recentLabel, savePreset, removePreset, userPresetsFrom } from '../../speasy_proxy/static/js/plot-share.js';
 
 describe('presetConfig', () => {
   const preset = {
@@ -134,5 +134,42 @@ describe('dataUrls', () => {
       'https://host/cache/get_data?path=ssc/ace&start_time=2008-02-26T04:30:00Z&stop_time=2008-02-26T05:20:00.500Z&format=cdf&coordinate_system=gsm',
       'https://host/cache/get_data?path=amda/bepi_sixp&start_time=2008-02-26T04:30:00Z&stop_time=2008-02-26T05:20:00.500Z&format=cdf&product_inputs=%7B%22side%22%3A%221%22%7D',
     ]);
+  });
+});
+
+describe('user presets', () => {
+  const view = (path) => ({ version: 1, time_range: { start: '2020-01-01T00:00:00Z', stop: '2020-01-02T00:00:00Z' },
+    plots: [{ products: [{ path }] }] });
+
+  it('saves the view under a trimmed name, newest first', () => {
+    const presets = savePreset(savePreset([], 'Storm', view('cda/a')), '  Quiet day ', view('cda/b'));
+    expect(presets.map((p) => p.name)).toEqual(['Quiet day', 'Storm']);
+    expect(presets[0].config).toEqual(view('cda/b'));
+  });
+
+  it('overwrites a preset saved under the same name', () => {
+    const presets = savePreset(savePreset([], 'Storm', view('cda/a')), 'Storm', view('cda/b'));
+    expect(presets).toEqual([{ name: 'Storm', config: view('cda/b') }]);
+  });
+
+  it("drops the story of the view it was opened from: the new name is the story", () => {
+    const [saved] = savePreset([], 'Mine', { ...view('cda/a'), name: 'THEMIS substorm', description: 'Onset.' });
+    expect(saved.config).toEqual(view('cda/a'));
+  });
+
+  it('ignores a blank name', () => {
+    expect(savePreset([], '   ', view('cda/a'))).toEqual([]);
+  });
+
+  it('removes a preset by name', () => {
+    const presets = savePreset(savePreset([], 'A', view('cda/a')), 'B', view('cda/b'));
+    expect(removePreset(presets, 'A').map((p) => p.name)).toEqual(['B']);
+  });
+
+  it('reads back only well-formed presets, and nothing from garbage', () => {
+    const good = { name: 'A', config: view('cda/a') };
+    expect(userPresetsFrom(JSON.stringify([good, { name: 'B' }, { config: view('x') }, null]))).toEqual([good]);
+    expect(userPresetsFrom('not json')).toEqual([]);
+    expect(userPresetsFrom(null)).toEqual([]);
   });
 });

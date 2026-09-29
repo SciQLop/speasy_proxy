@@ -15,7 +15,8 @@ import {
 import { ascendingSpectrogram } from './spectrogram.js';
 import { fetchData as apiFetchData, fetchInventory } from './api-client.js';
 import { createPlotView, PRODUCT_MIME } from './plot-view.js';
-import { presetConfig, configStory, pythonSnippet, dataUrls, historyMode, addRecent, recentsFrom, recentLabel } from './plot-share.js';
+import { presetConfig, configStory, pythonSnippet, dataUrls, historyMode, addRecent, recentsFrom, recentLabel,
+    savePreset, removePreset, userPresetsFrom } from './plot-share.js';
 
     const BASE_URL = (window.SPEASY_BASE_URL || '').replace(/\/$/, '');
     const API_BASE = BASE_URL + '/';
@@ -458,6 +459,10 @@ import { presetConfig, configStory, pythonSnippet, dataUrls, historyMode, addRec
         bindCopy('btn-copy-url', 'share-url');
         bindCopy('btn-copy-python', 'code-python');
         bindCopy('btn-copy-urls', 'code-urls');
+
+        document.getElementById('btn-save-preset').addEventListener('click', saveCurrentView);
+        document.getElementById('preset-name').addEventListener('keydown', (e) => { if (e.key === 'Enter') saveCurrentView(); });
+        renderUserPresets();
     }
 
     // Top-bar popovers: button id -> popover id. Each is refilled from the current view
@@ -664,7 +669,7 @@ import { presetConfig, configStory, pythonSnippet, dataUrls, historyMode, addRec
     // the bar from reflowing as subplots come and go.
     function syncBarActions() {
         const none = plotState.plots.length === 0;
-        for (const id of ['btn-export-png', 'btn-export-csv', 'btn-share', 'btn-code', 'btn-clear']) {
+        for (const id of ['btn-export-png', 'btn-export-csv', 'btn-share', 'btn-code', 'btn-clear', 'btn-save-preset']) {
             document.getElementById(id).disabled = none;
         }
         showEmptyState();
@@ -1339,6 +1344,50 @@ import { presetConfig, configStory, pythonSnippet, dataUrls, historyMode, addRec
         }
     }
 
+    // ===== Presets saved in this browser =====
+
+    const USER_PRESETS_KEY = 'speasy-plot-presets';
+
+    // Storage can be missing or blocked: then nothing is saved, and nothing is listed.
+    function loadUserPresets() {
+        try { return userPresetsFrom(localStorage.getItem(USER_PRESETS_KEY)); } catch (_) { return []; }
+    }
+
+    function storeUserPresets(update) {
+        try { localStorage.setItem(USER_PRESETS_KEY, JSON.stringify(update(loadUserPresets()))); } catch (_) { /* no storage */ }
+        renderUserPresets();
+        showEmptyState();
+    }
+
+    function saveCurrentView() {
+        const field = document.getElementById('preset-name');
+        if (plotState.plots.length === 0 || !field.value.trim()) return;
+        storeUserPresets(list => savePreset(list, field.value, stateToConfig()));
+        field.value = '';
+    }
+
+    function renderUserPresets() {
+        document.getElementById('user-presets-list').replaceChildren(...loadUserPresets().map(userPresetItem));
+    }
+
+    function userPresetItem(preset) {
+        const item = document.createElement('div');
+        item.className = 'side-item';
+        item.title = preset.name + ' (saved in this browser)';
+        const name = document.createElement('span');
+        name.className = 'user-preset-name';
+        name.textContent = preset.name;
+        name.addEventListener('click', () => { applyConfig(presetConfig(preset), 'edit'); closeDrawer(); });
+        const remove = document.createElement('button');
+        remove.className = 'user-preset-delete';
+        remove.textContent = '✕';
+        remove.title = 'Delete this preset';
+        remove.addEventListener('click', () => storeUserPresets(list => removePreset(list, preset.name)));
+        item.appendChild(name);
+        item.appendChild(remove);
+        return item;
+    }
+
     // ===== Empty state: presets and recent views =====
 
     let presets = [];
@@ -1358,6 +1407,7 @@ import { presetConfig, configStory, pythonSnippet, dataUrls, historyMode, addRec
         const panel = document.getElementById('empty-state');
         panel.hidden = plotState.plots.length > 0;
         if (panel.hidden) return;
+        fillCards('empty-mine', loadUserPresets().map(p => ({ name: p.name, detail: recentLabel(p.config).detail, config: presetConfig(p) })));
         fillCards('empty-presets', presets.map(p => ({ name: p.name, detail: p.description, config: presetConfig(p) })));
         fillCards('empty-recent', loadRecent().map(config => ({ ...recentLabel(config), config })));
     }
