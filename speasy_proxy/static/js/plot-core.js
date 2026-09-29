@@ -483,18 +483,13 @@ export function base64ToConfig(b64) {
 
 // --- time window -----------------------------------------------------------------
 
-// A window of widthMs around the centre of [startMs, stopMs]: the span chips zoom on
-// what is on screen rather than jumping to one end of it.
-export function centeredRange(startMs, stopMs, widthMs) {
-  const centre = (startMs + stopMs) / 2;
-  return [centre - widthMs / 2, centre + widthMs / 2];
-}
-
-// The window after one end is edited ('start' or 'stop'). An end moved past the other
-// one drags it along at the same width, instead of making an empty window.
+// The window after one end is edited ('start' or 'stop'). A new start moves the whole
+// window, keeping its width: applying [new start, old stop] fetched years of data while
+// the user was still on their way to the stop field. A new stop sets the width; one
+// before the start moves the window instead of making it empty.
 export function editedRange(end, valueMs, startMs, stopMs) {
   const width = stopMs - startMs;
-  if (end === 'start') return valueMs < stopMs ? [valueMs, stopMs] : [valueMs, valueMs + width];
+  if (end === 'start') return [valueMs, valueMs + width];
   return valueMs > startMs ? [startMs, valueMs] : [valueMs - width, valueMs];
 }
 

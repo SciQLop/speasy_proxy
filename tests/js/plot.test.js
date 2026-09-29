@@ -529,12 +529,12 @@ describe('removing a product from a subplot', () => {
 });
 
 describe('Enter in a time field', () => {
-  it('applies the typed UTC window to every subplot, keeping the subplots', () => {
+  it('applies the typed UTC start to every subplot, keeping the subplots and the width', () => {
     initChart();
     bindControls();
     plotState.plots = [heatmapSubplot(), heatmapSubplot()];
-    dom.getById('start-time').value = '01-01-2024 00:00';
-    dom.getById('stop-time').value = '02-01-2024 00:00';
+    plotState.time_range = { start: '2020-01-01T00:00:00.000Z', stop: '2020-01-02T00:00:00.000Z' };
+    dom.getById('start-time').value = '2024-01-01 00:00';
 
     const keydown = dom.getById('start-time').addEventListener.mock.calls
       .filter(([type]) => type === 'keydown').map(([, fn]) => fn);
@@ -561,10 +561,10 @@ describe('time window controls', () => {
     showWindow('2024-01-01T00:00:00.000Z', '2024-01-03T00:00:00.000Z');
   });
 
-  it('a span chip zooms around the centre of the window', () => {
+  it('a span chip sets the window length from its start', () => {
     const chips = dom.getById('range-chips').addEventListener.mock.calls.filter(([t]) => t === 'click').at(-1)[1];
     chips({ target: { closest: () => ({ dataset: { ms: String(6 * 3600000) } }) } });
-    expect(plotState.time_range).toEqual({ start: '2024-01-01T21:00:00.000Z', stop: '2024-01-02T03:00:00.000Z' });
+    expect(plotState.time_range).toEqual({ start: '2024-01-01T00:00:00.000Z', stop: '2024-01-01T06:00:00.000Z' });
   });
 
   it('leaving an edited field applies it, no Enter needed', () => {
@@ -573,10 +573,10 @@ describe('time window controls', () => {
     expect(plotState.time_range).toEqual({ start: '2024-01-01T00:00:00.000Z', stop: '2024-01-02T12:00:00.000Z' });
   });
 
-  it('a start moved past the stop drags the stop along, keeping the width', () => {
-    dom.getById('start-time').value = '2024-02-10 00:00';
+  it('a new start moves the window, even with a stale stop in the other field', () => {
+    dom.getById('start-time').value = '2015-06-01 00:00';
     fieldListener('start-time', 'change')();
-    expect(plotState.time_range).toEqual({ start: '2024-02-10T00:00:00.000Z', stop: '2024-02-12T00:00:00.000Z' });
+    expect(plotState.time_range).toEqual({ start: '2015-06-01T00:00:00.000Z', stop: '2015-06-03T00:00:00.000Z' });
   });
 
   it('shows the window length', () => {
@@ -1078,7 +1078,7 @@ describe('product search', () => {
 });
 
 describe('time fields follow the view', () => {
-  it('a pan or zoom updates the start/stop fields, so chips and Now work from what is shown', async () => {
+  it('a pan or zoom updates the start/stop fields, so chips work from what is shown', async () => {
     initChart();
     plotState.plots = [{ products: [{ path: 'cda/b' }], y_axis: { log: false }, plotType: 'line',
       productData: { 'cda/b': { ...lineCache('cda/b', ''), intervals: [[0, 1e12]], fetchSpan: 1e12 } } }];

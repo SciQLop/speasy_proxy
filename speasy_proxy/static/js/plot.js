@@ -10,7 +10,7 @@ import {
   configToBase64, base64ToConfig, isCovered, resolutionSufficient, rangesOverlap, trimCacheWindow, cacheToCsv,
   structureKey, resampleTarget, plotTypeFromCache, computeValueRange, mergeValueRange, cleanText, distinctCrumbs,
   logHintFromRange,
-  paramValue, withParam, centeredRange, editedRange, formatSpan,
+  paramValue, withParam, editedRange, formatSpan,
 } from './plot-core.js';
 import { ascendingSpectrogram } from './spectrogram.js';
 import { fetchData as apiFetchData, fetchInventory } from './api-client.js';
@@ -427,11 +427,6 @@ import { createPlotView, PRODUCT_MIME } from './plot-view.js';
             if (btn.dataset.pan) panTime(Number(btn.dataset.pan));
             else if (btn.dataset.ms) applyRelativeRange(Number(btn.dataset.ms));
         });
-        document.getElementById('btn-now').addEventListener('click', () => {
-            const width = (currentStopMs() - currentStartMs()) || DAY_MS;
-            const now = Date.now();
-            replotOverRange(now - width, now);
-        });
 
         // Arrow keys pan the time window when not typing in a field.
         document.addEventListener('keydown', (e) => {
@@ -709,7 +704,7 @@ import { createPlotView, PRODUCT_MIME } from './plot-view.js';
     }
 
     // The one place the time window changes: state and the start/stop fields stay in step,
-    // so chips, Now and arrow keys always work from what is on screen.
+    // so chips and arrow keys always work from what is on screen.
     function setTimeRange(startMs, stopMs) {
         plotState.time_range.start = new Date(startMs).toISOString();
         plotState.time_range.stop = new Date(stopMs).toISOString();
@@ -729,13 +724,14 @@ import { createPlotView, PRODUCT_MIME } from './plot-view.js';
         }
     }
 
+    // A span chip sets the window's length from its start, like typing a stop would.
     function applyRelativeRange(spanMs) {
-        const [start, stop] = centeredRange(currentStartMs(), currentStopMs(), spanMs);
-        replotOverRange(start, stop);
+        const start = currentStartMs();
+        replotOverRange(start, start + spanMs);
     }
 
-    // One end was typed or picked: the window takes both fields, and when they cross,
-    // the edited end wins and drags the other along at the current width.
+    // One end was typed or picked: see editedRange. Only the edited field is read, so a
+    // stale value in the other one never widens the window.
     function applyEditedEnd(end) {
         const edited = parseDateInput(document.getElementById(end + '-time').value);
         if (!edited) {
@@ -743,26 +739,19 @@ import { createPlotView, PRODUCT_MIME } from './plot-view.js';
             return;
         }
         const shownStart = Date.parse(plotState.time_range.start), shownStop = Date.parse(plotState.time_range.stop);
-        const typed = typedRange(false);
-        const [start, stop] = typed
-            ? [typed.start.getTime(), typed.stop.getTime()]
-            : editedRange(end, edited.getTime(), shownStart || edited.getTime() - DAY_MS, shownStop || edited.getTime() + DAY_MS);
+        const [start, stop] = Number.isFinite(shownStart) && Number.isFinite(shownStop)
+            ? editedRange(end, edited.getTime(), shownStart, shownStop)
+            : editedRange(end, edited.getTime(), edited.getTime() - DAY_MS, edited.getTime() + DAY_MS);
         if (start === shownStart && stop === shownStop) return;
         replotOverRange(start, stop);
     }
 
-    function panTime(dir) {
-        const start = currentStartMs(), stop = currentStopMs();
-        const width = (stop - start) || DAY_MS;
-        replotOverRange(start + dir * width, stop + dir * width);
-    }
-
     // The start/stop fields as Dates, or null (with a status message) when invalid.
-    function typedRange(report = true) {
+    function typedRange() {
         const start = parseDateInput(document.getElementById('start-time').value);
         const stop = parseDateInput(document.getElementById('stop-time').value);
         if (start && stop && stop > start) return { start, stop };
-        if (report) setStatus('Please set a valid UTC start and stop (YYYY-MM-DD HH:MM), stop after start.');
+        setStatus('Please set a valid UTC start and stop (YYYY-MM-DD HH:MM), stop after start.');
         return null;
     }
 

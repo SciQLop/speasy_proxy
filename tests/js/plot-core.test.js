@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   mergeSorted, spliceRows, mergeIntervals, evictProductCache,
   detectPlotType, configToBase64, base64ToConfig, isCovered, resolutionSufficient, rangesOverlap, trimCacheWindow, cacheToCsv,
-  createSubplotData, createProductCache, subplotToConfig, subplotFromConfig, paramValue, withParam, centeredRange, editedRange, formatSpan,
+  createSubplotData, createProductCache, subplotToConfig, subplotFromConfig, paramValue, withParam, editedRange, formatSpan,
   normalizeWheelDelta, wheelIntent, zoomRange, panRange, zoomToward, pinchRange, structureKey, resampleTarget,
   plotTypeFromCache, computeValueRange, mergeValueRange, renderableRange,
   nearestIndex, lineTable, yRangeFromPixels, fmtTick, cleanText, productTitle, dropZone, distinctCrumbs,
@@ -661,13 +661,14 @@ describe('product params', () => {
 
 describe('time window helpers', () => {
   const H = 3600000;
-  it('centeredRange keeps the centre and sets the width', () => {
-    expect(centeredRange(0, 10 * H, 2 * H)).toEqual([4 * H, 6 * H]);
+  // Editing the start then the stop used to apply [new start, old stop] in between:
+  // years of data fetched for a window nobody asked for.
+  it('editedRange: a new start moves the window, keeping its width', () => {
+    expect(editedRange('start', 2 * H, 0, 10 * H)).toEqual([2 * H, 12 * H]);
+    expect(editedRange('start', -1000 * H, 0, 10 * H)).toEqual([-1000 * H, -990 * H]);
   });
-  it('editedRange changes one end, keeping the width when the ends would cross', () => {
-    expect(editedRange('start', 2 * H, 0, 10 * H)).toEqual([2 * H, 10 * H]);
+  it('editedRange: a new stop sets the width, or moves the window when before the start', () => {
     expect(editedRange('stop', 5 * H, 0, 10 * H)).toEqual([0, 5 * H]);
-    expect(editedRange('start', 12 * H, 0, 10 * H)).toEqual([12 * H, 22 * H]);
     expect(editedRange('stop', -1 * H, 0, 10 * H)).toEqual([-11 * H, -1 * H]);
   });
   it('formatSpan gives the two largest units', () => {
