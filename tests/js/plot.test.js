@@ -1161,3 +1161,48 @@ describe('time fields follow the view', () => {
     expect(dom.getById('stop-time').value).toBe('2020-01-01 10:00:00');
   });
 });
+
+describe('a preset keeps its story', () => {
+  const story = {
+    version: 1, name: 'THEMIS substorm', description: 'Dipolarization at 04:54 UT.',
+    time_range: { start: '2008-02-26T04:00:00Z', stop: '2008-02-26T06:00:00Z' },
+    intervals: [{ start: '2008-02-26T04:50:00Z', stop: '2008-02-26T05:00:00Z', label: 'Onset' }],
+    plots: [{ products: [{ path: 'cda/thb' }] }],
+  };
+  const sharedConfig = () => plot.__test__.base64ToConfig(
+    new URL(dom.getById('share-url').value).searchParams.get('config'));
+
+  beforeEach(() => initChart());
+
+  it('shows the preset name as a caption, the description on hover', () => {
+    applyConfig(story);
+
+    const caption = dom.getById('preset-caption');
+    expect(caption.hidden).toBe(false);
+    expect(caption.textContent).toContain('THEMIS substorm');
+    expect(caption.title).toContain('Dipolarization at 04:54 UT.');
+  });
+
+  it('keeps name and description in the share URL', () => {
+    applyConfig(story);
+    updateShareURL();
+
+    expect(sharedConfig()).toMatchObject({ name: 'THEMIS substorm', description: 'Dipolarization at 04:54 UT.' });
+  });
+
+  it('opens the Events panel when the preset has events', () => {
+    dom.getById('events-container').open = false;
+    applyConfig(story);
+
+    expect(dom.getById('events-container').open).toBe(true);
+  });
+
+  it('hides the caption for a config without a story', () => {
+    applyConfig(story);
+    applyConfig({ ...story, name: undefined, description: undefined });
+
+    expect(dom.getById('preset-caption').hidden).toBe(true);
+    updateShareURL();
+    expect(sharedConfig()).not.toHaveProperty('name');
+  });
+});

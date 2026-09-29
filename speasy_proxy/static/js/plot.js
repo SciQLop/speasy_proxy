@@ -15,6 +15,7 @@ import {
 import { ascendingSpectrogram } from './spectrogram.js';
 import { fetchData as apiFetchData, fetchInventory } from './api-client.js';
 import { createPlotView, PRODUCT_MIME } from './plot-view.js';
+import { presetConfig, configStory } from './plot-share.js';
 
     const BASE_URL = (window.SPEASY_BASE_URL || '').replace(/\/$/, '');
     const API_BASE = BASE_URL + '/';
@@ -43,7 +44,8 @@ import { createPlotView, PRODUCT_MIME } from './plot-view.js';
     const plotState = {
         time_range: { start: null, stop: null },
         plots: [],  // array of subplot objects
-        intervals: []  // [{start, stop, color?, label?}] — vertical spans across all subplots
+        intervals: [],  // [{start, stop, color?, label?}] — vertical spans across all subplots
+        story: null  // { name, description } of the preset this view came from
     };
 
     let currentView = { start: null, end: null };
@@ -449,6 +451,8 @@ import { createPlotView, PRODUCT_MIME } from './plot-view.js';
             else if (e.key === 'ArrowRight') { e.preventDefault(); panTime(1); }
         });
         document.getElementById('btn-clear').addEventListener('click', clearAllPlots);
+        const caption = document.getElementById('preset-caption');
+        caption.addEventListener('click', () => caption.classList.toggle('expanded'));
 
         document.getElementById('btn-export-png').addEventListener('click', exportPng);
         document.getElementById('btn-export-csv').addEventListener('click', exportCsv);
@@ -623,6 +627,8 @@ import { createPlotView, PRODUCT_MIME } from './plot-view.js';
 
     function clearAllPlots() {
         plotState.plots = [];
+        plotState.story = null;
+        showStory();
         plotView.clear();
         syncBarActions();
         history.replaceState(null, '', window.location.pathname);
@@ -1057,7 +1063,7 @@ import { createPlotView, PRODUCT_MIME } from './plot-view.js';
         if (plotState.intervals.length > 0) {
             config.intervals = plotState.intervals;
         }
-        return config;
+        return plotState.story ? { ...plotState.story, ...config } : config;
     }
 
     function updateURL() {
@@ -1121,6 +1127,8 @@ import { createPlotView, PRODUCT_MIME } from './plot-view.js';
         }));
 
         plotState.plots = config.plots.map(subplotFromConfig);
+        plotState.story = configStory(config);
+        showStory();
         updateEventsPanel();
 
         // Selects the first product so loadInventory can restore its params panel.
@@ -1272,13 +1280,24 @@ import { createPlotView, PRODUCT_MIME } from './plot-view.js';
                 item.className = 'side-item';
                 item.textContent = preset.name;
                 item.title = preset.description || preset.name;
-                item.addEventListener('click', () => { applyConfig(preset.config); closeDrawer(); });
+                item.addEventListener('click', () => { applyConfig(presetConfig(preset)); closeDrawer(); });
                 list.appendChild(item);
             }
             document.getElementById('presets-container').hidden = false;
         } catch (e) {
             console.error('Failed to load presets:', e);
         }
+    }
+
+    // ===== Preset caption =====
+
+    // One truncated line in the top bar; the description shows on hover, or in full on click.
+    function showStory() {
+        const caption = document.getElementById('preset-caption');
+        const story = plotState.story;
+        caption.hidden = !story;
+        caption.textContent = story ? story.name + (story.description ? ' — ' + story.description : '') : '';
+        caption.title = story ? story.name + (story.description ? '\n\n' + story.description : '') : '';
     }
 
     // ===== Events Panel =====
@@ -1288,7 +1307,9 @@ import { createPlotView, PRODUCT_MIME } from './plot-view.js';
     function updateEventsPanel() {
         const list = document.getElementById('events-list');
         list.innerHTML = '';
-        document.getElementById('events-container').hidden = plotState.intervals.length === 0;
+        const container = document.getElementById('events-container');
+        container.hidden = plotState.intervals.length === 0;
+        container.open = !container.hidden;
 
         const sorted = [...plotState.intervals].sort((a, b) => parseUtc(a.start) - parseUtc(b.start));
         for (const iv of sorted) {

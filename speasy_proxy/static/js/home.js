@@ -1,5 +1,6 @@
 import { formatBytes, formatNumber, formatDuration, formatDateTime } from './format.js';
 import { configToBase64 } from './plot-core.js';
+import { presetConfig } from './plot-share.js';
 import { escapeHtml } from './common.js';
 
 const BASE_URL = (window.SPEASY_BASE_URL || '').replace(/\/$/, '');
@@ -41,7 +42,7 @@ const BASE_URL = (window.SPEASY_BASE_URL || '').replace(/\/$/, '');
 
             const grid = document.getElementById('presets-grid');
             for (const preset of featured) {
-                const encoded = configToBase64(preset.config);
+                const encoded = configToBase64(presetConfig(preset));
                 const plotUrl = baseUrl + '/plot?config=' + encoded;
                 const card = document.createElement('a');
                 card.href = plotUrl;

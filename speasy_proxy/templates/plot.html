@@ -57,6 +57,10 @@
         .time-range { display: flex; align-items: center; gap: 6px; color: #555e7e; }
         .time-zone { font-size: 0.75rem; }
         .bar-spacer { flex: 1; }
+        /* The preset's name and story: one line, full text on hover or click */
+        .preset-caption { flex: 0 1 auto; min-width: 0; max-width: 40vw; color: #aeb6d4; font-size: 0.8rem;
+            white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: pointer; }
+        .preset-caption.expanded { white-space: normal; max-width: 60vw; }
         .bar-actions { display: flex; align-items: center; gap: 6px; }
 
         /* Selected product (sidebar): its path and per-product params */
@@ -354,6 +358,7 @@
             <span class="time-span" id="time-span" title="Window length"></span>
         </div>
 
+        <span class="preset-caption" id="preset-caption" hidden></span>
         <div class="bar-spacer"></div>
 
         <div class="bar-actions">
