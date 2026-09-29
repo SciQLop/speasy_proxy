@@ -22,7 +22,7 @@ def status(last_inventory_update: datetime = None, update_interval_seconds: int 
         'up_duration': up_time.total_seconds(),
         'last_inventory_update': last_inventory_update.isoformat() if last_inventory_update else 'never',
         'inventory_size': inventory_size,
-        'docs': 'https://speasyproxy.readthedocs.io/en/latest/',
+        'docs': 'https://github.com/SciQLop/speasy_proxy#readme',
         'speasy_version': spz.__version__,
         'version': __version__,
         'inventory_update_interval': str(timedelta(seconds=update_interval_seconds)),

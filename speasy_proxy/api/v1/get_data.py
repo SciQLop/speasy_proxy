@@ -1,5 +1,6 @@
 import json
 import logging
+import math
 import time
 import uuid
 from datetime import datetime, timedelta, UTC
@@ -51,9 +52,20 @@ def _json_default(o):
     raise TypeError(f'Object of type {type(o).__name__} is not JSON serializable')
 
 
+def _finite_or_none(o):
+    # Bare NaN/Infinity tokens are not JSON: strict parsers (JS, jq, Julia...) reject the whole body.
+    if isinstance(o, float):
+        return o if math.isfinite(o) else None
+    if isinstance(o, list):
+        return [_finite_or_none(x) for x in o]
+    if isinstance(o, dict):
+        return {k: _finite_or_none(v) for k, v in o.items()}
+    return o
+
+
 def to_json(var: SpeasyVariable) -> str:
     var = var.replace_fillval_by_nan(convert_to_float=True)
-    return json.dumps(var.to_dictionary(array_to_list=True), default=_json_default)
+    return json.dumps(_finite_or_none(var.to_dictionary(array_to_list=True)), default=_json_default, allow_nan=False)
 
 
 def _get_data(product, start_time, stop_time, extra_http_headers, **extra_params):
@@ -89,7 +101,8 @@ class _PhaseTimer:
         self.ms[phase] = self.ms.get(phase, 0.) + seconds * 1000.
 
     def headers(self) -> dict:
-        return {"Server-Timing": ", ".join(f"{phase};dur={ms:.1f}" for phase, ms in self.ms.items())}
+        return {"Server-Timing": ", ".join(f"{phase};dur={ms:.1f}" for phase, ms in self.ms.items()),
+                "Access-Control-Expose-Headers": "Server-Timing"}
 
 
 def _invalid_time_range_reason(start_time: datetime, stop_time: datetime) -> Optional[str]:
@@ -104,20 +117,44 @@ def _invalid_time_range_reason(start_time: datetime, stop_time: datetime) -> Opt
     return None
 
 
-@router.get('/get_data', description='Get data from cache or remote server')
+_NOT_FOUND_MESSAGES = ("Unknown product", "Can't find a provider", "Given string does not look like a path")
+
+
+def _fetch_failure_status(e: Exception) -> int:
+    # speasy has no dedicated exception for an unknown path, only these ValueError messages;
+    # anything else is blamed on upstream.
+    return 404 if isinstance(e, ValueError) and str(e).startswith(_NOT_FOUND_MESSAGES) else 502
+
+
+def _download_headers(fmt: str, path: str, start_time: datetime, stop_time: datetime) -> dict:
+    if fmt != "cdf":
+        return {}
+    stem = f"{path.replace('/', '_')}_{start_time:%Y%m%dT%H%M%S}_{stop_time:%Y%m%dT%H%M%S}"
+    return {"Content-Disposition": f'attachment; filename="{stem}.cdf"'}
+
+
+@router.get('/get_data', description='Get data from cache or remote server',
+            responses={400: {"description": "Invalid time range"},
+                       404: {"description": "Unknown provider or product"},
+                       500: {"description": "The data could not be encoded in the requested format"},
+                       502: {"description": "The upstream data provider failed"}})
 async def get_data(request: Request,
-                   path: str = Query(examples=["amda/c1_b_gsm"]),
-                   start_time: datetime = Query(examples=["2018-10-24T00:00:00"]),
-                   stop_time: datetime = Query(examples=["2018-10-24T02:00:00"]),
+                   path: str = Query(examples=["amda/c1_b_gsm"],
+                                     description="'<provider>/<product id>', as found in /get_inventory "
+                                                 "(the __spz_provider__ and __spz_uid__ of a parameter)."),
+                   start_time: datetime = Query(examples=["2018-10-24T00:00:00"],
+                                                description="ISO-8601 (UTC when no offset is given) or Unix epoch seconds."),
+                   stop_time: datetime = Query(examples=["2018-10-24T02:00:00"],
+                                               description="Same format as start_time, must be after it."),
                    format: DataFormat = "python_dict",
                    zstd_compression: ZstdCompression = False,
                    compression: Compression = None,
-                   output_format: Optional[str] = Query(None, enum=["CDF_ISTP"],
+                   output_format: Optional[str] = Query(None, examples=["CDF_ISTP"],
                                                         description="Data format used to retrieve data from remote server (such as AMDA), not the data format of the current request. Only available with AMDA."),
-                   coordinate_system: Optional[str] = Query(None, enum=["geo", "gm", "gse", "gsm", "sm", "geitod",
-                                                                        "geij2000"],
-                                                            description="Coordinate system used to retrieve trajectories from SSCWeb."),
-                   method: Optional[str] = Query(None, enum=["API", "BEST", "FILE"],
+                   coordinate_system: Optional[str] = Query(None, examples=["gse"],
+                                                            description="Frame of trajectories: SSCWeb (geo, gm, gse, gsm, sm, geitod, geij2000) "
+                                                                        "or CDPP 3DView (see /get_3dview_frames)."),
+                   method: Optional[str] = Query(None, examples=["BEST"],
                                                  description="Method used to retrieve data from CDA."),
                    product_inputs: Optional[Json] = Query(None, description="Product input parameters (in JSON format) used used for example in AMDA templates parameters"),
                    pickle_proto: PickleProtocol = 3,
@@ -157,7 +194,8 @@ async def get_data(request: Request,
                                       extra_http_headers=extra_http_headers, **extra_params)
     except Exception as e:
         log.error(f'{request_id}: Failed to get data for {product}: {e}')
-        return JSONResponse(status_code=502, content={"error": f"Failed to get data for {product}", "detail": str(e)},
+        return JSONResponse(status_code=_fetch_failure_status(e),
+                            content={"error": f"Failed to get data for {product}", "detail": str(e)},
                             headers=timer.headers())
 
     if var is not None and max_points is not None and len(var) > max_points:
@@ -184,7 +222,8 @@ async def get_data(request: Request,
         log.debug(f'{request_id}, duration = {request_duration}ms, Got None')
 
     return Response(media_type=mime, content=result,
-                    headers={'Content-Type': mime, **timer.headers()})
+                    headers={'Content-Type': mime, **timer.headers(),
+                             **_download_headers(format, path, start_time, stop_time)})
 
 
 def encode_output(var, path: str, start_time: str, stop_time: str, fmt: str, request: Request,

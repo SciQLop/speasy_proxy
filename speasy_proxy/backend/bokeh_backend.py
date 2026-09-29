@@ -81,7 +81,7 @@ if ((last_range[0] > xr.start) || (last_range[1] < xr.end))
             var values = transpose(json_from_server['values']['values']);
             //console.log(json_from_server);
     {% for column in columns %}
-            data['{{ column }}']=values[{{ loop.index0 }}];
+            data['{{ column }}']=values[{{ loop.index0 }}].map(function(v) { return v === null ? NaN : v; });
     {% endfor %}
             data['time']=json_from_server['axes'][0]['values'].map(function(item) { return item/1000000 });
     

@@ -11,6 +11,7 @@ from . import (
     get_version,
     get_server_status,
     get_3dview_frames,
+    healthz,
     is_up,
     ws_collaboration,
 )

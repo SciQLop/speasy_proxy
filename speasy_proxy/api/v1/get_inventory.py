@@ -3,6 +3,7 @@ from dateutil import parser
 from datetime import UTC
 from email.utils import formatdate
 from fastapi import Response, Request, Depends
+from fastapi.responses import JSONResponse
 from .routes import router
 from fastapi import status
 from starlette.concurrency import run_in_threadpool
@@ -58,10 +59,12 @@ async def get_inventory(request: Request, provider: Provider = "ssc",
     log.debug(f'New inventory request {request_id}: {provider}')
     if provider not in list_providers() and provider != "all":
         log.debug(f'{request_id}, unknown provider: {provider}')
-        return Response(status_code=status.HTTP_400_BAD_REQUEST, content=f"Unknown or disabled provider: {provider}")
+        return JSONResponse(status_code=status.HTTP_400_BAD_REQUEST,
+                            content={"error": "Invalid provider", "detail": f"Unknown or disabled provider: {provider}"})
     if version not in (1, 2):
         log.debug(f'{request_id}, unsupported version: {version}')
-        return Response(status_code=status.HTTP_400_BAD_REQUEST, content=f"Unsupported inventory version: {version}")
+        return JSONResponse(status_code=status.HTTP_400_BAD_REQUEST,
+                            content={"error": "Invalid version", "detail": f"Unsupported inventory version: {version}"})
 
     if_modified_since = request.headers.get("If-Modified-Since")
     if if_modified_since and inventory_mgr.is_current(provider, if_modified_since):
@@ -76,8 +79,9 @@ async def get_inventory(request: Request, provider: Provider = "ssc",
                                                       version, zstd_compression)
     if data is None:
         log.debug(f'{request_id}, inventory not available for requested format/version')
-        return Response(status_code=status.HTTP_404_NOT_FOUND,
-                        content="Inventory not available for the requested format/version")
+        return JSONResponse(status_code=status.HTTP_404_NOT_FOUND,
+                            content={"error": "Inventory not available",
+                                     "detail": f"No {format} inventory version {version} for {provider}"})
 
     request_duration = (time.time_ns() - request_start_time) / 1000.
     log.debug(f'{request_id}, duration = {request_duration}us')

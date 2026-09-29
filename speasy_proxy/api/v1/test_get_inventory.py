@@ -1,3 +1,4 @@
+import json
 import asyncio
 import importlib
 import threading
@@ -78,6 +79,7 @@ async def test_missing_format_returns_404():
     resp = await m.get_inventory(request=_FakeRequest(), provider="all", format="python_dict",
                                  version=2, pickle_proto=3, inventory_mgr=mgr)
     assert resp.status_code == 404
+    assert json.loads(resp.body)["error"]
 
 
 @pytest.mark.anyio
@@ -86,6 +88,7 @@ async def test_invalid_version_returns_400():
     resp = await m.get_inventory(request=_FakeRequest(), provider="all", format="json",
                                  version=5, inventory_mgr=mgr)
     assert resp.status_code == 400
+    assert "version" in json.loads(resp.body)["detail"]
 
 
 @pytest.mark.anyio
