@@ -33,11 +33,17 @@ def _spectrogram(var: SpeasyVariable, max_points: int) -> SpeasyVariable:
     n_buckets = max(1, max_points // 2)
     t = var.time.astype('int64')
     # Float: nanosecond offsets times n_buckets overflow int64 over multi-year spans.
-    buckets = np.minimum(((t - t[0]) / (t[-1] - t[0] + 1) * n_buckets).astype(np.int64), n_buckets - 1)
+    width = (t[-1] - t[0] + 1) / n_buckets
+    buckets = np.minimum(((t - t[0]) / width).astype(np.int64), n_buckets - 1)
     intensity = np.nansum(np.asarray(var.values, dtype=float), axis=1)
     order = np.lexsort((-intensity, buckets))
-    _, first_of_bucket = np.unique(buckets[order], return_index=True)
-    return var[np.sort(order[first_of_bucket])]
+    kept_buckets, first_of_bucket = np.unique(buckets[order], return_index=True)
+    result = var[order[first_of_bucket]]
+    # The kept row can sit anywhere in its bucket, so real times would be 0 to 2 buckets
+    # apart and the image would mistake ordinary steps for data gaps. Bucket centres
+    # (at most half a bucket off, under a pixel) are regular; missing buckets stay gaps.
+    result.time[:] = (t[0] + (kept_buckets + 0.5) * width).astype(np.int64).astype('datetime64[ns]')
+    return result
 
 
 def _min_max(var: SpeasyVariable, max_points: int) -> SpeasyVariable:

@@ -138,6 +138,24 @@ def test_spectrogram_bucketing_survives_multi_year_spans():
     assert np.all(np.diff(kept) > 0)
 
 
+def test_spectrogram_rows_sit_on_a_regular_grid_and_real_gaps_stay():
+    """A bucket's most intense row can sit anywhere in it, so kept rows were unevenly
+    spaced (0 to 2 buckets apart) and the /plot image mistook normal steps for data
+    gaps: dark vertical stripes. Rows are stamped at their bucket centre instead."""
+    rng = np.random.default_rng(3)
+    var = _make_spectrogram(20000, 8)
+    hole = np.r_[0:8000, 9000:20000]            # 1000 s without data, ~25 buckets
+    var = var[hole]
+    var.values[:] = rng.lognormal(size=var.values.shape)
+    original_times = var.time.copy()
+    result = resample(var, max_points=1000, strategy='min_max')
+    assert np.array_equal(var.time, original_times)   # the fetched variable is not touched
+    steps = np.unique(np.diff(result.time.astype('int64')))
+    bucket = steps.min()
+    assert np.all(steps % bucket <= 1)          # multiples of one bucket (ns rounding)
+    assert steps.max() >= 20 * bucket           # the real gap is still there
+
+
 def test_spectrogram_keeps_real_rows_and_bursts():
     values = np.ones((20000, 8))
     values[12345] = 1e6
