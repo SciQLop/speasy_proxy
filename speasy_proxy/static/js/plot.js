@@ -3,7 +3,7 @@ import {
   setStatus, showLoading, showFetchBar, fallbackCopy,
   installErrorBoundary,
 } from './common.js';
-import { getDisplayName, getProductPath, shouldSkipNode, SKIP_KEYS, isSpzMetaKey, isSelectableProduct, browsableChildKeys, hasSelectableDescendant, paramSpecs } from './inventory-tree.js';
+import { getDisplayName, getProductPath, shouldSkipNode, SKIP_KEYS, isSpzMetaKey, isSelectableProduct, browsableChildKeys, hasSelectableDescendant, paramSpecs, nodeTooltip } from './inventory-tree.js';
 import {
   createSubplotData, createProductCache, subplotToConfig, subplotFromConfig,
   detectPlotType, mergeSorted, spliceRows, mergeIntervals, evictProductCache,
@@ -124,6 +124,7 @@ import { createPlotView, PRODUCT_MIME } from './plot-view.js';
         branch.className = 'tree-branch';
         const summary = document.createElement('summary');
         summary.textContent = displayName;
+        summary.title = nodeTooltip(data);
         const children = document.createElement('div');
         children.className = 'tree-children';
         branch.appendChild(summary);
@@ -140,13 +141,19 @@ import { createPlotView, PRODUCT_MIME } from './plot-view.js';
         return branch;
     }
 
+    // Where the product sits, then its inventory metadata (description, units, coverage...).
+    function hoverText(head, node) {
+        const metadata = nodeTooltip(node);
+        return metadata ? head + '\n\n' + metadata : head;
+    }
+
     // A product row in the tree or the search results. Click selects it (its params show
     // under the search box), double-click or "+" adds it as a new subplot, dragging it onto
     // a subplot overlays it there.
     function productLeaf(node) {
         const div = document.createElement('div');
         div.className = 'tree-leaf';
-        div.title = getProductPath(node);
+        div.title = hoverText(getProductPath(node), node);
         div.draggable = true;
         const add = document.createElement('button');
         add.className = 'tree-add';
@@ -372,7 +379,7 @@ import { createPlotView, PRODUCT_MIME } from './plot-view.js';
         const crumbs = distinctCrumbs(shown.map(leaf => leaf.breadcrumb.slice(0, -1)));
         shown.forEach((leaf, i) => {
             const div = productLeaf(leaf.node);
-            div.title = leaf.breadcrumb.join(' / ') + '\n' + leaf.path;
+            div.title = hoverText(leaf.breadcrumb.join(' / ') + '\n' + leaf.path, leaf.node);
             div.appendChild(document.createTextNode(leaf.displayName));
             const crumb = document.createElement('span');
             crumb.className = 'tree-crumb';

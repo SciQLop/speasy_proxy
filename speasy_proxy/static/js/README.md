@@ -12,7 +12,7 @@ TypeScript**. The FastAPI app serves these `.js` files as static assets under
 |--------|----------------|
 | `common.js` | `setStatus`, `showLoading`, `showFetchBar`, `fallbackCopy`, UTC date-field helpers (`parseDateInput`, `setDateInput`), `escapeHtml` |
 | `format.js` | `formatBytes`, `formatNumber`, `formatDuration`, `formatDateTime` (UTC) |
-| `inventory-tree.js` | speasy `__spz_*` schema primitives: `isSpzMetaKey`, `getDisplayName`, `getProductPath`, `shouldSkipNode`, `hasVisibleChildren`, `isParameterIndex`, `paramSpecs` (a product's extra `/get_data` parameters: AMDA template args, SSC/3DView frames), `SKIP_KEYS` (shared) + `SSC_METADATA_KEYS` (SSC-only, not applied on `/plot`) |
+| `inventory-tree.js` | speasy `__spz_*` schema primitives: `isSpzMetaKey`, `getDisplayName`, `getProductPath`, `shouldSkipNode`, `hasVisibleChildren`, `isParameterIndex`, `paramSpecs` (a product's extra `/get_data` parameters: AMDA template args, SSC/3DView frames), `nodeTooltip` (tree hover metadata), `SKIP_KEYS` (shared) + `SSC_METADATA_KEYS` (SSC-only, not applied on `/plot`) |
 | `magnetosphere.js` | 3D physics: `shueParams`, `bowShockParams`, `classifyPoint`, `toReData`, `computeAxisRange` |
 | `earth-texture.js` | globe albedo: `buildEarthColorLUT` (equirectangular image → lat/lon grid), `sampleEarthColor` |
 | `plot-core.js` | data merges, interval coalescing, cache eviction, `detectPlotType`/`plotTypeFromCache`, heatmap value ranges (`computeValueRange`, `mergeValueRange`, `renderableRange`), config base64, subplot/cache factories, product params (`paramValue`, `withParam`), chart helpers (`lineTable`, `nearestIndex`, `yRangeFromPixels`, `fmtTick`, `cleanText`) |

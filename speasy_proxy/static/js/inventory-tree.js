@@ -114,3 +114,43 @@ function templateArgSpecs(args) {
       default: arg.default,
     }));
 }
+
+// Hover text for a tree node: its description, then the fields a user looks for first
+// (units, coverage, cadence), then every other plain field. Providers name these
+// differently (AMDA description/desc/units, CDA ISTP CATDESC/UNITS).
+const DESCRIPTION_KEYS = ['description', 'CATDESC', 'desc'];
+const LEADING_KEYS = ['units', 'UNITS', 'start_date', 'stop_date', 'Time_resolution', 'sampling', 'DISPLAY_TYPE'];
+const HIDDEN_KEYS = new Set(['is_public', 'user_product', 'name']);
+const MAX_VALUE_CHARS = 160;
+const MAX_DESCRIPTION_CHARS = 600;
+const MAX_LINES = 20;
+
+export function nodeTooltip(node) {
+  const fields = Object.entries(node || {}).filter(([key, value]) => isShownField(key, value));
+  const descriptionKey = DESCRIPTION_KEYS.find((key) => fields.some(([k]) => k === key));
+  const byKey = Object.fromEntries(fields);
+  const ordered = [
+    ...LEADING_KEYS.filter((key) => key in byKey),
+    ...fields.map(([key]) => key).filter((key) => key !== descriptionKey && !LEADING_KEYS.includes(key)),
+  ];
+  const description = descriptionKey ? [truncate(plainText(byKey[descriptionKey]), MAX_DESCRIPTION_CHARS)] : [];
+  return [...description, ...ordered.map((key) => truncate(key + ': ' + plainText(byKey[key]), MAX_VALUE_CHARS))]
+    .slice(0, MAX_LINES)
+    .join('\n');
+}
+
+function isShownField(key, value) {
+  if (isSpzMetaKey(key) || HIDDEN_KEYS.has(key)) return false;
+  if (!['string', 'number', 'boolean'].includes(typeof value)) return false;
+  return String(value).trim() !== '';
+}
+
+// AMDA descriptions carry HTML (<br/>, <b>): keep the line breaks, drop the tags.
+function plainText(value) {
+  return String(value)
+    .replace(/<br\s*\/?>/gi, '\n')
+    .replace(/<[^>]*>/g, '')
+    .split('\n').map((line) => line.trim()).filter(Boolean).join('\n');
+}
+
+const truncate = (text, max) => (text.length > max ? text.slice(0, max - 1) + '…' : text);

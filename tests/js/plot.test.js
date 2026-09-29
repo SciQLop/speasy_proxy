@@ -1008,6 +1008,21 @@ describe('product search', () => {
     expect(leaf.children.map((c) => c.textContent)).toEqual(['+', 'GSE_LAT', 'cda / ACE']);
   });
 
+  it('shows the product metadata on hover, under its path', async () => {
+    apiClient.fetchInventory.mockResolvedValueOnce({
+      cda: { __spz_type__: 'ProviderIndex', ACE: { __spz_type__: 'DatasetIndex', __spz_name__: 'ACE',
+        GSE_LAT: { __spz_type__: 'ParameterIndex', __spz_provider__: 'cda', __spz_uid__: 'AC/GSE_LAT', __spz_name__: 'GSE_LAT',
+          CATDESC: 'ACE latitude in GSE', UNITS: 'deg' } } },
+    });
+    await plot.__test__.loadInventory();
+    const before = dom.created.length;
+
+    plot.__test__.onSearchInput({ target: { value: 'gse_lat' } });
+
+    const leaf = dom.created.slice(before).find((e) => e.className === 'tree-leaf');
+    expect(leaf.title).toBe('cda / ACE / GSE_LAT\ncda/AC/GSE_LAT\n\nACE latitude in GSE\nUNITS: deg');
+  });
+
   it('binds its input listener once, even when the inventory is loaded again (Retry)', async () => {
     apiClient.fetchInventory.mockResolvedValue({});
     const box = dom.getById('search-box');

@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   SKIP_KEYS, SSC_METADATA_KEYS, getDisplayName, getProductPath, shouldSkipNode,
   isSpzMetaKey, hasVisibleChildren, isParameterIndex, isSelectableProduct, hasSelectableDescendant,
-  paramSpecs,
+  paramSpecs, nodeTooltip,
 } from '../../speasy_proxy/static/js/inventory-tree.js';
 
 describe('inventory primitives', () => {
@@ -114,5 +114,42 @@ describe('paramSpecs', () => {
 
   it('has nothing for a plain product', () => {
     expect(paramSpecs({ __spz_type__: 'ParameterIndex', __spz_provider__: 'cda' })).toEqual([]);
+  });
+});
+
+describe('nodeTooltip', () => {
+  it('puts the description first, then units and coverage, then the other fields', () => {
+    const node = {
+      __spz_type__: 'ParameterIndex', __spz_provider__: 'cda', __spz_uid__: 'AC_H2_CRIS/cnt_Al',
+      FIELDNAM: 'cnt_Al', start_date: '1997-08-27', UNITS: 'Counts/hour',
+      CATDESC: 'Al counts, at 7 energies', stop_date: '2026-08-31',
+    };
+    expect(nodeTooltip(node).split('\n')).toEqual([
+      'Al counts, at 7 energies',
+      'UNITS: Counts/hour',
+      'start_date: 1997-08-27',
+      'stop_date: 2026-08-31',
+      'FIELDNAM: cnt_Al',
+    ]);
+  });
+
+  it('turns AMDA HTML into plain lines and drops internal fields', () => {
+    const node = {
+      __spz_type__: 'DatasetIndex', __spz_name__: 'CA60', is_public: true, user_product: false, name: 'CA60',
+      desc: 'CA60 - ACE EPAM<br/> Sampling: 5M<br/> Provider: <b>CDAWeb</b>',
+    };
+    expect(nodeTooltip(node)).toBe('CA60 - ACE EPAM\nSampling: 5M\nProvider: CDAWeb');
+  });
+
+  it('shortens long values and skips nested nodes', () => {
+    const node = { __spz_type__: 'DatasetIndex', Rules_of_use: 'x'.repeat(500), child: { __spz_type__: 'ParameterIndex' } };
+    const [line, ...rest] = nodeTooltip(node).split('\n');
+    expect(line.length).toBeLessThanOrEqual(180);
+    expect(line.endsWith('…')).toBe(true);
+    expect(rest).toEqual([]);
+  });
+
+  it('is empty for a node without metadata', () => {
+    expect(nodeTooltip({ __spz_type__: 'DatasetIndex', __spz_name__: 'x' })).toBe('');
   });
 });
