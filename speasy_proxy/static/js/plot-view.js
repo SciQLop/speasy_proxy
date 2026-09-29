@@ -9,7 +9,7 @@ import uPlot from './vendor/uPlot.esm.js';
 import { CHART_COLORS, escapeHtml, parseUtc } from './common.js';
 import {
   lineTable, nearestIndex, fmtTick, productTitle, dropZone,
-  paramValue, zRangeOf, outOfCoverage,
+  paramValue, zRangeOf, outOfCoverage, edgeColor,
 } from './plot-core.js';
 import { binRowRects, computeYEdges, lowestPositiveEdge, renderSpectrogramImage, spectrogramValueAt, COLORMAPS, colormapLut } from './spectrogram.js';
 import { bindGestures } from './plot-gestures.js';
@@ -193,6 +193,7 @@ export function createPlotView(root, { onViewChange, onAction = () => {}, paramS
       series,
       hooks: {
         drawClear: [(u) => drawBackdrop(u, subplot, isHeatmap)],
+        draw: [(u) => drawIntervalEdges(u, intervals)],
         setCursor: [(u) => onCursor(u, subplot)],
       },
     };
@@ -664,6 +665,24 @@ function drawIntervals(u, intervals) {
     ctx.fillStyle = iv.color;
     ctx.fillRect(x0, bbox.top, x1 - x0, bbox.height);
   }
+}
+
+// On top of everything (uPlot's draw hook runs after the series), so events stay visible.
+function drawIntervalEdges(u, intervals) {
+  const { ctx, bbox } = u;
+  const lineWidth = Math.max(1, Math.round(globalThis.devicePixelRatio || 1));
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(bbox.left, bbox.top, bbox.width, bbox.height);
+  ctx.clip();
+  for (const iv of intervals) {
+    ctx.fillStyle = edgeColor(iv.color);
+    for (const t of [iv.t0, iv.t1]) {
+      const x = Math.round(u.valToPos(t, 'x', true));
+      ctx.fillRect(x - Math.floor(lineWidth / 2), bbox.top, lineWidth, bbox.height);
+    }
+  }
+  ctx.restore();
 }
 
 // --- tooltip content ---------------------------------------------------------------

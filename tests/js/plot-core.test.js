@@ -5,7 +5,7 @@ import {
   createSubplotData, createProductCache, subplotToConfig, subplotFromConfig, paramValue, withParam, editedRange, zRangeOf, outOfCoverage, formatSpan,
   normalizeWheelDelta, wheelIntent, zoomRange, panRange, zoomToward, pinchRange, structureKey, resampleTarget,
   plotTypeFromCache, computeValueRange, mergeValueRange, renderableRange,
-  nearestIndex, lineTable, yRangeFromPixels, rangeFromDrag, colorHex, withHue, fmtTick, cleanText, productTitle, dropZone, distinctCrumbs,
+  nearestIndex, lineTable, yRangeFromPixels, rangeFromDrag, colorHex, withHue, edgeColor, fmtTick, cleanText, productTitle, dropZone, distinctCrumbs,
 } from '../../speasy_proxy/static/js/plot-core.js';
 
 describe('merge', () => {
@@ -739,6 +739,11 @@ describe('event colours (a colour picker gives #rrggbb, shading needs transparen
 
   it('takes the picked hue and keeps the transparency', () => {
     expect(withHue('rgba(100, 140, 255, 0.12)', '#ff7850')).toBe('rgba(255, 120, 80, 0.12)');
+  });
+
+  it('draws an event edge in its own hue, nearly opaque, so it shows over curves and spectrograms', () => {
+    expect(edgeColor('rgba(255, 120, 80, 0.12)')).toBe('rgba(255, 120, 80, 0.85)');
+    expect(edgeColor('garbage')).toBe('rgba(100, 140, 255, 0.85)');
   });
 
   it('gives an opaque colour a light default transparency', () => {

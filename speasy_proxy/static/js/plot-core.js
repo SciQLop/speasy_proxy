@@ -370,6 +370,13 @@ export function colorHex(color) {
   return c ? '#' + c.slice(0, 3).map((v) => v.toString(16).padStart(2, '0')).join('') : DEFAULT_EVENT_HEX;
 }
 
+// An event's edge lines: its hue, nearly opaque. The light fill alone vanishes over a
+// bright spectrogram and is faint behind curves.
+export function edgeColor(color) {
+  const [r, g, b] = parseColor(color) || parseColor(DEFAULT_EVENT_HEX);
+  return `rgba(${r}, ${g}, ${b}, 0.85)`;
+}
+
 // The picked colour at the old colour's transparency (an opaque one gets a light default).
 export function withHue(color, hex) {
   const [r, g, b] = parseColor(hex);
