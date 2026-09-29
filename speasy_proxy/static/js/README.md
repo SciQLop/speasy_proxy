@@ -62,7 +62,7 @@ see `SpeasyData`, so they are codec-agnostic.
 
 Two codecs ship:
 
-- **`jsonCodec`** (default) — `format=json`, NaN-safe `JSON.parse`.
+- **`jsonCodec`** (default) — `format=json`, NaN-safe `JSON.parse`; `null` samples (the server writes NaN as `null`) become `NaN`, as in the CDF codec.
 - **`cdfCodec`** (`cdf-codec.js`) — `format=cdf`, decoded in-browser by the **CDFpp
   WebAssembly** build (`vendor/cdfpp.js` self-locates `vendor/cdfpp.wasm` via
   `import.meta.url` — no bundler). The proxy resamples *before* encoding, so CDF keeps the

@@ -14,10 +14,17 @@ export function decodeJson(text) {
   return JSON.parse(text.replace(/-?\bInfinity\b|\bNaN\b/g, 'null'));
 }
 
+// JSON has no NaN, so a gap arrives as null; samples become NaN like the CDF codec's,
+// and arithmetic on them (null / 6371 === 0) cannot turn a gap into a value.
+const nullsToNaN = (a) => (Array.isArray(a) ? a.map(nullsToNaN) : a ?? NaN);
+
 export const jsonCodec = {
   format: 'json',
   async decode(resp) {
-    return decodeJson(await resp.text());
+    const data = decodeJson(await resp.text());
+    if (data?.values) data.values.values = nullsToNaN(data.values.values);
+    for (const axis of data?.axes || []) axis.values = nullsToNaN(axis.values);
+    return data;
   },
 };
 

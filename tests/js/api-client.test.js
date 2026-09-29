@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
-import { buildDataUrl, decodeJson, fetchInventory } from '../../speasy_proxy/static/js/api-client.js';
+import { buildDataUrl, decodeJson, fetchInventory, jsonCodec } from '../../speasy_proxy/static/js/api-client.js';
 
 describe('buildDataUrl', () => {
   it('builds a JSON get_data URL with required params', () => {
@@ -54,5 +54,19 @@ describe('decodeJson', () => {
   it('parses JSON with bare Infinity and -Infinity tokens', () => {
     const d = decodeJson('{"values":[1.0, Infinity, -Infinity, NaN]}');
     expect(d.values).toEqual([1.0, null, null, null]);
+  });
+});
+
+describe('jsonCodec', () => {
+  const decode = (text) => jsonCodec.decode({ text: () => Promise.resolve(text) });
+
+  it('turns null samples (the server writes null for NaN) into NaN, like the CDF codec', async () => {
+    const d = await decode('{"axes":[{"values":[1,2]},{"values":[[10,null],[10,20]]}],'
+      + '"values":{"values":[[null,1],[2,NaN]],"meta":{"FILLVAL":[null]}}}');
+    expect(d.values.values[0][0]).toBeNaN();
+    expect(d.values.values[1][1]).toBeNaN();
+    expect(d.values.values[0][1]).toBe(1);
+    expect(d.axes[1].values[0][1]).toBeNaN();
+    expect(d.values.meta.FILLVAL[0]).toBeNull();
   });
 });
