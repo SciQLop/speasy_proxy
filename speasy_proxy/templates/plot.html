@@ -146,7 +146,15 @@
         .bar-actions button:disabled { color: #3a4468; border-color: #1e2640; cursor: default; }
         .bar-actions button:not(:disabled):hover { background: #1a2138; color: #e0e6f0; border-color: #6b8afd; }
         .bar-actions #btn-clear:not(:disabled):hover { border-color: #ee6666; color: #ee6666; }
-        .bar-actions #btn-copy-url { background: #6b8afd; border: none; color: #fff; font-weight: 600; }
+        .bar-actions #btn-copy-url, .code-popover button { background: #6b8afd; border: none; color: #fff; font-weight: 600; }
+        .code-popover { position: absolute; top: 100%; right: 0; z-index: 100; width: min(640px, 90vw);
+            display: flex; flex-direction: column; gap: 6px; padding: 10px; background: #1a1f36;
+            border: 1px solid #2a3358; border-radius: 6px; box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4); }
+        .code-label { color: #8892b0; font-size: 0.75rem; }
+        .code-popover textarea { width: 100%; resize: vertical; white-space: pre; overflow-x: auto;
+            background: #0b0e17; border: 1px solid #2a3358; border-radius: 4px; color: #e0e6f0;
+            padding: 6px 8px; font: 0.75rem/1.4 ui-monospace, SFMono-Regular, Menlo, monospace; }
+        .code-popover button { align-self: flex-end; }
 
         #chart {
             width: 100%;
@@ -258,7 +266,7 @@
             .controls-bar > * { flex-shrink: 0; }
             .bar-spacer { display: none; }
             .controls-bar .dt-input { width: 132px; font-size: 0.8rem; }
-            #share-popover { position: fixed !important; top: 50px !important; left: 8px; right: 8px !important; min-width: 0 !important; }
+            #share-popover, #code-popover { position: fixed !important; top: 50px !important; left: 8px; right: 8px !important; min-width: 0 !important; }
             .pv-tool { padding: 4px 9px; font-size: 13px; }
             /* The toolbar stays shown on touch: the badge wraps instead of going under it */
             .pv-header { flex-wrap: wrap; white-space: normal; max-width: calc(100% - 250px); }
@@ -369,6 +377,17 @@
                 <div id="share-popover" style="display:none;position:absolute;top:100%;right:0;z-index:100;background:#1a1f36;border:1px solid #2a3358;border-radius:6px;padding:10px;box-shadow:0 4px 12px rgba(0,0,0,0.4);min-width:300px;">
                     <input type="text" id="share-url" readonly style="width:100%;background:#0b0e17;border:1px solid #2a3358;color:#e0e6f0;padding:6px 8px;border-radius:4px;font-size:0.8rem;margin-bottom:6px;">
                     <button id="btn-copy-url" style="width:100%;">Copy URL</button>
+                </div>
+            </div>
+            <div style="position:relative;display:inline-block;">
+                <button id="btn-code" disabled title="Code that fetches this view's data: Python (speasy) or plain URLs">Code</button>
+                <div id="code-popover" class="code-popover" style="display:none;">
+                    <div class="code-label">Python (speasy)</div>
+                    <textarea id="code-python" readonly rows="5" spellcheck="false"></textarea>
+                    <button id="btn-copy-python">Copy</button>
+                    <div class="code-label">Data URLs, CDF (curl, IDL, Matlab, Julia)</div>
+                    <textarea id="code-urls" readonly rows="4" spellcheck="false"></textarea>
+                    <button id="btn-copy-urls">Copy</button>
                 </div>
             </div>
             <button id="btn-clear" disabled title="Remove all subplots">Clear</button>

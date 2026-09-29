@@ -104,7 +104,7 @@ export function showFetchBar(active) {
   if (el) el.classList.toggle('active', active);
 }
 
-export function fallbackCopy(inputEl, btn) {
+export function fallbackCopy(inputEl, btn, label = 'Copy URL') {
     inputEl.select();
     try {
         document.execCommand('copy');
@@ -112,7 +112,7 @@ export function fallbackCopy(inputEl, btn) {
     } catch (_) {
         btn.textContent = 'Select & copy manually';
     }
-    setTimeout(() => { btn.textContent = 'Copy URL'; }, 2000);
+    setTimeout(() => { btn.textContent = label; }, 2000);
 }
 
 // Run an array of async tasks with bounded concurrency. Useful for fetches:

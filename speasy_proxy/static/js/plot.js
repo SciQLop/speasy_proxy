@@ -15,7 +15,7 @@ import {
 import { ascendingSpectrogram } from './spectrogram.js';
 import { fetchData as apiFetchData, fetchInventory } from './api-client.js';
 import { createPlotView, PRODUCT_MIME } from './plot-view.js';
-import { presetConfig, configStory } from './plot-share.js';
+import { presetConfig, configStory, pythonSnippet, dataUrls } from './plot-share.js';
 
     const BASE_URL = (window.SPEASY_BASE_URL || '').replace(/\/$/, '');
     const API_BASE = BASE_URL + '/';
@@ -457,41 +457,62 @@ import { presetConfig, configStory } from './plot-share.js';
         document.getElementById('btn-export-png').addEventListener('click', exportPng);
         document.getElementById('btn-export-csv').addEventListener('click', exportCsv);
 
-        // Close the share popover on outside click
+        for (const [button, popover] of Object.entries(POPOVERS)) bindPopover(button, popover);
+        bindCopy('btn-copy-url', 'share-url');
+        bindCopy('btn-copy-python', 'code-python');
+        bindCopy('btn-copy-urls', 'code-urls');
+    }
+
+    // Top-bar popovers: button id -> popover id. Each is refilled from the current view
+    // when it opens, and while open (refreshOpenPopovers).
+    const POPOVERS = { 'btn-share': 'share-popover', 'btn-code': 'code-popover' };
+
+    function bindPopover(buttonId, popoverId) {
+        const button = document.getElementById(buttonId);
+        const popover = document.getElementById(popoverId);
         document.addEventListener('click', (e) => {
-            const shareBtn = document.getElementById('btn-share');
-            const popover = document.getElementById('share-popover');
-            if (!shareBtn.contains(e.target) && !popover.contains(e.target)) {
-                popover.style.display = 'none';
-            }
+            if (!button.contains(e.target) && !popover.contains(e.target)) popover.style.display = 'none';
         });
-
-        // Share button
-        document.getElementById('btn-share').addEventListener('click', () => {
+        button.addEventListener('click', () => {
             if (plotState.plots.length === 0) return;
-            const popover = document.getElementById('share-popover');
-            if (popover.style.display === 'none') {
-                updateShareURL();
-                popover.style.display = 'block';
-            } else {
-                popover.style.display = 'none';
-            }
+            const open = popover.style.display === 'none';
+            if (open) fillPopover(popoverId);
+            popover.style.display = open ? '' : 'none';  // '': the stylesheet's display
         });
+    }
 
-        document.getElementById('btn-copy-url').addEventListener('click', () => {
-            const urlInput = document.getElementById('share-url');
-            const copyBtn = document.getElementById('btn-copy-url');
+    function fillPopover(popoverId) {
+        if (popoverId === 'share-popover') updateShareURL();
+        else updateCodeSnippets();
+    }
+
+    function refreshOpenPopovers() {
+        for (const popoverId of Object.values(POPOVERS)) {
+            if (document.getElementById(popoverId).style.display !== 'none') fillPopover(popoverId);
+        }
+    }
+
+    function bindCopy(buttonId, fieldId) {
+        const button = document.getElementById(buttonId);
+        const label = button.textContent;
+        button.addEventListener('click', () => {
+            const field = document.getElementById(fieldId);
             if (navigator.clipboard && window.isSecureContext) {
-                navigator.clipboard.writeText(urlInput.value).then(() => {
-                    copyBtn.textContent = 'Copied!';
-                    setTimeout(() => { copyBtn.textContent = 'Copy URL'; }, 1500);
-                }).catch(() => {
-                    fallbackCopy(urlInput, copyBtn);
-                });
+                navigator.clipboard.writeText(field.value).then(() => {
+                    button.textContent = 'Copied!';
+                    setTimeout(() => { button.textContent = label; }, 1500);
+                }).catch(() => fallbackCopy(field, button, label));
             } else {
-                fallbackCopy(urlInput, copyBtn);
+                fallbackCopy(field, button, label);
             }
         });
+    }
+
+    function updateCodeSnippets() {
+        if (plotState.plots.length === 0 || !plotState.time_range.start || !plotState.time_range.stop) return;
+        const config = stateToConfig();
+        document.getElementById('code-python').value = pythonSnippet(config);
+        document.getElementById('code-urls').value = dataUrls(config, new URL(API_BASE, window.location.origin).href);  // base_url is absolute, '' in bare dev
     }
 
     function download(href, filename) {
@@ -639,7 +660,7 @@ import { presetConfig, configStory } from './plot-share.js';
     // the bar from reflowing as subplots come and go.
     function syncBarActions() {
         const none = plotState.plots.length === 0;
-        for (const id of ['btn-export-png', 'btn-export-csv', 'btn-share', 'btn-clear']) {
+        for (const id of ['btn-export-png', 'btn-export-csv', 'btn-share', 'btn-code', 'btn-clear']) {
             document.getElementById(id).disabled = none;
         }
     }
@@ -1072,9 +1093,7 @@ import { presetConfig, configStory } from './plot-share.js';
         const encoded = configToBase64(config);
         const newUrl = window.location.pathname + '?config=' + encoded;
         history.replaceState(null, '', newUrl);
-        if (document.getElementById('share-popover').style.display !== 'none') {
-            updateShareURL();
-        }
+        refreshOpenPopovers();
     }
 
     function loadFromURLParams() {

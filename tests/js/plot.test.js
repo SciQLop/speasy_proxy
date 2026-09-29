@@ -1162,6 +1162,37 @@ describe('time fields follow the view', () => {
   });
 });
 
+describe('Code button', () => {
+  const click = (id) => dom.getById(id).addEventListener.mock.calls.filter(([t]) => t === 'click').at(-1)[1]();
+
+  it('shows speasy and URL snippets for the current view', () => {
+    initChart();
+    bindControls();
+    applyConfig({ version: 1, time_range: { start: '2008-02-26T04:30:00Z', stop: '2008-02-26T05:20:00Z' },
+      plots: [{ products: [{ path: 'cda/thb' }] }] });
+    dom.getById('code-popover').style.display = 'none';
+
+    click('btn-code');
+
+    expect(dom.getById('code-popover').style.display).not.toBe('none');
+    expect(dom.getById('code-python').value)
+      .toContain('thb = spz.get_data("cda/thb", "2008-02-26T04:30:00Z", "2008-02-26T05:20:00Z")');
+    expect(dom.getById('code-urls').value)
+      .toBe('https://host/cache/get_data?path=cda/thb&start_time=2008-02-26T04:30:00Z&stop_time=2008-02-26T05:20:00Z&format=cdf');
+  });
+
+  it('is disabled with nothing plotted', () => {
+    initChart();
+    plotState.plots = [heatmapSubplot()];
+    renderAllSubplots();
+    expect(dom.getById('btn-code').disabled).toBe(false);
+
+    plot.__test__.subplotAction({ type: 'remove', index: 0 });
+
+    expect(dom.getById('btn-code').disabled).toBe(true);
+  });
+});
+
 describe('a preset keeps its story', () => {
   const story = {
     version: 1, name: 'THEMIS substorm', description: 'Dipolarization at 04:54 UT.',
