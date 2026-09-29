@@ -355,7 +355,7 @@ export function zoomToward(start, end, cursorFrac, factor, minSpan) {
 // --- event colours: a colour picker speaks #rrggbb, shading needs transparency ---
 
 const DEFAULT_EVENT_HEX = '#648cff';
-const DEFAULT_EVENT_ALPHA = 0.15;
+const DEFAULT_EVENT_ALPHA = 0.2;
 
 // [r, g, b, alpha] of an 'rgba(...)' / 'rgb(...)' / '#rrggbb' colour, else null.
 function parseColor(color) {

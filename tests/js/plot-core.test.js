@@ -747,6 +747,6 @@ describe('event colours (a colour picker gives #rrggbb, shading needs transparen
   });
 
   it('gives an opaque colour a light default transparency', () => {
-    expect(withHue('#000000', '#ff7850')).toBe('rgba(255, 120, 80, 0.15)');
+    expect(withHue('#000000', '#ff7850')).toBe('rgba(255, 120, 80, 0.2)');
   });
 });

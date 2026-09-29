@@ -1436,9 +1436,9 @@ describe('events added in the browser', () => {
     swatch.value = '#ff7850';
     swatch.addEventListener.mock.calls.filter(([type]) => type === 'change').at(-1)[1]();
 
-    expect(plotState.intervals[0].color).toBe('rgba(255, 120, 80, 0.12)');
+    expect(plotState.intervals[0].color).toBe('rgba(255, 120, 80, 0.2)');
     updateShareURL();
-    expect(sharedConfig().intervals[0].color).toBe('rgba(255, 120, 80, 0.12)');
+    expect(sharedConfig().intervals[0].color).toBe('rgba(255, 120, 80, 0.2)');
   });
 
   it('deletes an event', () => {

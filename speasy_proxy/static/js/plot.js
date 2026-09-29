@@ -1455,7 +1455,7 @@ import { presetConfig, configStory, pythonSnippet, dataUrls, historyMode, addRec
 
     const fmtEventDate = (d) => parseUtc(d).toISOString().replace('T', ' ').replace(/:\d{2}\.\d+Z$/, '');
 
-    const EVENT_COLOR = 'rgba(100, 140, 255, 0.12)';
+    const EVENT_COLOR = 'rgba(100, 140, 255, 0.2)';
 
     // A Shift+drag on a plot: the span becomes an event of the view, labelled as the user
     // types (cancel = no event). It travels with the share URL and saved presets.

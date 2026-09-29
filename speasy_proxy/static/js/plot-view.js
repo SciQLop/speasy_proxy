@@ -667,19 +667,22 @@ function drawIntervals(u, intervals) {
   }
 }
 
-// On top of everything (uPlot's draw hook runs after the series), so events stay visible.
+// On top of everything (uPlot's draw hook runs after the series), so events stay visible:
+// a line in the event's hue inside a dark outline, readable over a bright spectrogram too.
 function drawIntervalEdges(u, intervals) {
   const { ctx, bbox } = u;
-  const lineWidth = Math.max(1, Math.round(globalThis.devicePixelRatio || 1));
+  const px = Math.max(1, Math.round(globalThis.devicePixelRatio || 1));
   ctx.save();
   ctx.beginPath();
   ctx.rect(bbox.left, bbox.top, bbox.width, bbox.height);
   ctx.clip();
   for (const iv of intervals) {
-    ctx.fillStyle = edgeColor(iv.color);
     for (const t of [iv.t0, iv.t1]) {
       const x = Math.round(u.valToPos(t, 'x', true));
-      ctx.fillRect(x - Math.floor(lineWidth / 2), bbox.top, lineWidth, bbox.height);
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.6)';
+      ctx.fillRect(x - 2 * px, bbox.top, 4 * px, bbox.height);
+      ctx.fillStyle = edgeColor(iv.color);
+      ctx.fillRect(x - px, bbox.top, 2 * px, bbox.height);
     }
   }
   ctx.restore();
