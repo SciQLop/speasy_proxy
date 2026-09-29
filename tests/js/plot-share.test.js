@@ -46,6 +46,12 @@ const view = {
 };
 
 describe('pythonSnippet', () => {
+  it('never names a variable after a Python keyword', () => {
+    const view = { time_range: { start: '2020-01-01T00:00:00.000Z', stop: '2020-01-02T00:00:00.000Z' },
+      plots: [{ products: [{ path: 'amda/lambda' }] }] };
+    expect(pythonSnippet(view)).toContain('lambda_ = spz.get_data(');
+  });
+
   it('fetches each distinct product of the view with speasy', () => {
     expect(pythonSnippet(view)).toBe([
       'import speasy as spz',

@@ -84,11 +84,19 @@ const isoTime = (iso) => iso.replace(/\.000Z$/, 'Z');
 
 const pyDict = (obj) => '{' + Object.entries(obj).map(([k, v]) => JSON.stringify(k) + ': ' + JSON.stringify(v)).join(', ') + '}';
 
+const PY_KEYWORDS = new Set(('False None True and as assert async await break class continue def del elif else '
+  + 'except finally for from global if import in is lambda nonlocal not or pass raise return try while with yield').split(' '));
+
+const pyIdentifier = (segment) => {
+  const name = segment.replace(/\W/g, '_').replace(/^(?=\d)/, '_');
+  return PY_KEYWORDS.has(name) ? name + '_' : name;
+};
+
 // A Python identifier from the product's last path segment, unique within the snippet.
 function pyNames(products) {
   const used = new Map();
   return products.map((p) => {
-    const base = p.path.split('/').pop().replace(/\W/g, '_').replace(/^(?=\d)/, '_');
+    const base = pyIdentifier(p.path.split('/').pop());
     const n = (used.get(base) || 0) + 1;
     used.set(base, n);
     return n === 1 ? base : base + '_' + n;
