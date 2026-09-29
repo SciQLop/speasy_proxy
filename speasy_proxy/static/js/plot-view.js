@@ -234,6 +234,7 @@ export function createPlotView(root, { onViewChange, onAction = () => {}, paramS
       setView: (next) => { setView(next); onViewChange(view); },
       setY: (min, max) => setY({ min, max }),
       resetY: () => setY(null),
+      markRange: (start, end) => onAction({ type: 'addEvent', index, value: [start, end] }),
     });
     return { u, subplot, meta, colorbar, note };
   }

@@ -1,9 +1,10 @@
 // Mouse, trackpad and touch gestures for one uPlot subplot. Plot area: wheel / pinch =
-// zoom time at the cursor, horizontal swipe / Shift+wheel / drag = pan time; on touch,
+// zoom time at the cursor, horizontal swipe / Shift+wheel / drag = pan time, Shift+drag =
+// mark an event (ctx.markRange); on touch,
 // one finger pans time and two fingers pinch-zoom it. Y-axis gutter: mouse gestures act
 // on Y, double-click (double-tap) = reset Y; a finger there scrolls the subplot list.
 // Time changes go through ctx.setView so every subplot stays on one shared window.
-import { wheelIntent, zoomToward, panRange, pinchRange, yRangeFromPixels } from './plot-core.js';
+import { wheelIntent, zoomToward, panRange, pinchRange, yRangeFromPixels, rangeFromDrag } from './plot-core.js';
 
 const ZOOM_SENSITIVITY = 0.0015;  // zoom amount per normalized wheel pixel
 // simplify: tuned by reasoning, not on hardware; pinch deltas are ~10x smaller than
@@ -11,7 +12,7 @@ const ZOOM_SENSITIVITY = 0.0015;  // zoom amount per normalized wheel pixel
 const PINCH_ZOOM_SENSITIVITY = 0.01;
 const MIN_ZOOM_SPAN_MS = 1;       // smallest time window (times are ms)
 
-// ctx: { getView(), setView(view), setY(min, max), resetY() }
+// ctx: { getView(), setView(view), setY(min, max), resetY(), markRange(start, end) }
 export function bindGestures(u, ctx) {
   // The Y gutter is the strip left of the plot area, at the plot area's height (not the
   // title or legend rows above/below it).
@@ -93,6 +94,7 @@ function bindTimeDrag(u, ctx) {
 
   u.over.addEventListener('pointerdown', (e) => {
     if (e.pointerType === 'mouse' && e.button !== 0) return;
+    if (e.pointerType === 'mouse' && e.shiftKey) { markDrag(u, ctx, e); return; }
     u.over.setPointerCapture(e.pointerId);
     pointers.set(e.pointerId, e.clientX);
     document.body.style.userSelect = 'none';
@@ -117,6 +119,29 @@ function bindTimeDrag(u, ctx) {
   u.over.addEventListener('pointercancel', lift);
 }
 
+// Shift+drag: a band follows the mouse; on release the covered span becomes an event.
+function markDrag(u, ctx, e) {
+  e.preventDefault();
+  const rect = u.over.getBoundingClientRect();
+  const frac = (x) => (x - rect.left) / (rect.width || 1);
+  const f0 = frac(e.clientX);
+  const band = document.createElement('div');
+  band.className = 'pv-marking';
+  u.over.appendChild(band);
+  const drawBand = (f1) => {
+    const [a, b] = [f0, f1].map((f) => Math.max(0, Math.min(1, f))).sort((x, y) => x - y);
+    band.style.left = (a * 100) + '%';
+    band.style.width = ((b - a) * 100) + '%';
+  };
+  drawBand(f0);
+  const view = ctx.getView();
+  onDrag((m) => drawBand(frac(m.clientX)), (m) => {
+    band.remove();
+    const range = rangeFromDrag(view, f0, frac(m.clientX));
+    if (range) ctx.markRange(range.start, range.end);
+  });
+}
+
 // Anchored to the scale at mousedown: the drag keeps changing the live scale, so reading
 // it on every move would compound the shift.
 function dragY(u, ctx, e) {
@@ -129,12 +154,13 @@ function dragY(u, ctx, e) {
   });
 }
 
-function onDrag(move) {
+function onDrag(move, end = () => {}) {
   document.body.style.userSelect = 'none';
-  const up = () => {
+  const up = (e) => {
     document.body.style.userSelect = '';
     window.removeEventListener('mousemove', move);
     window.removeEventListener('mouseup', up);
+    end(e);
   };
   window.addEventListener('mousemove', move);
   window.addEventListener('mouseup', up);

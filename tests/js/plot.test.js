@@ -1351,6 +1351,68 @@ describe('presets saved in the browser', () => {
   });
 });
 
+describe('events added in the browser', () => {
+  const view = { version: 1, time_range: { start: '2020-01-01T00:00:00Z', stop: '2020-01-02T00:00:00Z' },
+    plots: [{ products: [{ path: 'cda/a' }] }] };
+  const t = (iso) => Date.parse(iso);
+  const click = (el) => el.addEventListener.mock.calls.filter(([type]) => type === 'click').at(-1)[1]();
+  const events = () => dom.getById('events-list').children;
+  const sharedConfig = () => plot.__test__.base64ToConfig(
+    new URL(dom.getById('share-url').value).searchParams.get('config'));
+  const addEvent = (label) => {
+    vi.stubGlobal('prompt', vi.fn(() => label));
+    plot.__test__.subplotAction({ type: 'addEvent', value: [t('2020-01-01T06:00:00Z'), t('2020-01-01T07:30:00Z')] });
+  };
+
+  beforeEach(() => {
+    dom.getById('events-container').open = false;
+    initChart();
+    applyConfig(view);
+    dom.getById('events-list').children = [];
+  });
+  afterEach(() => vi.unstubAllGlobals());
+
+  it('adds the dragged interval, with the label typed, to the view', () => {
+    addEvent('Shock');
+
+    expect(plotState.intervals).toMatchObject([{ start: '2020-01-01T06:00:00.000Z', stop: '2020-01-01T07:30:00.000Z', label: 'Shock' }]);
+    expect(events().map((item) => item.children[1].textContent)).toEqual(['Shock']);
+    updateShareURL();
+    expect(sharedConfig().intervals).toMatchObject([{ start: '2020-01-01T06:00:00.000Z', label: 'Shock' }]);
+  });
+
+  it('shows the Events section, closed, as soon as something is plotted: its hint tells how to add one', () => {
+    const container = dom.getById('events-container');
+    expect(container.hidden).toBe(false);
+    expect(container.open).toBeFalsy();
+
+    plot.__test__.subplotAction({ type: 'remove', index: 0 });
+    expect(container.hidden).toBe(true);
+  });
+
+  it('adds nothing when the label prompt is cancelled', () => {
+    addEvent(null);
+
+    expect(plotState.intervals).toEqual([]);
+  });
+
+  it('lists an unlabelled event by its dates', () => {
+    addEvent('');
+
+    expect(events()[0].children[1].textContent).toBe('2020-01-01 06:00 — 2020-01-01 07:30');
+  });
+
+  it('deletes an event', () => {
+    addEvent('Shock');
+    vi.stubGlobal('prompt', vi.fn(() => 'Later'));
+    plot.__test__.subplotAction({ type: 'addEvent', value: [t('2020-01-01T10:00:00Z'), t('2020-01-01T11:00:00Z')] });
+
+    click(events()[0].children[2]);  // the first listed: the earliest, Shock
+
+    expect(plotState.intervals.map((iv) => iv.label)).toEqual(['Later']);
+  });
+});
+
 describe('Code button', () => {
   const click = (id) => dom.getById(id).addEventListener.mock.calls.filter(([t]) => t === 'click').at(-1)[1]();
 

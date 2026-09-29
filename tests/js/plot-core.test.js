@@ -5,7 +5,7 @@ import {
   createSubplotData, createProductCache, subplotToConfig, subplotFromConfig, paramValue, withParam, editedRange, zRangeOf, outOfCoverage, formatSpan,
   normalizeWheelDelta, wheelIntent, zoomRange, panRange, zoomToward, pinchRange, structureKey, resampleTarget,
   plotTypeFromCache, computeValueRange, mergeValueRange, renderableRange,
-  nearestIndex, lineTable, yRangeFromPixels, fmtTick, cleanText, productTitle, dropZone, distinctCrumbs,
+  nearestIndex, lineTable, yRangeFromPixels, rangeFromDrag, fmtTick, cleanText, productTitle, dropZone, distinctCrumbs,
 } from '../../speasy_proxy/static/js/plot-core.js';
 
 describe('merge', () => {
@@ -709,5 +709,23 @@ describe('outOfCoverage', () => {
   });
   it('before the coverage: a window of the same length starting at its first data', () => {
     expect(outOfCoverage(coverage, 10 * D, 13 * D)).toEqual({ side: 'before', range: [100 * D, 103 * D] });
+  });
+});
+
+describe('rangeFromDrag (Shift+drag marks an event)', () => {
+  const view = { start: 1000, end: 2000 };
+
+  it('maps the dragged fractions of the plot width onto the view, either direction', () => {
+    expect(rangeFromDrag(view, 0.2, 0.5)).toEqual({ start: 1200, end: 1500 });
+    expect(rangeFromDrag(view, 0.5, 0.2)).toEqual({ start: 1200, end: 1500 });
+  });
+
+  it('clamps a drag that leaves the plot area', () => {
+    expect(rangeFromDrag(view, -0.3, 1.4)).toEqual({ start: 1000, end: 2000 });
+  });
+
+  it('ignores a click or a tiny drag', () => {
+    expect(rangeFromDrag(view, 0.5, 0.5)).toBeNull();
+    expect(rangeFromDrag(view, 0.5, 0.502)).toBeNull();
   });
 });

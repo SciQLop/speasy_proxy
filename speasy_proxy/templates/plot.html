@@ -90,6 +90,12 @@
         .preset-save button { padding: 4px 10px; border: 1px solid #2a3358; border-radius: 4px; background: #1a2138;
             color: #aeb6d4; font-size: 0.8rem; cursor: pointer; }
         .preset-save button:disabled { color: #3a4468; cursor: default; }
+        .side-hint { color: #555e7e; font-size: 0.75rem; padding: 0 16px 6px; }
+        .event-text { flex: 1; overflow: hidden; text-overflow: ellipsis; }
+        .event-delete { border: none; background: none; color: #555e7e; cursor: pointer; padding: 0 2px; }
+        .event-delete:hover { color: #ee6666; }
+        .pv-marking { position: absolute; top: 0; bottom: 0; pointer-events: none;
+            background: rgba(107, 138, 253, 0.2); border-left: 1px solid #6b8afd; border-right: 1px solid #6b8afd; }
         .user-preset-name { flex: 1; overflow: hidden; text-overflow: ellipsis; }
         .user-preset-delete { border: none; background: none; color: #555e7e; cursor: pointer; padding: 0 2px; }
         .user-preset-delete:hover { color: #ee6666; }
@@ -358,6 +364,7 @@
     </details>
     <details class="side-section" id="events-container" hidden>
         <summary>Events</summary>
+        <div class="side-hint">Shift+drag on a plot to mark an event</div>
         <div class="side-list" id="events-list"></div>
     </details>
     <div style="padding:8px 16px;border-bottom:1px solid #1e2640;">

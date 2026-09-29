@@ -568,6 +568,7 @@ import { presetConfig, configStory, pythonSnippet, dataUrls, historyMode, addRec
         removeProduct: ({ index, path }) => removeProductFromSubplot(index, path),
         addProduct: ({ index, path }) => addProductToPlot(path, index === null ? {} : { into: index }),
         insertProduct: ({ index, path }) => addProductToPlot(path, { at: index }),
+        addEvent: ({ value: [start, stop] }) => addEvent(start, stop),
     };
 
     function subplotAction(action) {
@@ -672,6 +673,7 @@ import { presetConfig, configStory, pythonSnippet, dataUrls, historyMode, addRec
         for (const id of ['btn-export-png', 'btn-export-csv', 'btn-share', 'btn-code', 'btn-clear', 'btn-save-preset']) {
             document.getElementById(id).disabled = none;
         }
+        document.getElementById('events-container').hidden = none;  // its hint tells how to add one
         showEmptyState();
     }
 
@@ -1175,7 +1177,7 @@ import { presetConfig, configStory, pythonSnippet, dataUrls, historyMode, addRec
         plotState.intervals = (config.intervals || []).map(iv => ({
             start: iv.start,
             stop: iv.stop,
-            color: iv.color || 'rgba(100, 140, 255, 0.12)',
+            color: iv.color || EVENT_COLOR,
             label: iv.label || ''
         }));
 
@@ -1447,29 +1449,57 @@ import { presetConfig, configStory, pythonSnippet, dataUrls, historyMode, addRec
 
     const fmtEventDate = (d) => parseUtc(d).toISOString().replace('T', ' ').replace(/:\d{2}\.\d+Z$/, '');
 
-    function updateEventsPanel() {
-        const list = document.getElementById('events-list');
-        list.innerHTML = '';
-        const container = document.getElementById('events-container');
-        container.hidden = plotState.intervals.length === 0;
-        container.open = !container.hidden;
+    const EVENT_COLOR = 'rgba(100, 140, 255, 0.12)';
 
+    // A Shift+drag on a plot: the span becomes an event of the view, labelled as the user
+    // types (cancel = no event). It travels with the share URL and saved presets.
+    function addEvent(startMs, stopMs) {
+        const label = prompt('Event label (optional):', '');
+        if (label === null) return;
+        plotState.intervals = [...plotState.intervals, { start: new Date(startMs).toISOString(),
+            stop: new Date(stopMs).toISOString(), color: EVENT_COLOR, label: label.trim() }];
+        eventsChanged();
+    }
+
+    function removeEvent(iv) {
+        plotState.intervals = plotState.intervals.filter((other) => other !== iv);
+        eventsChanged();
+    }
+
+    function eventsChanged() {
+        updateEventsPanel();
+        renderAllSubplots(true);
+        updateURL('edit');
+    }
+
+    function updateEventsPanel() {
+        if (plotState.intervals.length > 0) document.getElementById('events-container').open = true;
         const sorted = [...plotState.intervals].sort((a, b) => parseUtc(a.start) - parseUtc(b.start));
-        for (const iv of sorted) {
-            const dateRange = fmtEventDate(iv.start) + ' — ' + fmtEventDate(iv.stop);
-            const item = document.createElement('div');
-            item.className = 'side-item';
-            item.title = dateRange + (iv.label ? '\n' + iv.label : '');
-            const swatch = document.createElement('span');
-            swatch.className = 'side-swatch';
-            swatch.style.background = iv.color;
-            const text = document.createElement('span');
-            text.textContent = dateRange;
-            item.appendChild(swatch);
-            item.appendChild(text);
-            item.addEventListener('click', () => { centerOnInterval(iv); closeDrawer(); });
-            list.appendChild(item);
-        }
+        document.getElementById('events-list').replaceChildren(...sorted.map(eventItem));
+    }
+
+    // [colour swatch, label (else dates), delete]; a click elsewhere on it centres the view on it.
+    function eventItem(iv) {
+        const dateRange = fmtEventDate(iv.start) + ' — ' + fmtEventDate(iv.stop);
+        const item = document.createElement('div');
+        item.className = 'side-item';
+        item.title = dateRange + (iv.label ? '\n' + iv.label : '');
+        const swatch = document.createElement('span');
+        swatch.className = 'side-swatch';
+        swatch.style.background = iv.color;
+        const text = document.createElement('span');
+        text.className = 'event-text';
+        text.textContent = iv.label || dateRange;
+        const remove = document.createElement('button');
+        remove.className = 'event-delete';
+        remove.textContent = '✕';
+        remove.title = 'Delete this event';
+        remove.addEventListener('click', (e) => { e?.stopPropagation(); removeEvent(iv); });
+        item.appendChild(swatch);
+        item.appendChild(text);
+        item.appendChild(remove);
+        item.addEventListener('click', () => { centerOnInterval(iv); closeDrawer(); });
+        return item;
     }
 
     // The event fills the middle third of the view.

@@ -352,6 +352,17 @@ export function zoomToward(start, end, cursorFrac, factor, minSpan) {
   return next;
 }
 
+const MIN_DRAG_FRAC = 0.005;  // a smaller Shift+drag is a click, not an event
+
+// The time span a drag covered, from its start and end as fractions of the plot width
+// (either direction, clamped to the plot), or null for a click.
+export function rangeFromDrag(view, frac0, frac1) {
+  const [a, b] = [frac0, frac1].map((f) => Math.max(0, Math.min(1, f))).sort((x, y) => x - y);
+  if (b - a < MIN_DRAG_FRAC) return null;
+  const span = view.end - view.start;
+  return { start: view.start + a * span, end: view.start + b * span };
+}
+
 // Shift [start,end] by a fraction of its width (positive = later, negative = earlier).
 export function panRange(start, end, fraction) {
   const shift = (end - start) * fraction;
