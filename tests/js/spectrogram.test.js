@@ -162,6 +162,18 @@ describe('spectrogram', () => {
       for (let t = 2000; t < 11900; t += 37) expect(lit(t)).toBe(true);
     });
 
+    // The server keeps each bucket's most intense row, anywhere in the bucket: two rows can
+    // sit side by side, then the next step spans almost two buckets. Compared with the tiny
+    // steps around it, that step used to read as a gap and left an empty vertical stripe.
+    it('fills the uneven steps of a resampled slice', () => {
+      const bucket = 1000;
+      const offsets = [900, 10, 990, 5, 500, 995, 0, 999, 20, 980, 10, 990, 500, 500];
+      const times = offsets.map((o, b) => b * bucket + o);
+      const result = renderSpectrogramImage(times, times.map(() => [1]), [1], 1, 2, false, null);
+      const { data, width } = result.canvas.imageData;
+      for (let c = 0; c < width; c++) expect(data[c * 4 + 3]).toBe(255);
+    });
+
     // A lone fill row (all NaN) inside a gap must not make the gap look like sparse data.
     it('ignores empty rows when deciding what is a gap', () => {
       const times = [0, 100, 200, 300, 400, 5000, 9000, 9100, 9200, 9300];

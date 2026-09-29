@@ -171,13 +171,29 @@ export function renderSpectrogramImage(times, rows, yBinsFlat, vMin, vMax, logSc
   };
 }
 
+// Steps on each side of a candidate gap used to estimate the local cadence.
+const CADENCE_WINDOW = 5;
+
+// Median of the steps ending at samples [from, to), or null when there are none.
+function medianStep(t, from, to) {
+  const steps = [];
+  for (let i = Math.max(1, from); i < Math.min(to, t.length); i++) steps.push(t[i] - t[i - 1]);
+  if (steps.length === 0) return null;
+  steps.sort((x, y) => x - y);
+  return steps[steps.length >> 1];
+}
+
 // Where sample k stops being drawn: the next sample, or, across a data gap, one local
-// step later. Steps are compared with their neighbours, not a global cadence: a cache
-// mixing full-resolution rows with coarser resampled ones is continuous in both parts.
+// step later. The step is compared with the cadence on each side, not a global one: a
+// cache mixing full-resolution rows with coarser resampled ones is continuous in both
+// parts. Each side takes a median over a few steps, not one neighbouring step: resampled
+// rows sit anywhere in their bucket, so a single neighbour can be ~0 and turn any normal
+// step into a "gap".
 function coverEnd(t, k, dt, tEnd) {
   if (k + 1 >= t.length) return tEnd;
-  const step = (i) => (i > 0 && i < t.length ? t[i] - t[i - 1] : dt);
-  const local = Math.max(step(k), step(k + 2));
+  const before = medianStep(t, k + 1 - CADENCE_WINDOW, k + 1);
+  const after = medianStep(t, k + 2, k + 2 + CADENCE_WINDOW);
+  const local = Math.max(before ?? dt, after ?? dt);
   const next = t[k + 1] - t[k];
   return t[k] + (next > GAP_FACTOR * local ? local : next);
 }
