@@ -5,7 +5,7 @@ import {
   createSubplotData, createProductCache, subplotToConfig, subplotFromConfig, paramValue, withParam, editedRange, zRangeOf, outOfCoverage, formatSpan,
   normalizeWheelDelta, wheelIntent, zoomRange, panRange, zoomToward, pinchRange, structureKey, resampleTarget,
   plotTypeFromCache, computeValueRange, mergeValueRange, renderableRange,
-  nearestIndex, lineTable, yRangeFromPixels, rangeFromDrag, fmtTick, cleanText, productTitle, dropZone, distinctCrumbs,
+  nearestIndex, lineTable, yRangeFromPixels, rangeFromDrag, colorHex, withHue, fmtTick, cleanText, productTitle, dropZone, distinctCrumbs,
 } from '../../speasy_proxy/static/js/plot-core.js';
 
 describe('merge', () => {
@@ -727,5 +727,21 @@ describe('rangeFromDrag (Shift+drag marks an event)', () => {
   it('ignores a click or a tiny drag', () => {
     expect(rangeFromDrag(view, 0.5, 0.5)).toBeNull();
     expect(rangeFromDrag(view, 0.5, 0.502)).toBeNull();
+  });
+});
+
+describe('event colours (a colour picker gives #rrggbb, shading needs transparency)', () => {
+  it('reads the picker value of a colour', () => {
+    expect(colorHex('rgba(100, 140, 255, 0.12)')).toBe('#648cff');
+    expect(colorHex('#ff7850')).toBe('#ff7850');
+    expect(colorHex('not a colour')).toBe('#648cff');
+  });
+
+  it('takes the picked hue and keeps the transparency', () => {
+    expect(withHue('rgba(100, 140, 255, 0.12)', '#ff7850')).toBe('rgba(255, 120, 80, 0.12)');
+  });
+
+  it('gives an opaque colour a light default transparency', () => {
+    expect(withHue('#000000', '#ff7850')).toBe('rgba(255, 120, 80, 0.15)');
   });
 });

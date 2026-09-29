@@ -1414,6 +1414,19 @@ describe('events added in the browser', () => {
     expect(events()[0].children[1].textContent).toBe('2020-01-01 06:00 — 2020-01-01 07:30');
   });
 
+  it('recolours an event from its swatch, keeping it see-through', () => {
+    addEvent('Shock');
+    const swatch = events()[0].children[0];
+    expect(swatch.value).toBe('#648cff');
+
+    swatch.value = '#ff7850';
+    swatch.addEventListener.mock.calls.filter(([type]) => type === 'change').at(-1)[1]();
+
+    expect(plotState.intervals[0].color).toBe('rgba(255, 120, 80, 0.12)');
+    updateShareURL();
+    expect(sharedConfig().intervals[0].color).toBe('rgba(255, 120, 80, 0.12)');
+  });
+
   it('deletes an event', () => {
     addEvent('Shock');
     vi.stubGlobal('prompt', vi.fn(() => 'Later'));

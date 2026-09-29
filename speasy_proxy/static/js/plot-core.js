@@ -352,6 +352,31 @@ export function zoomToward(start, end, cursorFrac, factor, minSpan) {
   return next;
 }
 
+// --- event colours: a colour picker speaks #rrggbb, shading needs transparency ---
+
+const DEFAULT_EVENT_HEX = '#648cff';
+const DEFAULT_EVENT_ALPHA = 0.15;
+
+// [r, g, b, alpha] of an 'rgba(...)' / 'rgb(...)' / '#rrggbb' colour, else null.
+function parseColor(color) {
+  const rgb = /^rgba?\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*(?:,\s*([\d.]+)\s*)?\)$/.exec(color || '');
+  if (rgb) return [+rgb[1], +rgb[2], +rgb[3], rgb[4] === undefined ? 1 : +rgb[4]];
+  const hex = /^#([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec(color || '');
+  return hex ? [...hex.slice(1).map((h) => parseInt(h, 16)), 1] : null;
+}
+
+export function colorHex(color) {
+  const c = parseColor(color);
+  return c ? '#' + c.slice(0, 3).map((v) => v.toString(16).padStart(2, '0')).join('') : DEFAULT_EVENT_HEX;
+}
+
+// The picked colour at the old colour's transparency (an opaque one gets a light default).
+export function withHue(color, hex) {
+  const [r, g, b] = parseColor(hex);
+  const alpha = parseColor(color)?.[3];
+  return `rgba(${r}, ${g}, ${b}, ${alpha < 1 ? alpha : DEFAULT_EVENT_ALPHA})`;
+}
+
 const MIN_DRAG_FRAC = 0.005;  // a smaller Shift+drag is a click, not an event
 
 // The time span a drag covered, from its start and end as fractions of the plot width

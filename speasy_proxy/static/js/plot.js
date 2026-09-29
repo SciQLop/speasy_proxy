@@ -10,7 +10,7 @@ import {
   configToBase64, base64ToConfig, isCovered, resolutionSufficient, rangesOverlap, trimCacheWindow, cacheToCsv,
   structureKey, resampleTarget, plotTypeFromCache, computeValueRange, mergeValueRange, cleanText, distinctCrumbs,
   logHintFromRange,
-  paramValue, withParam, editedRange, formatSpan,
+  paramValue, withParam, editedRange, formatSpan, colorHex, withHue,
 } from './plot-core.js';
 import { ascendingSpectrogram } from './spectrogram.js';
 import { fetchData as apiFetchData, fetchInventory } from './api-client.js';
@@ -1468,10 +1468,16 @@ import { presetConfig, configStory, pythonSnippet, dataUrls, historyMode, addRec
         eventsChanged();
     }
 
-    function eventsChanged() {
+    function recolorEvent(iv, hex) {
+        plotState.intervals = plotState.intervals.map((other) => other === iv ? { ...iv, color: withHue(iv.color, hex) } : other);
+        eventsChanged('tweak');
+    }
+
+    // kind: how the change enters the browser history (see updateURL).
+    function eventsChanged(kind = 'edit') {
         updateEventsPanel();
         renderAllSubplots(true);
-        updateURL('edit');
+        updateURL(kind);
     }
 
     function updateEventsPanel() {
@@ -1480,15 +1486,19 @@ import { presetConfig, configStory, pythonSnippet, dataUrls, historyMode, addRec
         document.getElementById('events-list').replaceChildren(...sorted.map(eventItem));
     }
 
-    // [colour swatch, label (else dates), delete]; a click elsewhere on it centres the view on it.
+    // [colour picker, label (else dates), delete]; a click elsewhere on it centres the view on it.
     function eventItem(iv) {
         const dateRange = fmtEventDate(iv.start) + ' — ' + fmtEventDate(iv.stop);
         const item = document.createElement('div');
         item.className = 'side-item';
         item.title = dateRange + (iv.label ? '\n' + iv.label : '');
-        const swatch = document.createElement('span');
-        swatch.className = 'side-swatch';
-        swatch.style.background = iv.color;
+        const swatch = document.createElement('input');
+        swatch.type = 'color';
+        swatch.className = 'side-swatch event-color';
+        swatch.value = colorHex(iv.color);
+        swatch.title = 'Change the colour';
+        swatch.addEventListener('click', (e) => e?.stopPropagation());
+        swatch.addEventListener('change', () => recolorEvent(iv, swatch.value));
         const text = document.createElement('span');
         text.className = 'event-text';
         text.textContent = iv.label || dateRange;

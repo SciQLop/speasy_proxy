@@ -91,6 +91,12 @@
             color: #aeb6d4; font-size: 0.8rem; cursor: pointer; }
         .preset-save button:disabled { color: #3a4468; cursor: default; }
         .side-hint { color: #555e7e; font-size: 0.75rem; padding: 0 16px 6px; }
+        /* A native colour picker drawn as the event's small swatch */
+        .event-color { appearance: none; -webkit-appearance: none; padding: 0; border: none; background: none;
+            cursor: pointer; }
+        .event-color::-webkit-color-swatch-wrapper { padding: 0; }
+        .event-color::-webkit-color-swatch { border: 1px solid #2a3358; border-radius: 2px; }
+        .event-color::-moz-color-swatch { border: 1px solid #2a3358; border-radius: 2px; }
         .event-text { flex: 1; overflow: hidden; text-overflow: ellipsis; }
         .event-delete { border: none; background: none; color: #555e7e; cursor: pointer; padding: 0 2px; }
         .event-delete:hover { color: #ee6666; }
