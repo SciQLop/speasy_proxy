@@ -6,10 +6,11 @@
 // draws it and reports back: time-window changes through onViewChange, subplot edits
 // (log toggles, removals, dropped products) through onAction({ type, index, path }).
 import uPlot from './vendor/uPlot.esm.js';
-import { CHART_COLORS, escapeHtml, parseUtc } from './common.js';
+import { CHART_COLORS, escapeHtml, utcMs } from './common.js';
 import {
   lineTable, nearestIndex, fmtTick, productTitle, dropZone,
   paramValue, zRangeOf, outOfCoverage, edgeColor, nearestEdge, eventAt, formatDuration,
+  subMsSplits, subMsTickLabels, fmtInstant,
 } from './plot-core.js';
 import { binRowRects, computeYEdges, lowestPositiveEdge, renderSpectrogramImage, spectrogramValueAt, COLORMAPS, colormapLut } from './spectrogram.js';
 import { bindGestures } from './plot-gestures.js';
@@ -67,7 +68,7 @@ export function createPlotView(root, { onViewChange, onAction = () => {}, paramS
     setEmpty(nextPlots.length === 0);
     plots = nextPlots;
     view = { ...nextView };
-    intervals = (opts.intervals || []).map((iv) => ({ ...iv, t0: parseUtc(iv.start).getTime(), t1: parseUtc(iv.stop).getTime() }));
+    intervals = (opts.intervals || []).map((iv) => ({ ...iv, t0: utcMs(iv.start), t1: utcMs(iv.stop) }));
     const heights = layoutHeights(plots, root.clientHeight);
     charts = plots.map((sp, i) => createChart(sp, i, heights[i], opts.loading?.has(sp)));
     fitHeights();
@@ -193,6 +194,7 @@ export function createPlotView(root, { onViewChange, onAction = () => {}, paramS
       axes: [xAxis(isLast), yAxisOpts(isHeatmap, yUnit(subplot, isHeatmap))],
       series,
       hooks: {
+        init: [extendTimeAxisBelowMs],
         drawClear: [(u) => drawBackdrop(u, subplot, isHeatmap)],
         draw: [(u) => drawIntervalEdges(u, intervals, index === plots.length - 1)],
         setCursor: [(u) => onCursor(u, subplot)],
@@ -279,7 +281,7 @@ export function createPlotView(root, { onViewChange, onAction = () => {}, paramS
     if (left == null || left < 0) { tooltip.style.display = 'none'; return; }
     const t = u.posToVal(left, 'x');
     const yVal = subplot.plotType === 'heatmap' ? u.posToVal(u.cursor.top, 'y') : null;
-    tooltip.innerHTML = tooltipHtml(t, charts, intervals, subplot, yVal);
+    tooltip.innerHTML = tooltipHtml(t, charts, intervals, subplot, yVal, view.end - view.start);
     placeTooltip(tooltip, root, u, left, u.cursor.top);
   }
 
@@ -318,6 +320,20 @@ const TIME_TICKS = [
   [SEC, '{HH}:{mm}:{ss}', '\n{YYYY}-{MM}-{DD}', null, '\n{MM}-{DD}', null, null, null, 1],
   [1, ':{ss}.{fff}', '\n{YYYY}-{MM}-{DD} {HH}:{mm}', null, '\n{MM}-{DD} {HH}:{mm}', null, '\n{HH}:{mm}', null, 1],
 ];
+
+// uPlot's time axis is built on Date, so its ticks stop at 1 ms. Below that, our own
+// steps and labels; above, uPlot's (its resolved axis functions, wrapped at init).
+const SUB_MS_INCRS = [0.001, 0.002, 0.005, 0.01, 0.02, 0.05, 0.1, 0.2, 0.5];
+
+function extendTimeAxisBelowMs(u) {
+  const axis = u.axes[0];
+  const { incrs, splits, values } = axis;
+  axis.incrs = (...args) => [...SUB_MS_INCRS, ...incrs(...args)];
+  axis.splits = (self, axisIdx, min, max, incr, space) =>
+    incr < 1 ? subMsSplits(min, max, incr) : splits(self, axisIdx, min, max, incr, space);
+  axis.values = (self, ticks, axisIdx, space, incr) =>
+    incr < 1 ? subMsTickLabels(ticks, incr) : values(self, ticks, axisIdx, space, incr);
+}
 
 function xAxis(isLast) {
   return isLast
@@ -735,8 +751,8 @@ function drawMeasurement(u, iv, px) {
 
 // --- tooltip content ---------------------------------------------------------------
 
-function tooltipHtml(t, charts, intervals, hoveredSubplot, yVal) {
-  let html = '<b>' + new Date(t).toISOString().replace('T', ' ').replace('Z', '') + '</b><br/>';
+function tooltipHtml(t, charts, intervals, hoveredSubplot, yVal, viewSpan) {
+  let html = '<b>' + fmtInstant(t, viewSpan) + '</b><br/>';
   for (const iv of intervals) {
     if (t < Math.min(iv.t0, iv.t1) || t > Math.max(iv.t0, iv.t1)) continue;
     html += swatch(iv.color, 2) + (iv.label ? '<b>' + escapeHtml(iv.label) + '</b> · ' : 'Event · ')

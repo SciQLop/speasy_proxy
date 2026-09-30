@@ -11,7 +11,9 @@ const ZOOM_SENSITIVITY = 0.0015;  // zoom amount per normalized wheel pixel
 // simplify: tuned by reasoning, not on hardware; pinch deltas are ~10x smaller than
 // wheel notches. Raise/lower if pinch feels sluggish/jumpy on a real trackpad.
 const PINCH_ZOOM_SENSITIVITY = 0.01;
-const MIN_ZOOM_SPAN_MS = 1;       // smallest time window (times are ms)
+// simplify: times are float64 epoch ms, precise to ~0.25 µs today; a window much under
+// 10 µs would show that quantization. Go lower by plotting times relative to the view start.
+const MIN_ZOOM_SPAN_MS = 0.01;    // smallest time window: 10 µs (times are ms)
 
 // ctx: { getView(), setView(view), setY(min, max), resetY(), markRange(start, end),
 //        edgeAt(clientX) -> { index, side } | null, eventAt(clientX) -> index | null,

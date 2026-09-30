@@ -1,3 +1,5 @@
+import { isoUtc } from './common.js';
+
 // Pure data-processing for the plot viewer. No DOM, no chart library.
 
 export function createSubplotData() {
@@ -297,7 +299,7 @@ export function cacheToCsv(cache, startMs, stopMs) {
   for (let i = 0; i < cache.times.length; i++) {
     const t = cache.times[i];
     if (t < startMs || t > stopMs) continue;
-    const row = [new Date(t).toISOString()];
+    const row = [isoUtc(t)];
     for (const cn of cache.columnNames) {
       const v = cache.columns[cn][i];
       row.push(v == null ? '' : String(v));
@@ -586,9 +588,49 @@ export function formatSpan(ms) {
 // An event's length as a measurement: sub-second precision under a minute, else the
 // two largest units (formatSpan).
 export function formatDuration(ms) {
+  if (ms < 1) {
+    const us = ms * 1000;
+    return (us >= 100 ? Math.round(us) : us.toFixed(1)) + ' µs';
+  }
   if (ms < 1000) return Math.round(ms) + ' ms';
   if (ms < 60_000) return (ms / 1000).toFixed(ms < 10_000 ? 2 : 1) + ' s';
   return formatSpan(ms);
+}
+
+// Tick times below 1 ms: whole multiples of the step within [min, max].
+export function subMsSplits(min, max, incrMs) {
+  const splits = [];
+  for (let k = Math.ceil(min / incrMs); k * incrMs <= max; k++) splits.push(k * incrMs);
+  return splits;
+}
+
+// Time-axis labels below 1 ms, where uPlot's Date-based ticks stop: the seconds with as
+// many decimals as the step needs; the first tick also says which day and minute.
+export function subMsTickLabels(splits, incrMs) {
+  const decimals = Math.max(0, Math.ceil(-Math.log10(incrMs / 1000) - 1e-9));
+  return splits.map((t, i) => {
+    const minuteStart = Math.floor(t / 60_000) * 60_000;
+    const seconds = ((t - minuteStart) / 1000).toFixed(decimals).padStart(decimals + 3, '0');
+    return ':' + seconds + (i === 0 ? '\n' + isoUtc(minuteStart).slice(0, 16).replace('T', ' ') : '');
+  });
+}
+
+// "YYYY-MM-DD HH:MM:SS.fff[fff]" cut to a precision: 16 = minutes, 19 = s, 23 = ms, 26 = µs.
+const utcText = (ms, length) => {
+  const iso = isoUtc(ms).replace('T', ' ').replace('Z', '');
+  return (length > 23 ? iso.padEnd(26, '0') : iso).slice(0, length);
+};
+
+// A cursor instant: µs digits only when the view is under a second wide.
+export const fmtInstant = (ms, viewSpanMs) => utcText(ms, viewSpanMs < 1000 ? 26 : 23);
+
+// An event's range as precisely as its length asks; a sub-minute one gives its stop as
+// a time of day only.
+export function fmtEventRange(startMs, stopMs) {
+  const dur = Math.abs(stopMs - startMs);
+  if (dur >= 60_000) return utcText(startMs, 16) + ' — ' + utcText(stopMs, 16);
+  const length = dur >= 1000 ? 19 : dur >= 1 ? 23 : 26;
+  return utcText(startMs, length) + ' — ' + utcText(stopMs, length).slice(11);
 }
 
 // Where a window sits against a product's coverage ({ start, stop } in ms): null when

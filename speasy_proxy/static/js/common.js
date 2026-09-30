@@ -50,6 +50,22 @@ export function parseUtc(value) {
   return new Date(ZONELESS_DATETIME.test(s) ? s.replace(' ', 'T') + 'Z' : s);
 }
 
+// µs-precise UTC times: Date keeps only ms, and silently drops further digits when parsing.
+// Burst waveforms (hundreds of kS/s) carry signatures a few µs long.
+export function isoUtc(ms) {
+  let whole = Math.floor(ms);
+  let us = Math.round((ms - whole) * 1000);
+  if (us === 1000) { whole += 1; us = 0; }
+  const iso = new Date(whole).toISOString();
+  return us ? iso.replace('Z', String(us).padStart(3, '0') + 'Z') : iso;
+}
+
+export function utcMs(value) {
+  if (typeof value === 'number') return value;
+  const extra = /\.\d{3}(\d+)/.exec(value || '');
+  return parseUtc(value).getTime() + (extra ? Number('0.' + extra[1]) : 0);
+}
+
 // Set a date field, keeping the flatpickr calendar in sync when present (it reads the
 // text through attachDatePicker's parseDate, as UTC wall-clock).
 export function setDateInput(el, date) {

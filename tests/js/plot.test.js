@@ -1481,6 +1481,48 @@ describe('events added in the browser', () => {
   });
 });
 
+describe('µs precision for burst waveforms', () => {
+  const view = { version: 1, time_range: { start: '2020-01-01T13:05:02Z', stop: '2020-01-01T13:05:03Z' },
+    plots: [{ products: [{ path: 'cda/a' }] }] };
+  const t0 = Date.UTC(2020, 0, 1, 13, 5, 2) + 123.456;
+  const sharedConfig = () => plot.__test__.base64ToConfig(
+    new URL(dom.getById('share-url').value).searchParams.get('config'));
+
+  beforeEach(() => {
+    initChart();
+    applyConfig(view);
+  });
+  afterEach(() => vi.unstubAllGlobals());
+
+  it('keeps a sub-ms window as it is, in the state and the share link', () => {
+    plot.__test__.replotOverRange(t0, t0 + 0.05);
+
+    expect(plotState.time_range).toEqual({ start: '2020-01-01T13:05:02.123456Z', stop: '2020-01-01T13:05:02.123506Z' });
+    expect(dom.getById('time-span').textContent).toBe('50.0 µs');
+    updateShareURL();
+    expect(sharedConfig().time_range.start).toBe('2020-01-01T13:05:02.123456Z');
+  });
+
+  it('fetches at least a whole ms around a sub-ms window (the API speaks ms)', () => {
+    apiClient.fetchData.mockClear();
+    plot.__test__.replotOverRange(t0, t0 + 0.05);
+
+    const { startISO, stopISO } = apiClient.fetchData.mock.calls.at(-1)[0];
+    expect(Date.parse(stopISO)).toBeGreaterThan(Date.parse(startISO));
+    expect(Date.parse(startISO)).toBeLessThanOrEqual(t0);
+    expect(Date.parse(stopISO)).toBeGreaterThanOrEqual(t0 + 0.05);
+  });
+
+  it('marks and lists a µs event with µs digits', () => {
+    vi.stubGlobal('prompt', vi.fn(() => ''));
+    plot.__test__.subplotAction({ type: 'addEvent', value: [t0, t0 + 0.0352] });
+
+    expect(plotState.intervals[0]).toMatchObject({ start: '2020-01-01T13:05:02.123456Z', stop: '2020-01-01T13:05:02.123491Z' });
+    expect(dom.getById('events-list').children.at(-1).children[1].textContent)
+      .toBe('2020-01-01 13:05:02.123456 — 13:05:02.123491');
+  });
+});
+
 describe('Code button', () => {
   const click = (id) => dom.getById(id).addEventListener.mock.calls.filter(([t]) => t === 'click').at(-1)[1]();
 

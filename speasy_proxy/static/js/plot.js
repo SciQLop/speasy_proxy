@@ -1,5 +1,5 @@
 import {
-  attachDatePicker, setDateInput, parseDateInput, parseUtc,
+  attachDatePicker, setDateInput, parseDateInput, parseUtc, isoUtc, utcMs,
   setStatus, showLoading, showFetchBar, fallbackCopy,
   installErrorBoundary,
 } from './common.js';
@@ -10,7 +10,7 @@ import {
   configToBase64, base64ToConfig, isCovered, resolutionSufficient, rangesOverlap, trimCacheWindow, cacheToCsv,
   structureKey, resampleTarget, plotTypeFromCache, computeValueRange, mergeValueRange, cleanText, distinctCrumbs,
   logHintFromRange,
-  paramValue, withParam, editedRange, formatSpan, colorHex, withHue,
+  paramValue, withParam, editedRange, formatSpan, colorHex, withHue, formatDuration, fmtEventRange,
 } from './plot-core.js';
 import { ascendingSpectrogram } from './spectrogram.js';
 import { fetchData as apiFetchData, fetchInventory } from './api-client.js';
@@ -570,7 +570,7 @@ import { presetConfig, configStory, pythonSnippet, dataUrls, historyMode, addRec
         insertProduct: ({ index, path }) => addProductToPlot(path, { at: index }),
         addEvent: ({ value: [start, stop] }) => addEvent(start, stop),
         moveEvent: ({ event, value: [a, b] }) => editEvent(plotState.intervals[event], {
-            start: new Date(Math.min(a, b)).toISOString(), stop: new Date(Math.max(a, b)).toISOString() }),
+            start: isoUtc(Math.min(a, b)), stop: isoUtc(Math.max(a, b)) }),
     };
 
     function subplotAction(action) {
@@ -604,7 +604,7 @@ import { presetConfig, configStory, pythonSnippet, dataUrls, historyMode, addRec
     function addProductToPlot(product, { into = null, at = plotState.plots.length } = {}) {
         if (!plotView) { setStatus('Chart not available — check network connection.'); return; }
         if (!product) { setStatus('No product selected.'); return; }
-        const range = typedRange();
+        const range = shownRange();
         if (!range) return;
 
         const existing = into === null ? null : plotState.plots[into];
@@ -613,8 +613,8 @@ import { presetConfig, configStory, pythonSnippet, dataUrls, historyMode, addRec
             return;
         }
 
-        plotState.time_range.start = range.start.toISOString();
-        plotState.time_range.stop = range.stop.toISOString();
+        plotState.time_range.start = isoUtc(range.start);
+        plotState.time_range.stop = isoUtc(range.stop);
 
         const subplot = existing || createSubplotData();
         if (!existing) plotState.plots.splice(at, 0, subplot);
@@ -692,8 +692,8 @@ import { presetConfig, configStory, pythonSnippet, dataUrls, historyMode, addRec
     async function fetchProductAndRender(subplot, productPath) {
         const cache = subplot.productData[productPath];
         const prod = subplot.products.find(p => p.path === productPath);
-        const startMs = Date.parse(plotState.time_range.start);
-        const stopMs = Date.parse(plotState.time_range.stop);
+        const startMs = utcMs(plotState.time_range.start);
+        const stopMs = utcMs(plotState.time_range.stop);
         trackLoading(+1);
         loadingSubplots.add(subplot);
         renderAllSubplots(true);  // the new subplot shows at once, with its loading dot
@@ -765,19 +765,30 @@ import { presetConfig, configStory, pythonSnippet, dataUrls, historyMode, addRec
     // The one place the time window changes: state and the start/stop fields stay in step,
     // so chips and arrow keys always work from what is on screen.
     function setTimeRange(startMs, stopMs) {
-        plotState.time_range.start = new Date(startMs).toISOString();
-        plotState.time_range.stop = new Date(stopMs).toISOString();
+        plotState.time_range.start = isoUtc(startMs);
+        plotState.time_range.stop = isoUtc(stopMs);
         setDateInput(document.getElementById('start-time'), new Date(startMs));
         setDateInput(document.getElementById('stop-time'), new Date(stopMs));
         showWindowLength();
     }
 
+    // The window on screen, in ms: the state's (µs-precise) when set, else the fields'
+    // (they show whole seconds, and are all there is before anything is plotted).
+    function shownRange() {
+        const start = utcMs(plotState.time_range.start), stop = utcMs(plotState.time_range.stop);
+        if (stop > start) return { start, stop };
+        const typed = typedRange();
+        return typed && { start: typed.start.getTime(), stop: typed.stop.getTime() };
+    }
+
     // The window's length next to the fields, and the span chip that matches it lit.
     function showWindowLength() {
-        const start = parseDateInput(document.getElementById('start-time').value);
-        const stop = parseDateInput(document.getElementById('stop-time').value);
-        const width = start && stop && stop > start ? stop - start : null;
-        document.getElementById('time-span').textContent = width ? formatSpan(width) : '';
+        const start = utcMs(plotState.time_range.start), stop = utcMs(plotState.time_range.stop);
+        const typedStart = parseDateInput(document.getElementById('start-time').value);
+        const typedStop = parseDateInput(document.getElementById('stop-time').value);
+        const width = stop > start ? stop - start
+            : typedStart && typedStop && typedStop > typedStart ? typedStop - typedStart : null;
+        document.getElementById('time-span').textContent = !width ? '' : width < 1000 ? formatDuration(width) : formatSpan(width);
         for (const chip of document.querySelectorAll('#range-chips button[data-ms]')) {
             chip.classList.toggle('active', width !== null && Math.abs(width - Number(chip.dataset.ms)) < 1000);
         }
@@ -797,7 +808,7 @@ import { presetConfig, configStory, pythonSnippet, dataUrls, historyMode, addRec
             setStatus('Unreadable ' + end + ' time: use YYYY-MM-DD HH:MM[:SS] (UTC).');
             return;
         }
-        const shownStart = Date.parse(plotState.time_range.start), shownStop = Date.parse(plotState.time_range.stop);
+        const shownStart = utcMs(plotState.time_range.start), shownStop = utcMs(plotState.time_range.stop);
         const [start, stop] = Number.isFinite(shownStart) && Number.isFinite(shownStop)
             ? editedRange(end, edited.getTime(), shownStart, shownStop)
             : editedRange(end, edited.getTime(), edited.getTime() - DAY_MS, edited.getTime() + DAY_MS);
@@ -815,8 +826,9 @@ import { presetConfig, configStory, pythonSnippet, dataUrls, historyMode, addRec
     }
 
     async function fetchData(product, startTime, stopTime, signal, extraParams) {
-        const startISO = new Date(startTime).toISOString();
-        const stopISO = new Date(stopTime).toISOString();
+        // Whole ms, outward: a sub-ms window would otherwise ask for an empty range.
+        const startISO = new Date(Math.floor(startTime)).toISOString();
+        const stopISO = new Date(Math.max(Math.ceil(stopTime), Math.floor(startTime) + 1)).toISOString();
         const chartWidth = document.getElementById('chart')?.clientWidth || 0;
         const maxPoints = resampleTarget(chartWidth, POINTS_PER_PIXEL, BUFFER_RATIO);
         return apiFetchData({
@@ -946,8 +958,8 @@ import { presetConfig, configStory, pythonSnippet, dataUrls, historyMode, addRec
 
     // The requested time range, or the first product's loaded span when there is none.
     function initialView() {
-        const start = Date.parse(plotState.time_range.start);
-        const stop = Date.parse(plotState.time_range.stop);
+        const start = utcMs(plotState.time_range.start);
+        const stop = utcMs(plotState.time_range.stop);
         if (Number.isFinite(start) && Number.isFinite(stop) && stop > start) return { start, end: stop };
         const first = plotState.plots[0];
         const t = first.productData[first.products[0]?.path]?.times || [];
@@ -1160,17 +1172,17 @@ import { presetConfig, configStory, pythonSnippet, dataUrls, historyMode, addRec
     // historyKind: 'tweak' (page load: the URL already says this), 'edit' (a preset or
     // recent view picked), 'none' (Back/Forward).
     function applyConfig(config, historyKind = 'tweak') {
-        const startDate = config.time_range.start ? parseUtc(config.time_range.start) : null;
-        let stopDate = config.time_range.stop ? parseUtc(config.time_range.stop) : null;
+        const startMs = config.time_range.start ? utcMs(config.time_range.start) : NaN;
+        let stopMs = config.time_range.stop ? utcMs(config.time_range.stop) : NaN;
         // A bare "YYYY-MM-DD" (e.g. the legacy ?start=&stop= link format, both parsed as
         // UTC midnight) used for both start and stop is meant as "that whole day", not a
         // zero-width instant -- left alone it silently produces a request the backend
         // rejects as invalid every time this link is opened.
-        if (startDate && stopDate && stopDate.getTime() <= startDate.getTime()) {
-            stopDate = new Date(startDate.getTime() + DAY_MS);
-        }
-        plotState.time_range.start = startDate ? startDate.toISOString() : null;
-        plotState.time_range.stop = stopDate ? stopDate.toISOString() : null;
+        if (stopMs <= startMs) stopMs = startMs + DAY_MS;
+        plotState.time_range.start = Number.isFinite(startMs) ? isoUtc(startMs) : null;
+        plotState.time_range.stop = Number.isFinite(stopMs) ? isoUtc(stopMs) : null;
+        const startDate = Number.isFinite(startMs) ? new Date(startMs) : null;
+        const stopDate = Number.isFinite(stopMs) ? new Date(stopMs) : null;
 
         if (startDate) setDateInput(document.getElementById('start-time'), startDate);
         if (stopDate) setDateInput(document.getElementById('stop-time'), stopDate);
@@ -1202,8 +1214,8 @@ import { presetConfig, configStory, pythonSnippet, dataUrls, historyMode, addRec
 
     async function fetchAllAndRender() {
         if (!plotView) { setStatus('Chart not available — check network connection.'); return; }
-        const startMs = Date.parse(plotState.time_range.start);
-        const stopMs = Date.parse(plotState.time_range.stop);
+        const startMs = utcMs(plotState.time_range.start);
+        const stopMs = utcMs(plotState.time_range.stop);
         if (!Number.isFinite(startMs) || !Number.isFinite(stopMs)) return;
 
         trackLoading(+1);
@@ -1455,7 +1467,6 @@ import { presetConfig, configStory, pythonSnippet, dataUrls, historyMode, addRec
 
     // ===== Events Panel =====
 
-    const fmtEventDate = (d) => parseUtc(d).toISOString().replace('T', ' ').replace(/:\d{2}\.\d+Z$/, '');
 
     const EVENT_COLOR = 'rgba(100, 140, 255, 0.2)';
 
@@ -1464,8 +1475,8 @@ import { presetConfig, configStory, pythonSnippet, dataUrls, historyMode, addRec
     function addEvent(startMs, stopMs) {
         const label = prompt('Event label (optional):', '');
         if (label === null) return;
-        plotState.intervals = [...plotState.intervals, { start: new Date(startMs).toISOString(),
-            stop: new Date(stopMs).toISOString(), color: EVENT_COLOR, label: label.trim() }];
+        plotState.intervals = [...plotState.intervals, { start: isoUtc(startMs),
+            stop: isoUtc(stopMs), color: EVENT_COLOR, label: label.trim() }];
         eventsChanged();
     }
 
@@ -1521,7 +1532,7 @@ import { presetConfig, configStory, pythonSnippet, dataUrls, historyMode, addRec
 
     // [colour picker, label (else dates), delete]; a click elsewhere on it centres the view on it.
     function eventItem(iv) {
-        const dateRange = fmtEventDate(iv.start) + ' — ' + fmtEventDate(iv.stop);
+        const dateRange = fmtEventRange(utcMs(iv.start), utcMs(iv.stop));
         const item = document.createElement('div');
         item.className = 'side-item';
         item.title = dateRange + (iv.label ? '\n' + iv.label : '');
@@ -1551,8 +1562,8 @@ import { presetConfig, configStory, pythonSnippet, dataUrls, historyMode, addRec
 
     // The event fills the middle third of the view.
     function centerOnInterval(iv) {
-        const start = parseUtc(iv.start).getTime();
-        const end = parseUtc(iv.stop).getTime();
+        const start = utcMs(iv.start);
+        const end = utcMs(iv.stop);
         const pad = end - start;
         const view = { start: start - pad, end: end + pad };
         plotView.setView(view);

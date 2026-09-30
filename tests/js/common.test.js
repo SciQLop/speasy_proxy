@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, afterEach, beforeAll, afterAll } from 'vitest';
 import {
   escapeHtml, formatDateInput, parseDateInput, setDateInput, parseUtc,
-  installErrorBoundary, runWithConcurrency,
+  installErrorBoundary, runWithConcurrency, isoUtc, utcMs,
 } from '../../speasy_proxy/static/js/common.js';
 
 // Inventory dates ('1997-08-25 17:48:00') and config/link times ('2024-01-01T00:00:00')
@@ -165,5 +165,25 @@ describe('runWithConcurrency', () => {
 
   it('handles an empty task list', async () => {
     expect(await runWithConcurrency([], 3)).toEqual([]);
+  });
+});
+
+describe('µs-precise UTC times (Date stops at ms)', () => {
+  const t = Date.UTC(2020, 0, 1) + 0.123456 * 1000;  // 00:00:00.123456
+
+  it('writes µs digits only when there are some', () => {
+    expect(isoUtc(t)).toBe('2020-01-01T00:00:00.123456Z');
+    expect(isoUtc(Date.UTC(2020, 0, 1, 12))).toBe('2020-01-01T12:00:00.000Z');
+  });
+
+  it('rounds to the µs, carrying into the next ms', () => {
+    expect(isoUtc(Date.UTC(2020, 0, 1) + 0.9999997)).toBe('2020-01-01T00:00:00.001Z');
+  });
+
+  it('reads µs digits back, from ISO and zone-less strings', () => {
+    expect(utcMs('2020-01-01T00:00:00.123456Z')).toBeCloseTo(t, 4);
+    expect(utcMs('2020-01-01 00:00:00.123456')).toBeCloseTo(t, 4);
+    expect(utcMs('2020-01-01T00:00:00Z')).toBe(Date.UTC(2020, 0, 1));
+    expect(utcMs(isoUtc(t))).toBeCloseTo(t, 4);
   });
 });

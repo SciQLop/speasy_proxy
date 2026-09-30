@@ -5,7 +5,7 @@ import {
   createSubplotData, createProductCache, subplotToConfig, subplotFromConfig, paramValue, withParam, editedRange, zRangeOf, outOfCoverage, formatSpan,
   normalizeWheelDelta, wheelIntent, zoomRange, panRange, zoomToward, pinchRange, structureKey, resampleTarget,
   plotTypeFromCache, computeValueRange, mergeValueRange, renderableRange,
-  nearestIndex, lineTable, yRangeFromPixels, rangeFromDrag, colorHex, withHue, edgeColor, nearestEdge, eventAt, formatDuration, fmtTick, cleanText, productTitle, dropZone, distinctCrumbs,
+  nearestIndex, lineTable, yRangeFromPixels, rangeFromDrag, colorHex, withHue, edgeColor, nearestEdge, eventAt, formatDuration, subMsTickLabels, subMsSplits, fmtInstant, fmtEventRange, fmtTick, cleanText, productTitle, dropZone, distinctCrumbs,
 } from '../../speasy_proxy/static/js/plot-core.js';
 
 describe('merge', () => {
@@ -779,11 +779,48 @@ describe('eventAt (Ctrl+drag inside an event moves it)', () => {
 });
 
 describe('formatDuration (event measurements)', () => {
+  it('goes down to µs for the fast signatures of burst waveforms', () => {
+    expect(formatDuration(0.0352)).toBe('35.2 µs');
+    expect(formatDuration(0.0021)).toBe('2.1 µs');
+    expect(formatDuration(0.25)).toBe('250 µs');
+  });
+
   it('keeps sub-second precision for short events, two units for long ones', () => {
     expect(formatDuration(250)).toBe('250 ms');
     expect(formatDuration(2345)).toBe('2.35 s');
     expect(formatDuration(42_500)).toBe('42.5 s');
     expect(formatDuration(282 * 60_000 + 10_000)).toBe('4h 42m');
     expect(formatDuration(3 * 86_400_000 + 5 * 3_600_000)).toBe('3d 5h');
+  });
+});
+
+describe('sub-ms time axis', () => {
+  it('places ticks on whole multiples of the step inside the view', () => {
+    const base = Date.UTC(2020, 0, 1);
+    const splits = subMsSplits(base + 0.013, base + 0.05, 0.01);
+    expect(splits.map((t) => Math.round((t - base) * 1000))).toEqual([20, 30, 40, 50]);
+  });
+
+  const t0 = Date.UTC(2020, 0, 1, 13, 5, 2) + 123.45;  // 13:05:02.123450
+
+  it('labels ticks with the seconds and as many decimals as the step needs, the first with its date and minute', () => {
+    expect(subMsTickLabels([t0, t0 + 0.01, t0 + 0.02], 0.01)).toEqual([
+      ':02.12345\n2020-01-01 13:05', ':02.12346', ':02.12347']);
+    expect(subMsTickLabels([t0 + 0.55, t0 + 0.75], 0.2)).toEqual([':02.1240\n2020-01-01 13:05', ':02.1242']);
+  });
+});
+
+describe('instants and event ranges at the precision that matters', () => {
+  const t0 = Date.UTC(2020, 0, 1, 13, 5, 2) + 123.456;
+
+  it('shows µs in the tooltip only for a sub-second view', () => {
+    expect(fmtInstant(t0, 60_000)).toBe('2020-01-01 13:05:02.123');
+    expect(fmtInstant(t0, 0.5)).toBe('2020-01-01 13:05:02.123456');
+  });
+
+  it('writes an event range as precisely as its length asks', () => {
+    expect(fmtEventRange(Date.UTC(2020, 0, 1, 7, 17), Date.UTC(2020, 0, 1, 11, 59))).toBe('2020-01-01 07:17 — 2020-01-01 11:59');
+    expect(fmtEventRange(t0, t0 + 0.0352)).toBe('2020-01-01 13:05:02.123456 — 13:05:02.123491');
+    expect(fmtEventRange(t0, t0 + 20)).toBe('2020-01-01 13:05:02.123 — 13:05:02.143');
   });
 });
