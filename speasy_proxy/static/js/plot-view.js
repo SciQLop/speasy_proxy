@@ -712,6 +712,7 @@ function drawMeasurement(u, iv, px) {
   const text = formatDuration(Math.abs(iv.t1 - iv.t0));
   ctx.font = `${11 * px}px sans-serif`;
   ctx.textBaseline = 'middle';
+  ctx.textAlign = 'left';  // uPlot leaves 'center' from its axis labels
   const w = ctx.measureText(text).width + 8 * px, h = 14 * px;
   const color = edgeColor(iv.color);
   const fits = x1 - x0 >= w + 16 * px;
@@ -802,6 +803,7 @@ function exportPng(root, charts, pixelRatio, background) {
   ctx.fillRect(0, 0, rootRect.width, rootRect.height);
   ctx.font = '12px system-ui, sans-serif';
   ctx.textBaseline = 'middle';
+  ctx.textAlign = 'left';  // uPlot leaves 'center' from its axis labels
   for (const { u, meta, colorbar } of charts) {
     const canvas = u.ctx.canvas;
     const r = canvas.getBoundingClientRect();
