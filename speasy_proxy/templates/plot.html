@@ -34,7 +34,7 @@
         .controls-bar {
             display: flex;
             align-items: center;
-            gap: 10px;
+            gap: 8px;
             padding: 8px 16px 8px 30px;  /* left: room for the sidebar toggle */
             background: #111627;
             border-bottom: 1px solid #1e2640;
@@ -147,7 +147,7 @@
         }
 
         .controls-bar .dt-input {
-            width: 168px;
+            width: 158px;
             font-variant-numeric: tabular-nums;
         }
 
@@ -346,7 +346,8 @@
             border-color: #6b8afd;
         }
 
-        .time-span { font-size: 0.75rem; color: #8892b0; white-space: nowrap; }
+        /* A fixed width, so the bar never reflows (or wraps) while the view is zoomed */
+        .time-span { display: inline-block; min-width: 4.5em; font-size: 0.75rem; color: #8892b0; white-space: nowrap; }
     </style>
 </head>
 <body>
