@@ -803,7 +803,6 @@ function exportPng(root, charts, pixelRatio, background) {
   ctx.fillRect(0, 0, rootRect.width, rootRect.height);
   ctx.font = '12px system-ui, sans-serif';
   ctx.textBaseline = 'middle';
-  ctx.textAlign = 'left';  // uPlot leaves 'center' from its axis labels
   for (const { u, meta, colorbar } of charts) {
     const canvas = u.ctx.canvas;
     const r = canvas.getBoundingClientRect();
