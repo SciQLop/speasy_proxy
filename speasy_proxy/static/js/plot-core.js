@@ -585,14 +585,14 @@ export function formatSpan(ms) {
   return parts.slice(0, 2).filter(([n]) => n > 0).map(([n, unit]) => n + unit).join(' ') || '0s';
 }
 
-// An event's length as a measurement: sub-second precision under a minute, else the
-// two largest units (formatSpan).
+// An event's length as a measurement: three significant digits under a minute (µs, ms, s),
+// else the two largest units (formatSpan).
 export function formatDuration(ms) {
   if (ms < 1) {
     const us = ms * 1000;
     return (us >= 100 ? Math.round(us) : us.toFixed(1)) + ' µs';
   }
-  if (ms < 1000) return Math.round(ms) + ' ms';
+  if (ms < 1000) return (ms >= 100 ? Math.round(ms) : ms.toFixed(ms < 10 ? 2 : 1)) + ' ms';
   if (ms < 60_000) return (ms / 1000).toFixed(ms < 10_000 ? 2 : 1) + ' s';
   return formatSpan(ms);
 }
@@ -624,12 +624,13 @@ const utcText = (ms, length) => {
 // A cursor instant: µs digits only when the view is under a second wide.
 export const fmtInstant = (ms, viewSpanMs) => utcText(ms, viewSpanMs < 1000 ? 26 : 23);
 
-// An event's range as precisely as its length asks; a sub-minute one gives its stop as
-// a time of day only.
+// An event's range as precisely as its length asks: the last digit shown is at least ten
+// times finer than the event, so start and stop resolve its duration. A range under ten
+// minutes gives its stop as a time of day only.
 export function fmtEventRange(startMs, stopMs) {
   const dur = Math.abs(stopMs - startMs);
-  if (dur >= 60_000) return utcText(startMs, 16) + ' — ' + utcText(stopMs, 16);
-  const length = dur >= 1000 ? 19 : dur >= 1 ? 23 : 26;
+  if (dur >= 600_000) return utcText(startMs, 16) + ' — ' + utcText(stopMs, 16);
+  const length = dur >= 10_000 ? 19 : dur >= 10 ? 23 : 26;
   return utcText(startMs, length) + ' — ' + utcText(stopMs, length).slice(11);
 }
 

@@ -785,6 +785,12 @@ describe('formatDuration (event measurements)', () => {
     expect(formatDuration(0.25)).toBe('250 µs');
   });
 
+  it('keeps three significant digits in milliseconds, as in µs and seconds', () => {
+    expect(formatDuration(2.346)).toBe('2.35 ms');
+    expect(formatDuration(23.46)).toBe('23.5 ms');
+    expect(formatDuration(234.6)).toBe('235 ms');
+  });
+
   it('keeps sub-second precision for short events, two units for long ones', () => {
     expect(formatDuration(250)).toBe('250 ms');
     expect(formatDuration(2345)).toBe('2.35 s');
@@ -822,5 +828,6 @@ describe('instants and event ranges at the precision that matters', () => {
     expect(fmtEventRange(Date.UTC(2020, 0, 1, 7, 17), Date.UTC(2020, 0, 1, 11, 59))).toBe('2020-01-01 07:17 — 2020-01-01 11:59');
     expect(fmtEventRange(t0, t0 + 0.0352)).toBe('2020-01-01 13:05:02.123456 — 13:05:02.123491');
     expect(fmtEventRange(t0, t0 + 20)).toBe('2020-01-01 13:05:02.123 — 13:05:02.143');
+    expect(fmtEventRange(t0, t0 + 2.5)).toBe('2020-01-01 13:05:02.123456 — 13:05:02.125956');
   });
 });
