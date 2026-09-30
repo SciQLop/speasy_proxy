@@ -324,11 +324,14 @@ const TIME_TICKS = [
 // uPlot's time axis is built on Date, so its ticks stop at 1 ms. Below that, our own
 // steps and labels; above, uPlot's (its resolved axis functions, wrapped at init).
 const SUB_MS_INCRS = [0.001, 0.002, 0.005, 0.01, 0.02, 0.05, 0.1, 0.2, 0.5];
+const SUB_MS_SPACE_BELOW_MS = 20, SUB_MS_TICK_SPACE_PX = 80;
 
 function extendTimeAxisBelowMs(u) {
   const axis = u.axes[0];
-  const { incrs, splits, values } = axis;
+  const { incrs, splits, values, space } = axis;
   axis.incrs = (...args) => [...SUB_MS_INCRS, ...incrs(...args)];
+  // ":02.12345" labels are wider than uPlot's ms ones: ask for more room between ticks.
+  axis.space = (self, axisIdx, min, max, dim) => max - min < SUB_MS_SPACE_BELOW_MS ? SUB_MS_TICK_SPACE_PX : space(self, axisIdx, min, max, dim);
   axis.splits = (self, axisIdx, min, max, incr, space) =>
     incr < 1 ? subMsSplits(min, max, incr) : splits(self, axisIdx, min, max, incr, space);
   axis.values = (self, ticks, axisIdx, space, incr) =>
