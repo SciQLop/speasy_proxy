@@ -5,7 +5,7 @@ import {
   createSubplotData, createProductCache, subplotToConfig, subplotFromConfig, paramValue, withParam, editedRange, zRangeOf, outOfCoverage, formatSpan,
   normalizeWheelDelta, wheelIntent, zoomRange, panRange, zoomToward, pinchRange, structureKey, resampleTarget,
   plotTypeFromCache, computeValueRange, mergeValueRange, renderableRange,
-  nearestIndex, lineTable, yRangeFromPixels, rangeFromDrag, colorHex, withHue, edgeColor, fmtTick, cleanText, productTitle, dropZone, distinctCrumbs,
+  nearestIndex, lineTable, yRangeFromPixels, rangeFromDrag, colorHex, withHue, edgeColor, nearestEdge, fmtTick, cleanText, productTitle, dropZone, distinctCrumbs,
 } from '../../speasy_proxy/static/js/plot-core.js';
 
 describe('merge', () => {
@@ -748,5 +748,24 @@ describe('event colours (a colour picker gives #rrggbb, shading needs transparen
 
   it('gives an opaque colour a light default transparency', () => {
     expect(withHue('#000000', '#ff7850')).toBe('rgba(255, 120, 80, 0.2)');
+  });
+});
+
+describe('nearestEdge (grabbing an event edge on the plot)', () => {
+  const edges = [[100, 200], [300, 305]];  // [start, stop] of each event, in plot pixels
+
+  it('finds the edge under the pointer, within the tolerance', () => {
+    expect(nearestEdge(edges, 103, 5)).toEqual({ index: 0, side: 'start' });
+    expect(nearestEdge(edges, 196, 5)).toEqual({ index: 0, side: 'stop' });
+  });
+
+  it('picks the closest edge when two are within reach', () => {
+    expect(nearestEdge(edges, 304, 5)).toEqual({ index: 1, side: 'stop' });
+    expect(nearestEdge(edges, 301, 5)).toEqual({ index: 1, side: 'start' });
+  });
+
+  it('finds nothing away from every edge: the drag pans', () => {
+    expect(nearestEdge(edges, 150, 5)).toBeNull();
+    expect(nearestEdge([], 150, 5)).toBeNull();
   });
 });

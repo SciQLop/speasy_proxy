@@ -9,7 +9,7 @@ import uPlot from './vendor/uPlot.esm.js';
 import { CHART_COLORS, escapeHtml, parseUtc } from './common.js';
 import {
   lineTable, nearestIndex, fmtTick, productTitle, dropZone,
-  paramValue, zRangeOf, outOfCoverage, edgeColor,
+  paramValue, zRangeOf, outOfCoverage, edgeColor, nearestEdge,
 } from './plot-core.js';
 import { binRowRects, computeYEdges, lowestPositiveEdge, renderSpectrogramImage, spectrogramValueAt, COLORMAPS, colormapLut } from './spectrogram.js';
 import { bindGestures } from './plot-gestures.js';
@@ -21,6 +21,7 @@ const MIN_PLOT_PX = 60;
 // Explicit [top, right, bottom, left] padding: uPlot otherwise auto-pads only the chart
 // whose time labels overflow (the last one), shifting its time axis off the others.
 const CHART_PADDING = [6, 28, 6, 0];  // top/bottom room for edge tick labels
+const EDGE_GRAB_PX = 5;      // how close to an event edge a press grabs it instead of panning
 const BADGE_INSET_PX = 6;              // title/legend badge offset inside the plot area
 const COLORBAR_W = 80, COLORBAR_H = 8;  // spectrogram colour bar, drawn inside the badge
 const HEATMAP_REFRESH_MS = 200;  // re-render spectrogram images once a gesture settles
@@ -236,6 +237,13 @@ export function createPlotView(root, { onViewChange, onAction = () => {}, paramS
       setY: (min, max) => setY({ min, max }),
       resetY: () => setY(null),
       markRange: (start, end) => onAction({ type: 'addEvent', index, value: [start, end] }),
+      edgeAt: (clientX) => nearestEdge(intervals.map((iv) => [u.valToPos(iv.t0, 'x'), u.valToPos(iv.t1, 'x')]),
+        clientX - u.over.getBoundingClientRect().left, EDGE_GRAB_PX),
+      dragEdge: ({ index: i, side }, t) => {
+        intervals[i][side === 'start' ? 't0' : 't1'] = t;
+        for (const c of charts) c.u.redraw(false);
+      },
+      dropEdge: ({ index: i }) => onAction({ type: 'moveEvent', event: i, value: [intervals[i].t0, intervals[i].t1] }),
     });
     return { u, subplot, meta, colorbar, note };
   }

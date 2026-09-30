@@ -569,6 +569,8 @@ import { presetConfig, configStory, pythonSnippet, dataUrls, historyMode, addRec
         addProduct: ({ index, path }) => addProductToPlot(path, index === null ? {} : { into: index }),
         insertProduct: ({ index, path }) => addProductToPlot(path, { at: index }),
         addEvent: ({ value: [start, stop] }) => addEvent(start, stop),
+        moveEvent: ({ event, value: [a, b] }) => editEvent(plotState.intervals[event], {
+            start: new Date(Math.min(a, b)).toISOString(), stop: new Date(Math.max(a, b)).toISOString() }),
     };
 
     function subplotAction(action) {
@@ -1472,9 +1474,36 @@ import { presetConfig, configStory, pythonSnippet, dataUrls, historyMode, addRec
         eventsChanged();
     }
 
-    function recolorEvent(iv, hex) {
-        plotState.intervals = plotState.intervals.map((other) => other === iv ? { ...iv, color: withHue(iv.color, hex) } : other);
-        eventsChanged('tweak');
+    function editEvent(iv, changes, kind = 'edit') {
+        plotState.intervals = plotState.intervals.map((other) => other === iv ? { ...iv, ...changes } : other);
+        eventsChanged(kind);
+    }
+
+    const recolorEvent = (iv, hex) => editEvent(iv, { color: withHue(iv.color, hex) }, 'tweak');
+
+    // Double-click on an event's name: a field in its place. Enter or leaving it keeps the
+    // new label, Escape restores the list as it was.
+    function renameInPlace(text, iv) {
+        const field = document.createElement('input');
+        field.type = 'text';
+        field.className = 'event-rename';
+        field.value = iv.label || '';
+        let done = false;
+        const finish = (keep) => {
+            if (done) return;
+            done = true;
+            if (keep) editEvent(iv, { label: field.value.trim() });
+            else updateEventsPanel();
+        };
+        field.addEventListener('click', (e) => e?.stopPropagation());
+        field.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' || e.key === 'Escape') { e.preventDefault(); finish(e.key === 'Enter'); }
+        });
+        field.addEventListener('blur', () => finish(true));
+        text.textContent = '';
+        text.appendChild(field);
+        field.focus?.();
+        field.select?.();
     }
 
     // kind: how the change enters the browser history (see updateURL).
@@ -1506,6 +1535,8 @@ import { presetConfig, configStory, pythonSnippet, dataUrls, historyMode, addRec
         const text = document.createElement('span');
         text.className = 'event-text';
         text.textContent = iv.label || dateRange;
+        text.title = item.title + '\n(double-click to rename)';
+        text.addEventListener('dblclick', () => renameInPlace(text, iv));
         const remove = document.createElement('button');
         remove.className = 'event-delete';
         remove.textContent = '✕';

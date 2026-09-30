@@ -1,6 +1,6 @@
 // Mouse, trackpad and touch gestures for one uPlot subplot. Plot area: wheel / pinch =
 // zoom time at the cursor, horizontal swipe / Shift+wheel / drag = pan time, Shift+drag =
-// mark an event (ctx.markRange); on touch,
+// mark an event (ctx.markRange), drag an event edge = move it (ctx.edgeAt/dragEdge/dropEdge); on touch,
 // one finger pans time and two fingers pinch-zoom it. Y-axis gutter: mouse gestures act
 // on Y, double-click (double-tap) = reset Y; a finger there scrolls the subplot list.
 // Time changes go through ctx.setView so every subplot stays on one shared window.
@@ -12,7 +12,8 @@ const ZOOM_SENSITIVITY = 0.0015;  // zoom amount per normalized wheel pixel
 const PINCH_ZOOM_SENSITIVITY = 0.01;
 const MIN_ZOOM_SPAN_MS = 1;       // smallest time window (times are ms)
 
-// ctx: { getView(), setView(view), setY(min, max), resetY(), markRange(start, end) }
+// ctx: { getView(), setView(view), setY(min, max), resetY(), markRange(start, end),
+//        edgeAt(clientX) -> hit | null, dragEdge(hit, t), dropEdge(hit) }
 export function bindGestures(u, ctx) {
   // The Y gutter is the strip left of the plot area, at the plot area's height (not the
   // title or legend rows above/below it).
@@ -35,6 +36,11 @@ export function bindGestures(u, ctx) {
     if (e.button === 0 && inGutter(e)) dragY(u, ctx, e);
   });
   bindTimeDrag(u, ctx);
+
+  // An event edge under the mouse can be grabbed: say so with the cursor.
+  u.over.addEventListener('pointermove', (e) => {
+    if (e.pointerType === 'mouse' && e.buttons === 0) u.over.style.cursor = ctx.edgeAt(e.clientX) ? 'ew-resize' : '';
+  });
 
   u.root.addEventListener('dblclick', (e) => {
     if (!inGutter(e)) return;
@@ -95,6 +101,8 @@ function bindTimeDrag(u, ctx) {
   u.over.addEventListener('pointerdown', (e) => {
     if (e.pointerType === 'mouse' && e.button !== 0) return;
     if (e.pointerType === 'mouse' && e.shiftKey) { markDrag(u, ctx, e); return; }
+    const edge = e.pointerType === 'mouse' ? ctx.edgeAt(e.clientX) : null;
+    if (edge) { edgeDrag(u, ctx, e, edge); return; }
     u.over.setPointerCapture(e.pointerId);
     pointers.set(e.pointerId, e.clientX);
     document.body.style.userSelect = 'none';
@@ -120,11 +128,8 @@ function bindTimeDrag(u, ctx) {
 }
 
 // Shift+drag: a band follows the mouse; on release the covered span becomes an event.
-// Pointer events throughout: preventDefault on pointerdown suppresses the mouse events.
 function markDrag(u, ctx, e) {
-  e.preventDefault();
-  const rect = u.over.getBoundingClientRect();
-  const frac = (x) => (x - rect.left) / (rect.width || 1);
+  const frac = plotFraction(u);
   const f0 = frac(e.clientX);
   const view = ctx.getView();
   const band = document.createElement('div');
@@ -135,16 +140,37 @@ function markDrag(u, ctx, e) {
     band.style.left = (a * 100) + '%';
     band.style.width = ((b - a) * 100) + '%';
   };
-  const move = (m) => drawBand(frac(m.clientX));
+  drawBand(f0);
+  trackPointer(u, e, (m) => drawBand(frac(m.clientX)), (m, released) => {
+    band.remove();
+    const range = released ? rangeFromDrag(view, f0, frac(m.clientX)) : null;
+    if (range) ctx.markRange(range.start, range.end);
+  });
+}
+
+// Drag an event edge: the event follows live, and is committed on release.
+function edgeDrag(u, ctx, e, edge) {
+  const frac = plotFraction(u);
+  const view = ctx.getView();
+  const timeAt = (x) => view.start + Math.max(0, Math.min(1, frac(x))) * (view.end - view.start);
+  trackPointer(u, e, (m) => ctx.dragEdge(edge, timeAt(m.clientX)), () => ctx.dropEdge(edge));
+}
+
+const plotFraction = (u) => {
+  const rect = u.over.getBoundingClientRect();
+  return (x) => (x - rect.left) / (rect.width || 1);
+};
+
+// Follows one pointer until it lifts: move(e) on each step, end(e, released) once.
+// Pointer events throughout: preventDefault on pointerdown suppresses the mouse events.
+function trackPointer(u, e, move, end) {
+  e.preventDefault();
   const finish = (m) => {
     u.over.removeEventListener('pointermove', move);
     u.over.removeEventListener('pointerup', finish);
     u.over.removeEventListener('pointercancel', finish);
-    band.remove();
-    const range = m.type === 'pointerup' ? rangeFromDrag(view, f0, frac(m.clientX)) : null;
-    if (range) ctx.markRange(range.start, range.end);
+    end(m, m.type === 'pointerup');
   };
-  drawBand(f0);
   u.over.setPointerCapture(e.pointerId);
   u.over.addEventListener('pointermove', move);
   u.over.addEventListener('pointerup', finish);

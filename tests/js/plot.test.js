@@ -1441,6 +1441,35 @@ describe('events added in the browser', () => {
     expect(sharedConfig().intervals[0].color).toBe('rgba(255, 120, 80, 0.2)');
   });
 
+  it('moves an event when one of its edges is dragged, whichever way round', () => {
+    addEvent('Shock');
+
+    plot.__test__.subplotAction({ type: 'moveEvent', event: 0, value: [t('2020-01-01T08:00:00Z'), t('2020-01-01T05:00:00Z')] });
+
+    expect(plotState.intervals[0]).toMatchObject({ start: '2020-01-01T05:00:00.000Z', stop: '2020-01-01T08:00:00.000Z', label: 'Shock' });
+    updateShareURL();
+    expect(sharedConfig().intervals[0].start).toBe('2020-01-01T05:00:00.000Z');
+  });
+
+  it('renames an event in place from the sidebar: Enter keeps it, Escape cancels', () => {
+    addEvent('Shock');
+    const text = events()[0].children[1];
+    text.addEventListener.mock.calls.find(([type]) => type === 'dblclick')[1]();
+    const field = text.children.at(-1);
+    const key = (k) => field.addEventListener.mock.calls.find(([type]) => type === 'keydown')[1]({ key: k, preventDefault() {} });
+
+    field.value = 'Bow shock';
+    key('Enter');
+    expect(plotState.intervals[0].label).toBe('Bow shock');
+
+    const again = events()[0].children[1];
+    again.addEventListener.mock.calls.find(([type]) => type === 'dblclick')[1]();
+    const field2 = again.children.at(-1);
+    field2.value = 'Nope';
+    field2.addEventListener.mock.calls.find(([type]) => type === 'keydown')[1]({ key: 'Escape', preventDefault() {} });
+    expect(plotState.intervals[0].label).toBe('Bow shock');
+  });
+
   it('deletes an event', () => {
     addEvent('Shock');
     vi.stubGlobal('prompt', vi.fn(() => 'Later'));

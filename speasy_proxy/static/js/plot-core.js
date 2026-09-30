@@ -384,6 +384,19 @@ export function withHue(color, hex) {
   return `rgba(${r}, ${g}, ${b}, ${alpha < 1 ? alpha : DEFAULT_EVENT_ALPHA})`;
 }
 
+// The event edge under x, from each event's [start, stop] pixel positions: the closest
+// within tol, as { index, side: 'start' | 'stop' }, else null.
+export function nearestEdge(edges, x, tol) {
+  let best = null;
+  edges.forEach(([x0, x1], index) => {
+    for (const [side, xe] of [['start', x0], ['stop', x1]]) {
+      const d = Math.abs(x - xe);
+      if (d <= tol && (!best || d < best.d)) best = { index, side, d };
+    }
+  });
+  return best && { index: best.index, side: best.side };
+}
+
 const MIN_DRAG_FRAC = 0.005;  // a smaller Shift+drag is a click, not an event
 
 // The time span a drag covered, from its start and end as fractions of the plot width
