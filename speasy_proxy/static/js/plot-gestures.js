@@ -1,10 +1,11 @@
 // Mouse, trackpad and touch gestures for one uPlot subplot. Plot area: wheel / pinch =
 // zoom time at the cursor, horizontal swipe / Shift+wheel / drag = pan time, Shift+drag =
-// mark an event (ctx.markRange), drag an event edge = move it (ctx.edgeAt/dragEdge/dropEdge); on touch,
+// mark an event (ctx.markRange), drag an event edge = resize it, Ctrl/⌘+drag inside an
+// event = move it (live via ctx.setEventSpan, committed on release); on touch,
 // one finger pans time and two fingers pinch-zoom it. Y-axis gutter: mouse gestures act
 // on Y, double-click (double-tap) = reset Y; a finger there scrolls the subplot list.
 // Time changes go through ctx.setView so every subplot stays on one shared window.
-import { wheelIntent, zoomToward, panRange, pinchRange, yRangeFromPixels, rangeFromDrag } from './plot-core.js';
+import { wheelIntent, zoomToward, panRange, pinchRange, yRangeFromPixels, rangeFromDrag, formatDuration } from './plot-core.js';
 
 const ZOOM_SENSITIVITY = 0.0015;  // zoom amount per normalized wheel pixel
 // simplify: tuned by reasoning, not on hardware; pinch deltas are ~10x smaller than
@@ -13,7 +14,8 @@ const PINCH_ZOOM_SENSITIVITY = 0.01;
 const MIN_ZOOM_SPAN_MS = 1;       // smallest time window (times are ms)
 
 // ctx: { getView(), setView(view), setY(min, max), resetY(), markRange(start, end),
-//        edgeAt(clientX) -> hit | null, dragEdge(hit, t), dropEdge(hit) }
+//        edgeAt(clientX) -> { index, side } | null, eventAt(clientX) -> index | null,
+//        eventSpan(index) -> [t0, t1], setEventSpan(index, t0, t1), commitEvent(index) }
 export function bindGestures(u, ctx) {
   // The Y gutter is the strip left of the plot area, at the plot area's height (not the
   // title or legend rows above/below it).
@@ -37,9 +39,11 @@ export function bindGestures(u, ctx) {
   });
   bindTimeDrag(u, ctx);
 
-  // An event edge under the mouse can be grabbed: say so with the cursor.
+  // What a press would grab, said by the cursor.
   u.over.addEventListener('pointermove', (e) => {
-    if (e.pointerType === 'mouse' && e.buttons === 0) u.over.style.cursor = ctx.edgeAt(e.clientX) ? 'ew-resize' : '';
+    if (e.pointerType !== 'mouse' || e.buttons !== 0) return;
+    const movable = (e.ctrlKey || e.metaKey) && ctx.eventAt(e.clientX) !== null;
+    u.over.style.cursor = movable ? 'move' : ctx.edgeAt(e.clientX) ? 'ew-resize' : '';
   });
 
   u.root.addEventListener('dblclick', (e) => {
@@ -100,9 +104,7 @@ function bindTimeDrag(u, ctx) {
 
   u.over.addEventListener('pointerdown', (e) => {
     if (e.pointerType === 'mouse' && e.button !== 0) return;
-    if (e.pointerType === 'mouse' && e.shiftKey) { markDrag(u, ctx, e); return; }
-    const edge = e.pointerType === 'mouse' ? ctx.edgeAt(e.clientX) : null;
-    if (edge) { edgeDrag(u, ctx, e, edge); return; }
+    if (e.pointerType === 'mouse' && eventGesture(u, ctx, e)) return;
     u.over.setPointerCapture(e.pointerId);
     pointers.set(e.pointerId, e.clientX);
     document.body.style.userSelect = 'none';
@@ -139,6 +141,7 @@ function markDrag(u, ctx, e) {
     const [a, b] = [f0, f1].map((f) => Math.max(0, Math.min(1, f))).sort((x, y) => x - y);
     band.style.left = (a * 100) + '%';
     band.style.width = ((b - a) * 100) + '%';
+    band.textContent = formatDuration((b - a) * (view.end - view.start));
   };
   drawBand(f0);
   trackPointer(u, e, (m) => drawBand(frac(m.clientX)), (m, released) => {
@@ -148,12 +151,30 @@ function markDrag(u, ctx, e) {
   });
 }
 
-// Drag an event edge: the event follows live, and is committed on release.
-function edgeDrag(u, ctx, e, edge) {
+// Mouse gestures on events, before a plain drag pans: Shift = mark a new one, Ctrl/⌘
+// inside one = move it, near an edge = resize it. True when one started.
+function eventGesture(u, ctx, e) {
+  if (e.shiftKey) { markDrag(u, ctx, e); return true; }
+  const inside = (e.ctrlKey || e.metaKey) ? ctx.eventAt(e.clientX) : null;
+  if (inside !== null) { spanDrag(u, ctx, e, inside, (t0, t1, dt) => [t0 + dt, t1 + dt]); return true; }
+  const edge = ctx.edgeAt(e.clientX);
+  if (edge) {
+    spanDrag(u, ctx, e, edge.index, (t0, t1, dt) => edge.side === 'start' ? [t0 + dt, t1] : [t0, t1 + dt]);
+    return true;
+  }
+  return false;
+}
+
+// The event follows the pointer live (reshape: its span from the time dragged), and is
+// committed on release.
+function spanDrag(u, ctx, e, index, reshape) {
   const frac = plotFraction(u);
   const view = ctx.getView();
   const timeAt = (x) => view.start + Math.max(0, Math.min(1, frac(x))) * (view.end - view.start);
-  trackPointer(u, e, (m) => ctx.dragEdge(edge, timeAt(m.clientX)), () => ctx.dropEdge(edge));
+  const [t0, t1] = ctx.eventSpan(index);
+  const from = timeAt(e.clientX);
+  trackPointer(u, e, (m) => ctx.setEventSpan(index, ...reshape(t0, t1, timeAt(m.clientX) - from)),
+    () => ctx.commitEvent(index));
 }
 
 const plotFraction = (u) => {

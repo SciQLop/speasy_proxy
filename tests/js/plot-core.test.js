@@ -5,7 +5,7 @@ import {
   createSubplotData, createProductCache, subplotToConfig, subplotFromConfig, paramValue, withParam, editedRange, zRangeOf, outOfCoverage, formatSpan,
   normalizeWheelDelta, wheelIntent, zoomRange, panRange, zoomToward, pinchRange, structureKey, resampleTarget,
   plotTypeFromCache, computeValueRange, mergeValueRange, renderableRange,
-  nearestIndex, lineTable, yRangeFromPixels, rangeFromDrag, colorHex, withHue, edgeColor, nearestEdge, fmtTick, cleanText, productTitle, dropZone, distinctCrumbs,
+  nearestIndex, lineTable, yRangeFromPixels, rangeFromDrag, colorHex, withHue, edgeColor, nearestEdge, eventAt, formatDuration, fmtTick, cleanText, productTitle, dropZone, distinctCrumbs,
 } from '../../speasy_proxy/static/js/plot-core.js';
 
 describe('merge', () => {
@@ -767,5 +767,23 @@ describe('nearestEdge (grabbing an event edge on the plot)', () => {
   it('finds nothing away from every edge: the drag pans', () => {
     expect(nearestEdge(edges, 150, 5)).toBeNull();
     expect(nearestEdge([], 150, 5)).toBeNull();
+  });
+});
+
+describe('eventAt (Ctrl+drag inside an event moves it)', () => {
+  it('finds the event under the pointer, the narrowest when they overlap', () => {
+    expect(eventAt([[100, 400], [200, 250]], 220)).toBe(1);
+    expect(eventAt([[100, 400], [200, 250]], 300)).toBe(0);
+    expect(eventAt([[100, 400]], 50)).toBeNull();
+  });
+});
+
+describe('formatDuration (event measurements)', () => {
+  it('keeps sub-second precision for short events, two units for long ones', () => {
+    expect(formatDuration(250)).toBe('250 ms');
+    expect(formatDuration(2345)).toBe('2.35 s');
+    expect(formatDuration(42_500)).toBe('42.5 s');
+    expect(formatDuration(282 * 60_000 + 10_000)).toBe('4h 42m');
+    expect(formatDuration(3 * 86_400_000 + 5 * 3_600_000)).toBe('3d 5h');
   });
 });

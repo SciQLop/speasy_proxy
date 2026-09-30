@@ -9,7 +9,7 @@ import uPlot from './vendor/uPlot.esm.js';
 import { CHART_COLORS, escapeHtml, parseUtc } from './common.js';
 import {
   lineTable, nearestIndex, fmtTick, productTitle, dropZone,
-  paramValue, zRangeOf, outOfCoverage, edgeColor, nearestEdge,
+  paramValue, zRangeOf, outOfCoverage, edgeColor, nearestEdge, eventAt, formatDuration,
 } from './plot-core.js';
 import { binRowRects, computeYEdges, lowestPositiveEdge, renderSpectrogramImage, spectrogramValueAt, COLORMAPS, colormapLut } from './spectrogram.js';
 import { bindGestures } from './plot-gestures.js';
@@ -194,7 +194,7 @@ export function createPlotView(root, { onViewChange, onAction = () => {}, paramS
       series,
       hooks: {
         drawClear: [(u) => drawBackdrop(u, subplot, isHeatmap)],
-        draw: [(u) => drawIntervalEdges(u, intervals)],
+        draw: [(u) => drawIntervalEdges(u, intervals, index === plots.length - 1)],
         setCursor: [(u) => onCursor(u, subplot)],
       },
     };
@@ -237,13 +237,14 @@ export function createPlotView(root, { onViewChange, onAction = () => {}, paramS
       setY: (min, max) => setY({ min, max }),
       resetY: () => setY(null),
       markRange: (start, end) => onAction({ type: 'addEvent', index, value: [start, end] }),
-      edgeAt: (clientX) => nearestEdge(intervals.map((iv) => [u.valToPos(iv.t0, 'x'), u.valToPos(iv.t1, 'x')]),
-        clientX - u.over.getBoundingClientRect().left, EDGE_GRAB_PX),
-      dragEdge: ({ index: i, side }, t) => {
-        intervals[i][side === 'start' ? 't0' : 't1'] = t;
+      edgeAt: (clientX) => nearestEdge(eventPixels(u), clientX - u.over.getBoundingClientRect().left, EDGE_GRAB_PX),
+      eventAt: (clientX) => eventAt(eventPixels(u), clientX - u.over.getBoundingClientRect().left),
+      eventSpan: (i) => [intervals[i].t0, intervals[i].t1],
+      setEventSpan: (i, t0, t1) => {
+        Object.assign(intervals[i], { t0, t1 });
         for (const c of charts) c.u.redraw(false);
       },
-      dropEdge: ({ index: i }) => onAction({ type: 'moveEvent', event: i, value: [intervals[i].t0, intervals[i].t1] }),
+      commitEvent: (i) => onAction({ type: 'moveEvent', event: i, value: [intervals[i].t0, intervals[i].t1] }),
     });
     return { u, subplot, meta, colorbar, note };
   }
@@ -255,6 +256,9 @@ export function createPlotView(root, { onViewChange, onAction = () => {}, paramS
       u.setScale('x', { min: view.start, max: view.end });
     });
   }
+
+  // Each event's [start, stop] in plot-area CSS pixels, as pointer positions are.
+  const eventPixels = (u) => intervals.map((iv) => [u.valToPos(iv.t0, 'x'), u.valToPos(iv.t1, 'x')]);
 
   function drawBackdrop(u, subplot, isHeatmap) {
     const { ctx, bbox } = u;
@@ -677,7 +681,9 @@ function drawIntervals(u, intervals) {
 
 // On top of everything (uPlot's draw hook runs after the series), so events stay visible:
 // a line in the event's hue inside a dark outline, readable over a bright spectrogram too.
-function drawIntervalEdges(u, intervals) {
+// The bottom subplot also carries each event's measurement, just above the time axis,
+// as a waveform viewer's ruler does.
+function drawIntervalEdges(u, intervals, withMeasurements) {
   const { ctx, bbox } = u;
   const px = Math.max(1, Math.round(globalThis.devicePixelRatio || 1));
   ctx.save();
@@ -692,8 +698,38 @@ function drawIntervalEdges(u, intervals) {
       ctx.fillStyle = edgeColor(iv.color);
       ctx.fillRect(x - px, bbox.top, 2 * px, bbox.height);
     }
+    if (withMeasurements) drawMeasurement(u, iv, px);
   }
   ctx.restore();
+}
+
+// |<-- 4h 42m -->| between the edges, near the bottom; beside the stop edge when the text
+// does not fit between them.
+function drawMeasurement(u, iv, px) {
+  const { ctx, bbox } = u;
+  const [x0, x1] = [u.valToPos(iv.t0, 'x', true), u.valToPos(iv.t1, 'x', true)].sort((a, b) => a - b);
+  const y = bbox.top + bbox.height - 10 * px;
+  const text = formatDuration(Math.abs(iv.t1 - iv.t0));
+  ctx.font = `${11 * px}px sans-serif`;
+  ctx.textBaseline = 'middle';
+  const w = ctx.measureText(text).width + 8 * px, h = 14 * px;
+  const color = edgeColor(iv.color);
+  const fits = x1 - x0 >= w + 16 * px;
+  if (fits) {
+    ctx.strokeStyle = color;
+    ctx.lineWidth = px;
+    ctx.beginPath();
+    ctx.moveTo(x0 + 2 * px, y); ctx.lineTo(x1 - 2 * px, y);
+    for (const [tip, dir] of [[x0 + 2 * px, 1], [x1 - 2 * px, -1]]) {
+      ctx.moveTo(tip + dir * 5 * px, y - 3 * px); ctx.lineTo(tip, y); ctx.lineTo(tip + dir * 5 * px, y + 3 * px);
+    }
+    ctx.stroke();
+  }
+  const left = fits ? (x0 + x1 - w) / 2 : x1 + 4 * px;
+  ctx.fillStyle = 'rgba(11, 14, 23, 0.85)';
+  ctx.fillRect(left, y - h / 2, w, h);
+  ctx.fillStyle = '#e0e6f0';
+  ctx.fillText(text, left + 4 * px, y);
 }
 
 // --- tooltip content ---------------------------------------------------------------
@@ -701,7 +737,9 @@ function drawIntervalEdges(u, intervals) {
 function tooltipHtml(t, charts, intervals, hoveredSubplot, yVal) {
   let html = '<b>' + new Date(t).toISOString().replace('T', ' ').replace('Z', '') + '</b><br/>';
   for (const iv of intervals) {
-    if (iv.label && t >= iv.t0 && t <= iv.t1) html += swatch(iv.color, 2) + '<b>' + escapeHtml(iv.label) + '</b><br/>';
+    if (t < Math.min(iv.t0, iv.t1) || t > Math.max(iv.t0, iv.t1)) continue;
+    html += swatch(iv.color, 2) + (iv.label ? '<b>' + escapeHtml(iv.label) + '</b> · ' : 'Event · ')
+      + formatDuration(Math.abs(iv.t1 - iv.t0)) + '<br/>';
   }
   for (const { u, subplot, meta } of charts) {
     if (subplot.plotType === 'heatmap') {

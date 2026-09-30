@@ -397,6 +397,16 @@ export function nearestEdge(edges, x, tol) {
   return best && { index: best.index, side: best.side };
 }
 
+// The event whose [start, stop] pixel band contains x (the narrowest when they overlap), else null.
+export function eventAt(edges, x) {
+  let best = null;
+  edges.forEach(([x0, x1], index) => {
+    const lo = Math.min(x0, x1), hi = Math.max(x0, x1);
+    if (x >= lo && x <= hi && (best === null || hi - lo < best.width)) best = { index, width: hi - lo };
+  });
+  return best && best.index;
+}
+
 const MIN_DRAG_FRAC = 0.005;  // a smaller Shift+drag is a click, not an event
 
 // The time span a drag covered, from its start and end as fractions of the plot width
@@ -571,6 +581,14 @@ export function formatSpan(ms) {
     if (n > 0 || parts.length > 0) parts.push([n, unit]);
   }
   return parts.slice(0, 2).filter(([n]) => n > 0).map(([n, unit]) => n + unit).join(' ') || '0s';
+}
+
+// An event's length as a measurement: sub-second precision under a minute, else the
+// two largest units (formatSpan).
+export function formatDuration(ms) {
+  if (ms < 1000) return Math.round(ms) + ' ms';
+  if (ms < 60_000) return (ms / 1000).toFixed(ms < 10_000 ? 2 : 1) + ' s';
+  return formatSpan(ms);
 }
 
 // Where a window sits against a product's coverage ({ start, stop } in ms): null when

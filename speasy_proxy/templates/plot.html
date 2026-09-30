@@ -102,8 +102,9 @@
         .event-text { flex: 1; overflow: hidden; text-overflow: ellipsis; }
         .event-delete { border: none; background: none; color: #555e7e; cursor: pointer; padding: 0 2px; }
         .event-delete:hover { color: #ee6666; }
-        .pv-marking { position: absolute; top: 0; bottom: 0; pointer-events: none;
-            background: rgba(107, 138, 253, 0.2); border-left: 1px solid #6b8afd; border-right: 1px solid #6b8afd; }
+        .pv-marking { position: absolute; top: 0; bottom: 0; pointer-events: none; overflow: visible;
+            background: rgba(107, 138, 253, 0.2); border-left: 1px solid #6b8afd; border-right: 1px solid #6b8afd;
+            color: #e0e6f0; font-size: 11px; text-align: center; white-space: nowrap; padding-top: 4px; }
         .user-preset-name { flex: 1; overflow: hidden; text-overflow: ellipsis; }
         .user-preset-delete { border: none; background: none; color: #555e7e; cursor: pointer; padding: 0 2px; }
         .user-preset-delete:hover { color: #ee6666; }
@@ -372,7 +373,7 @@
     </details>
     <details class="side-section" id="events-container" hidden>
         <summary>Events</summary>
-        <div class="side-hint">Shift+drag on a plot to mark an event</div>
+        <div class="side-hint">Shift+drag on a plot: mark an event · drag an edge: resize · Ctrl+drag inside: move</div>
         <div class="side-list" id="events-list"></div>
     </details>
     <div style="padding:8px 16px;border-bottom:1px solid #1e2640;">
