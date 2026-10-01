@@ -38,7 +38,7 @@ dependencies = [
     # 0.1.11 fixed the fork-inherited-PRNG file-path collision (2026-09-02
     # incident), 0.1.10 the per-get fd/mmap leak (2026-09-01 outage).
     "pysciqlop-cache>=0.2.2",
-    "pycdfpp>=0.7.3",
+    "pycdfpp>=0.16.0",
     "diskcache",
     "jinja2",
     "pyzstd",
