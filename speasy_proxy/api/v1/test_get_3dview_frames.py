@@ -1,5 +1,6 @@
 import asyncio
 import importlib
+import types
 
 m = importlib.import_module("speasy_proxy.api.v1.get_3dview_frames")
 
@@ -11,7 +12,9 @@ def _run(coro):
 def test_returns_empty_list_when_provider_unavailable(monkeypatch):
     """Disabled via SPEASY_CORE_DISABLED_PROVIDERS, or a speasy version without
     3DView support -- not an error, just nothing to offer the frontend."""
-    monkeypatch.delattr(m.spz, "cdpp3dview", raising=False)
+    # A stand-in module, not delattr: newer speasy serves providers through a lazy module
+    # __getattr__, so there is no real attribute to delete.
+    monkeypatch.setattr(m, "spz", types.ModuleType("speasy"))
     resp = _run(m.get_3dview_frames())
     assert resp.status_code == 200
     assert resp.body == b'{"frames":[]}'
