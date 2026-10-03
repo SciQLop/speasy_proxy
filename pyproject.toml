@@ -31,7 +31,7 @@ classifiers = [
 ]
 dependencies = [
     "humanize",
-    "speasy>=1.8.4",
+    "speasy>=1.9.0",
     # Explicit floor on speasy's cache backend: 0.2.2 never unlinks a value's
     # file inline (queued in a trash table by triggers, atomically with the row
     # change) and raises instead of silently dropping an unwritable value.
