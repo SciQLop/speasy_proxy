@@ -4589,7 +4589,7 @@ wheels = [
 
 [[package]]
 name = "speasy-proxy"
-version = "0.25.0"
+version = "0.25.1"
 source = { editable = "." }
 dependencies = [
     { name = "bokeh", version = "3.9.2", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.12'" },
