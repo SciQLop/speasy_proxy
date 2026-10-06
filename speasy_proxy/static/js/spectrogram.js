@@ -41,15 +41,32 @@ const LUTS = Object.fromEntries(Object.entries(COLORMAPS).map(([name, stops]) =>
 // falls back to the default.
 export const colormapLut = (name) => LUTS[name] || LUTS[DEFAULT_COLORMAP];
 
-// Energy tables often come high-to-low (AMDA/CSA ion spectrometers). Every consumer
-// (edges, image rows, cursor lookup) assumes low-to-high, so flip once at ingestion.
-export function ascendingSpectrogram(yAxis, rows) {
-  const flat = Array.isArray(yAxis?.[0]) ? yAxis[0] : (yAxis || []);
-  if (flat.length < 2 || flat[0] <= flat[flat.length - 1]) return { yAxis, rows };
-  const reversed = (a) => (a ? a.slice().reverse() : a);
+// Speasy sends one energy table for the whole product, or one per record when the
+// instrument switches tables (MMS FPI fast mode alternates two). Normalised to the distinct
+// tables plus each row's index into them, so rows are drawn and read with their own table.
+// Tables often come high-to-low (AMDA/CSA ion spectrometers) while every consumer (edges,
+// image rows, cursor lookup) assumes low-to-high, so each row is flipped by its own table.
+// knownTables: the tables earlier fetches found, so a refetch indexes into the same list.
+export function spectrogramTables(yAxis, rows, knownTables = []) {
+  const perRow = Array.isArray(yAxis?.[0]);
+  const tables = knownTables.slice();
+  const indexOf = new Map(tables.map((t, i) => [t.join(','), i]));
+  const intern = (table) => {
+    const key = table.join(',');
+    if (!indexOf.has(key)) indexOf.set(key, tables.push(table) - 1);
+    return indexOf.get(key);
+  };
+  const ascending = (t) => (t.length > 1 && t[0] > t[t.length - 1] ? t.slice().reverse() : t);
+  const shared = perRow ? null : intern(ascending(yAxis || []));
+  const tableIndex = rows.map((_, i) => shared ?? intern(ascending(yAxis[i] || [])));
+  const flips = (i) => {
+    const raw = perRow ? yAxis[i] || [] : yAxis || [];
+    return raw.length > 1 && raw[0] > raw[raw.length - 1];
+  };
   return {
-    yAxis: Array.isArray(yAxis[0]) ? yAxis.map(reversed) : reversed(yAxis),
-    rows: rows.map(reversed),
+    tables,
+    tableIndex,
+    rows: rows.map((row, i) => (row && flips(i) ? row.slice().reverse() : row)),
   };
 }
 
@@ -82,11 +99,10 @@ export function binRowRects(edges, toPos, floor = null) {
 }
 
 // Value lookup for cursor readout: nearest time column, then the y bin whose edges
-// (from computeYEdges) contain yValue. Returns the cell value, or null when the
-// position is outside the data or the cell is missing/NaN.
-export function spectrogramValueAt(times, rows, yBinsFlat, timeMs, yValue) {
+// (from computeYEdges of that row's table, binsOfRow(rowIndex)) contain yValue. Returns
+// the cell value, or null when the position is outside the data or the cell is missing/NaN.
+export function spectrogramValueAt(times, rows, binsOfRow, timeMs, yValue) {
   if (!times || times.length === 0 || !rows || rows.length === 0) return null;
-  if (!yBinsFlat || yBinsFlat.length === 0) return null;
   if (typeof timeMs !== 'number' || typeof yValue !== 'number' || isNaN(timeMs) || isNaN(yValue)) return null;
 
   // Nearest time index (times are sorted ascending).
@@ -98,7 +114,8 @@ export function spectrogramValueAt(times, rows, yBinsFlat, timeMs, yValue) {
   let ti = lo;
   if (lo > 0 && timeMs - times[lo - 1] <= times[lo] - timeMs) ti = lo - 1;
 
-  // Y bin containing yValue.
+  const yBinsFlat = binsOfRow(ti);
+  if (!yBinsFlat || yBinsFlat.length === 0) return null;
   const edges = computeYEdges(yBinsFlat);
   if (yValue < edges[0] || yValue > edges[edges.length - 1]) return null;
   let a = 0, b = edges.length - 1;
@@ -188,6 +205,27 @@ export function renderSpectrogramImage(times, rows, yBinsFlat, vMin, vMax, logSc
     yMax: yBinsFlat[nY - 1],
     yEdges: computeYEdges(yBinsFlat),
   };
+}
+
+// One image per energy table, each holding only the rows taken with that table and
+// drawn later between that table's own edges. Gap detection then runs per table, so a
+// table's samples on both sides of another table's block do not fill that block.
+// simplify: an axis that changes every record (e.g. potential-corrected energies) would need
+// one layer per row; past MAX_LAYERS only the most used tables are drawn. Upgrade path:
+// rasterise each column with its own edges straight into chart pixels.
+const MAX_LAYERS = 8;
+
+export function spectrogramLayers(times, rows, tables, tableIndex, vMin, vMax, logScale, view, colormap = DEFAULT_COLORMAP) {
+  const members = tables.map(() => []);
+  tableIndex.forEach((ti, i) => members[ti].push(i));
+  return members
+    .map((idx, ti) => ({ idx, ti }))
+    .filter(({ idx }) => idx.length > 0)
+    .sort((a, b) => b.idx.length - a.idx.length)
+    .slice(0, MAX_LAYERS)
+    .map(({ idx, ti }) => renderSpectrogramImage(
+      idx.map((i) => times[i]), idx.map((i) => rows[i]), tables[ti], vMin, vMax, logScale, view, colormap))
+    .filter(Boolean);
 }
 
 // Steps on each side of a candidate gap used to estimate the local cadence.

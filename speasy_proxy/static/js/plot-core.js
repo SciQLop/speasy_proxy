@@ -9,7 +9,7 @@ export function createSubplotData() {
     logScale: true,
     colormap: 'viridis',
     plotType: 'line',
-    lastHeatmapImg: null,
+    lastHeatmapLayers: null,
     productData: {},
     // Whether Y/Z still follow the ISTP SCALETYP hint from the data (applyScaleHints
     // in plot.js) rather than an explicit Log Y / Log Z click.
@@ -29,7 +29,8 @@ export function createProductCache(path) {
     unit: '',
     title: '',       // ISTP FIELDNAM (or LABLAXIS): a readable product name
     description: '', // ISTP CATDESC, shown on hover
-    yAxis: null,
+    yTables: null,   // spectrogram: the distinct energy (y) tables, each low-to-high
+    yIndex: null,    // spectrogram: per row, its table in yTables
     yAxisName: '',
     yAxisUnit: '',
     rows: [],
@@ -107,7 +108,7 @@ export function detectPlotType(json) {
 export function plotTypeFromCache(cache) {
   if (!cache) return 'line';
   if ((cache.displayType || '').toLowerCase() === 'spectrogram') return 'heatmap';
-  return cache.yAxis && cache.rows && cache.rows.length > 0 ? 'heatmap' : 'line';
+  return cache.yTables && cache.rows && cache.rows.length > 0 ? 'heatmap' : 'line';
 }
 
 // Min/max of all positive values in a spectrogram's rows, or null when there are none

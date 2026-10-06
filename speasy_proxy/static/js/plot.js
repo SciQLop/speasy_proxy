@@ -12,7 +12,7 @@ import {
   logHintFromRange,
   paramValue, withParam, editedRange, formatSpan, colorHex, withHue, formatDuration, fmtEventRange,
 } from './plot-core.js';
-import { ascendingSpectrogram } from './spectrogram.js';
+import { spectrogramTables } from './spectrogram.js';
 import { fetchData as apiFetchData, fetchInventory } from './api-client.js';
 import { createPlotView, PRODUCT_MIME } from './plot-view.js';
 import { presetConfig, configStory, pythonSnippet, dataUrls, historyMode, addRecent, recentsFrom, recentLabel,
@@ -885,9 +885,10 @@ import { presetConfig, configStory, pythonSnippet, dataUrls, historyMode, addRec
 
         const isHeatmap = detectPlotType(json) === 'heatmap';
         const hasYAxis = isHeatmap && json.axes.length >= 2;
-        const { yAxis, rows: newValues } = hasYAxis
-            ? ascendingSpectrogram(json.axes[1].values, json.values.values)
-            : { yAxis: null, rows: json.values.values };
+        const { tables, tableIndex, rows: newValues } = hasYAxis
+            ? spectrogramTables(json.axes[1].values, json.values.values, cache.yTables || [])
+            : { tables: null, tableIndex: null, rows: json.values.values };
+        const newIndex = tableIndex || newValues.map(() => 0);
 
         if (cache.times.length === 0) {
             cache.times = newTimes;
@@ -899,13 +900,14 @@ import { presetConfig, configStory, pythonSnippet, dataUrls, historyMode, addRec
             cache.displayType = meta.DISPLAY_TYPE || '';
 
             if (isHeatmap) {
+                cache.yIndex = newIndex;
                 if (hasYAxis) {
-                    cache.yAxis = yAxis;
+                    cache.yTables = tables;
                     const axisMeta = json.axes[1].meta || {};
                     cache.yAxisName = cleanText(axisMeta.LABLAXIS || axisMeta.FIELDNAM || json.axes[1].name);
                     cache.yAxisUnit = cleanText(axisMeta.UNITS);
                 } else {
-                    cache.yAxis = newValues[0] ? newValues[0].map((_, i) => i) : [];
+                    cache.yTables = [newValues[0] ? newValues[0].map((_, i) => i) : []];
                 }
                 cache.rows = newValues;
                 cache.columnNames = columns;
@@ -920,6 +922,8 @@ import { presetConfig, configStory, pythonSnippet, dataUrls, historyMode, addRec
         } else {
             if (isHeatmap) {
                 const merged = spliceRows(cache.times, cache.rows, newTimes, newValues, fetchStart, fetchStop);
+                cache.yIndex = spliceRows(cache.times, cache.yIndex, newTimes, newIndex, fetchStart, fetchStop).rows;
+                if (tables) cache.yTables = tables;
                 cache.times = merged.times;
                 cache.rows = merged.rows;
                 cache.valueRange = mergeValueRange(cache.valueRange, cache.rows, newValues);

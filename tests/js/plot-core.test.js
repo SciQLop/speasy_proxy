@@ -232,7 +232,7 @@ describe('plotTypeFromCache', () => {
   });
   it('detects a heatmap cache from its loaded y axis and rows', () => {
     const cache = createProductCache('cda/flux');
-    cache.yAxis = [1, 2, 3];
+    cache.yTables = [[1, 2, 3]];
     cache.rows = [[1, 2, 3]];
     expect(plotTypeFromCache(cache)).toBe('heatmap');
   });

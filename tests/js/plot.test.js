@@ -69,7 +69,7 @@ function heatmapSubplot() {
     y_axis: { log: false },
     logScale: true,
     plotType: 'heatmap',
-    lastHeatmapImg: null,
+    lastHeatmapLayers: null,
     productData: {
       [path]: {
         path,
@@ -79,7 +79,8 @@ function heatmapSubplot() {
         columns: {},
         columnNames: [],
         unit: '',
-        yAxis: [1, 2, 3],
+        yTables: [[1, 2, 3]],
+        yIndex: [0, 0, 0],
         yAxisName: 'energy',
         yAxisUnit: 'eV',
         rows: [[1, 2, 3], [4, 5, 6], [7, 8, 9]],
@@ -99,7 +100,8 @@ function lineCache(path, displayType) {
     columns: { v: [1, 2] },
     columnNames: ['v'],
     unit: 'nT',
-    yAxis: null,
+    yTables: null,
+    yIndex: null,
     yAxisName: '',
     yAxisUnit: '',
     rows: [],
@@ -127,7 +129,7 @@ beforeEach(() => {
 const liveCharts = () => uPlot.instances.filter((u) => !u.destroyed);
 const createEmptyCache = (path) => ({
   path, intervals: [], fetchSpan: 0, times: [], columns: {}, columnNames: [], unit: '',
-  yAxis: null, yAxisName: '', yAxisUnit: '', rows: [], displayType: '', valueRange: null,
+  yTables: null, yIndex: null, yAxisName: '', yAxisUnit: '', rows: [], displayType: '', valueRange: null,
 });
 
 describe('rendering subplots with uPlot', () => {
@@ -141,10 +143,10 @@ describe('rendering subplots with uPlot', () => {
     expect(() => renderAllSubplots()).not.toThrow();
 
     const [u] = liveCharts();
-    expect(plotState.plots[0].lastHeatmapImg?.canvas).toBeTruthy();
+    expect(plotState.plots[0].lastHeatmapLayers).toHaveLength(1);
     for (const hook of u.opts.hooks.drawClear) hook(u);
     // one source row per bin, each drawn between that bin's own edges
-    const img = plotState.plots[0].lastHeatmapImg;
+    const [img] = plotState.plots[0].lastHeatmapLayers;
     expect(u.ctx.drawImage).toHaveBeenCalledWith(img.canvas, 0, expect.any(Number), img.canvas.width, 1,
       expect.any(Number), expect.any(Number), expect.any(Number), expect.any(Number));
     expect(u.ctx.drawImage).toHaveBeenCalledTimes(img.canvas.height);
@@ -553,7 +555,7 @@ describe('removing a product from a subplot', () => {
       y_axis: { log: false },
       logScale: true,
       plotType: 'line',
-      lastHeatmapImg: null,
+      lastHeatmapLayers: null,
       productData: {
         'cda/b1': lineCache('cda/b1', 'time_series'),
         'cda/b2': lineCache('cda/b2', 'time_series'),
@@ -936,6 +938,23 @@ describe('ISTP names and descriptions', () => {
     json.axes[1] = { values: [1, 2, 3], name: 'mms1_dis_energy_fast', meta: { LABLAXIS: 'energy', FIELDNAM: 'MMS1 FPI/DIS energy', UNITS: 'eV' } };
     mergeProductData(cache, json, 0, 3000);
     expect(cache.yAxisName).toBe('energy');
+  });
+
+  // MMS FPI fast mode switches between two energy tables; a refetch must keep each row
+  // paired with its own table.
+  it('keeps each spectrogram row with its own energy table across a refetch', () => {
+    const cache = { ...createEmptyCache('cda/spec') };
+    const withTables = (tables, startNs) => {
+      const json = spectrogramResponse(tables.map(() => [1, 2, 3]), startNs);
+      json.axes[1] = { ...json.axes[1], values: tables };
+      return json;
+    };
+    const wide = [1, 10, 100], narrow = [200, 300, 400];
+    mergeProductData(cache, withTables([wide, wide, wide, wide], 0), 0, 4000);
+    mergeProductData(cache, withTables([narrow, narrow], 1e9), 1000, 2500);
+    expect(cache.yTables).toEqual([wide, narrow]);
+    expect(cache.times).toEqual([0, 1000, 2000, 3000]);
+    expect(cache.yIndex).toEqual([0, 1, 1, 0]);
   });
 
   it('falls back to LABLAXIS when there is no FIELDNAM', () => {

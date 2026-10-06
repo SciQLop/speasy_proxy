@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { COLORMAPS, colormapLut, computeYEdges, spectrogramValueAt, renderSpectrogramImage, ascendingSpectrogram, binRowRects, lowestPositiveEdge } from '../../speasy_proxy/static/js/spectrogram.js';
+import { COLORMAPS, colormapLut, computeYEdges, spectrogramValueAt, renderSpectrogramImage, spectrogramLayers, spectrogramTables, binRowRects, lowestPositiveEdge } from '../../speasy_proxy/static/js/spectrogram.js';
 
 describe('spectrogram', () => {
   it('builds a 256-entry RGB viridis LUT with correct endpoints', () => {
@@ -32,31 +32,37 @@ describe('spectrogram', () => {
       [4, 5, 6],
       [7, 8, 9],
     ];
+    it('reads each row with its own energy table', () => {
+      const binsOfRow = (i) => (i === 1 ? [100, 200, 400] : yBins);
+      expect(spectrogramValueAt(times, rows, binsOfRow, 2000, 200)).toBe(5);
+      expect(spectrogramValueAt(times, rows, binsOfRow, 2000, 20)).toBeNull();
+      expect(spectrogramValueAt(times, rows, binsOfRow, 1000, 20)).toBe(2);
+    });
     it('finds the cell at the exact time and bin center', () => {
-      expect(spectrogramValueAt(times, rows, yBins, 2000, 20)).toBe(5);
-      expect(spectrogramValueAt(times, rows, yBins, 1000, 10)).toBe(1);
+      expect(spectrogramValueAt(times, rows, () => yBins, 2000, 20)).toBe(5);
+      expect(spectrogramValueAt(times, rows, () => yBins, 1000, 10)).toBe(1);
     });
     it('snaps to the nearest time column', () => {
-      expect(spectrogramValueAt(times, rows, yBins, 2400, 20)).toBe(5); // closer to 2000
-      expect(spectrogramValueAt(times, rows, yBins, 2600, 20)).toBe(8); // closer to 3000
+      expect(spectrogramValueAt(times, rows, () => yBins, 2400, 20)).toBe(5); // closer to 2000
+      expect(spectrogramValueAt(times, rows, () => yBins, 2600, 20)).toBe(8); // closer to 3000
     });
     it('snaps the y value into its containing bin', () => {
-      expect(spectrogramValueAt(times, rows, yBins, 1000, 14)).toBe(1); // bin [5,15)
-      expect(spectrogramValueAt(times, rows, yBins, 1000, 29)).toBe(2); // bin [15,30)
-      expect(spectrogramValueAt(times, rows, yBins, 1000, 49)).toBe(3); // bin [30,50]
+      expect(spectrogramValueAt(times, rows, () => yBins, 1000, 14)).toBe(1); // bin [5,15)
+      expect(spectrogramValueAt(times, rows, () => yBins, 1000, 29)).toBe(2); // bin [15,30)
+      expect(spectrogramValueAt(times, rows, () => yBins, 1000, 49)).toBe(3); // bin [30,50]
     });
     it('returns null outside the y range', () => {
-      expect(spectrogramValueAt(times, rows, yBins, 1000, 1)).toBeNull();
-      expect(spectrogramValueAt(times, rows, yBins, 1000, 100)).toBeNull();
+      expect(spectrogramValueAt(times, rows, () => yBins, 1000, 1)).toBeNull();
+      expect(spectrogramValueAt(times, rows, () => yBins, 1000, 100)).toBeNull();
     });
     it('returns null for missing or NaN cells', () => {
       const gappy = [[null, NaN, 3], [4, 5, 6], [7, 8, 9]];
-      expect(spectrogramValueAt(times, gappy, yBins, 1000, 10)).toBeNull();
-      expect(spectrogramValueAt(times, gappy, yBins, 1000, 20)).toBeNull();
+      expect(spectrogramValueAt(times, gappy, () => yBins, 1000, 10)).toBeNull();
+      expect(spectrogramValueAt(times, gappy, () => yBins, 1000, 20)).toBeNull();
     });
     it('returns null for empty inputs', () => {
-      expect(spectrogramValueAt([], [], [], 0, 0)).toBeNull();
-      expect(spectrogramValueAt(times, rows, yBins, NaN, 20)).toBeNull();
+      expect(spectrogramValueAt([], [], () => [], 0, 0)).toBeNull();
+      expect(spectrogramValueAt(times, rows, () => yBins, NaN, 20)).toBeNull();
     });
   });
 
@@ -205,6 +211,26 @@ describe('spectrogram', () => {
       expect(renderSpectrogramImage([], [], [], 1, 10, false, null)).toBeNull();
     });
 
+    it('draws each energy table as its own layer, with its own edges', () => {
+      const times = [0, 1000, 2000, 3000];
+      const rows = times.map(() => [1, 2]);
+      const layers = spectrogramLayers(times, rows, [[1, 2], [100, 200]], [0, 0, 1, 1], 1, 2, false, null);
+      expect(layers.map((l) => l.yEdges)).toEqual([computeYEdges([1, 2]), computeYEdges([100, 200])]);
+    });
+
+    // A table's samples on both sides of the other table's block are not one continuous run.
+    it('leaves the time block of the other table empty', () => {
+      const times = [0, 1000, 2000, 3000, 4000, 5000, 6000, 7000, 8000, 9000];
+      const tableIndex = times.map((t) => (t >= 3000 && t <= 6000 ? 1 : 0));
+      const layers = spectrogramLayers(times, times.map(() => [1]), [[1], [5]], tableIndex, 1, 2, false, null);
+      const first = layers[0];
+      const { data, width } = first.canvas.imageData;
+      const alphaAt = (t) => data[Math.floor(((t - first.tStart) / (first.tEnd - first.tStart)) * width) * 4 + 3];
+      expect(alphaAt(500)).toBe(255);
+      expect(alphaAt(4500)).toBe(0);
+      expect(alphaAt(8500)).toBe(255);
+    });
+
     it('respects the view window to render only the visible slice', () => {
       const { times, rows, yBins } = makeData(500, 5);
       const view = { start: 100000, end: 200000 };
@@ -216,26 +242,33 @@ describe('spectrogram', () => {
   });
 });
 
-describe('ascendingSpectrogram', () => {
-  it('flips descending bins and every row so bins read low-to-high', () => {
-    const out = ascendingSpectrogram([300, 200, 100], [[3, 2, 1], [30, 20, 10]]);
-    expect(out.yAxis).toEqual([100, 200, 300]);
-    expect(out.rows).toEqual([[1, 2, 3], [10, 20, 30]]);
+// Some instruments switch energy tables between records (MMS FPI fast mode uses two):
+// every row must be drawn and read with its own table, not the first row's.
+describe('spectrogramTables', () => {
+  it('shares one table between all rows of a constant axis', () => {
+    const out = spectrogramTables([1, 2, 3], [[1, 2, 3], [4, 5, 6]]);
+    expect(out.tables).toEqual([[1, 2, 3]]);
+    expect(out.tableIndex).toEqual([0, 0]);
   });
-  it('flips per-time (2D) bin tables too', () => {
-    const out = ascendingSpectrogram([[30, 20], [31, 21]], [[3, 2], [4, 5]]);
-    expect(out.yAxis).toEqual([[20, 30], [21, 31]]);
-    expect(out.rows).toEqual([[2, 3], [5, 4]]);
+  it('finds the distinct tables of a per-record axis', () => {
+    const out = spectrogramTables([[1, 2], [1, 2], [5, 9], [1, 2]], [[1, 1], [1, 1], [2, 2], [1, 1]]);
+    expect(out.tables).toEqual([[1, 2], [5, 9]]);
+    expect(out.tableIndex).toEqual([0, 0, 1, 0]);
   });
-  it('leaves ascending data untouched', () => {
-    const yAxis = [1, 2, 3];
-    const rows = [[1, 2, 3]];
-    const out = ascendingSpectrogram(yAxis, rows);
-    expect(out.yAxis).toBe(yAxis);
-    expect(out.rows).toBe(rows);
+  it('flips each row whose own table is high-to-low', () => {
+    const out = spectrogramTables([[30, 20], [1, 2]], [[3, 2], [5, 6]]);
+    expect(out.tables).toEqual([[20, 30], [1, 2]]);
+    expect(out.rows).toEqual([[2, 3], [5, 6]]);
   });
-  it('keeps missing rows missing', () => {
-    expect(ascendingSpectrogram([2, 1], [null, [1, 2]]).rows).toEqual([null, [2, 1]]);
+  it('reuses the tables an earlier fetch already found', () => {
+    const out = spectrogramTables([[1, 2], [7, 8]], [[1, 1], [1, 1]], [[5, 6], [1, 2]]);
+    expect(out.tables).toEqual([[5, 6], [1, 2], [7, 8]]);
+    expect(out.tableIndex).toEqual([1, 2]);
+  });
+  it('leaves ascending rows untouched and keeps missing rows missing', () => {
+    const rows = [[1, 2], null];
+    expect(spectrogramTables([1, 2], rows).rows[0]).toBe(rows[0]);
+    expect(spectrogramTables([2, 1], [null, [1, 2]]).rows).toEqual([null, [2, 1]]);
   });
 });
 

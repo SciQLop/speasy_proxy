@@ -12,7 +12,7 @@ import {
   paramValue, zRangeOf, outOfCoverage, edgeColor, nearestEdge, eventAt, formatDuration,
   subMsSplits, subMsTickLabels, fmtInstant,
 } from './plot-core.js';
-import { binRowRects, computeYEdges, lowestPositiveEdge, renderSpectrogramImage, spectrogramValueAt, COLORMAPS, colormapLut } from './spectrogram.js';
+import { binRowRects, computeYEdges, lowestPositiveEdge, spectrogramLayers, spectrogramValueAt, COLORMAPS, colormapLut } from './spectrogram.js';
 import { bindGestures } from './plot-gestures.js';
 
 const Y_AXIS_PX = 64;      // fixed y-axis gutter so every subplot's plot area lines up
@@ -31,7 +31,6 @@ const MUTED = '#8892b0';
 export const PRODUCT_MIME = 'application/x-speasy-product';  // drag payload: a product path
 
 const utcDate = (ts) => uPlot.tzDate(new Date(ts), 'Etc/UTC');
-const binsOf = (cache) => (Array.isArray(cache.yAxis?.[0]) ? cache.yAxis[0] : (cache.yAxis || []));
 const firstCache = (sp) => sp.productData[sp.products[0]?.path];
 // Products that contribute line series. Series and data columns must both come from
 // this one list (keyed on columns, like structureKey): a pan can trim a cache to zero
@@ -128,7 +127,7 @@ export function createPlotView(root, { onViewChange, onAction = () => {}, paramS
   function refreshHeatmaps() {
     for (const c of charts) {
       if (c.subplot.plotType !== 'heatmap') continue;
-      c.subplot.lastHeatmapImg = heatmapImage(c.subplot, view);
+      c.subplot.lastHeatmapLayers = heatmapLayers(c.subplot, view);
       c.colorbar?.update();
       c.u.redraw(false);
     }
@@ -178,7 +177,7 @@ export function createPlotView(root, { onViewChange, onAction = () => {}, paramS
 
   function createChart(subplot, index, height, loading) {
     const isLast = index === plots.length - 1;
-    const isHeatmap = subplot.plotType === 'heatmap' && !!firstCache(subplot)?.yAxis;
+    const isHeatmap = subplot.plotType === 'heatmap' && !!firstCache(subplot)?.yTables;
     const { series, meta } = isHeatmap ? heatmapSeries(subplot) : lineSeries(subplot);
     const opts = {
       width: plotWidth(),
@@ -268,7 +267,7 @@ export function createPlotView(root, { onViewChange, onAction = () => {}, paramS
     ctx.beginPath();
     ctx.rect(bbox.left, bbox.top, bbox.width, bbox.height);
     ctx.clip();
-    if (isHeatmap) drawHeatmapImage(u, subplot.lastHeatmapImg);
+    if (isHeatmap) drawHeatmapLayers(u, subplot.lastHeatmapLayers);
     drawIntervals(u, intervals);
     ctx.restore();
   }
@@ -378,10 +377,12 @@ function yScale(subplot, isHeatmap) {
   };
 }
 
+// Spans every energy table, so rows taken with any of them are on screen.
 function heatmapYRange(cache, log) {
-  const edges = computeYEdges(binsOf(cache));
-  const hi = edges[edges.length - 1];
-  return [log ? (lowestPositiveEdge(edges) ?? hi / 10) : edges[0], hi];
+  const edges = cache.yTables.filter((t) => t.length > 0).flatMap(computeYEdges);
+  if (edges.length === 0) return log ? [1, 10] : [0, 1];
+  const hi = Math.max(...edges);
+  return [log ? (lowestPositiveEdge(edges) ?? hi / 10) : Math.min(...edges), hi];
 }
 
 function autoYRange(min, max, log) {
@@ -659,7 +660,7 @@ function heatmapSeries(subplot) {
 // product's timestamps as undefined, which uPlot draws through; real gaps stay null).
 // Heatmaps draw an image instead of series, so a 2-point x extent is enough data.
 function chartData(subplot) {
-  if (subplot.plotType === 'heatmap' && firstCache(subplot)?.yAxis) {
+  if (subplot.plotType === 'heatmap' && firstCache(subplot)?.yTables) {
     const t = firstCache(subplot).times;
     return t.length ? [[t[0], t[t.length - 1]], [null, null]] : [[], []];
   }
@@ -670,15 +671,18 @@ function chartData(subplot) {
 
 // --- spectrogram image and intervals ---------------------------------------------
 
-function heatmapImage(subplot, view) {
+function heatmapLayers(subplot, view) {
   const cache = firstCache(subplot);
-  if (!cache || !cache.yAxis || cache.rows.length === 0) return null;
+  if (!cache || !cache.yTables || cache.rows.length === 0) return null;
   const { vMin, vMax } = zRangeOf(subplot, cache);
-  return renderSpectrogramImage(cache.times, cache.rows, binsOf(cache), vMin, vMax, subplot.logScale, view, subplot.colormap);
+  return spectrogramLayers(cache.times, cache.rows, cache.yTables, cache.yIndex, vMin, vMax, subplot.logScale, view, subplot.colormap);
 }
 
-function drawHeatmapImage(u, img) {
-  if (!img) return;
+function drawHeatmapLayers(u, layers) {
+  for (const img of layers || []) drawHeatmapLayer(u, img);
+}
+
+function drawHeatmapLayer(u, img) {
   const x0 = u.valToPos(img.tStart, 'x', true), x1 = u.valToPos(img.tEnd, 'x', true);
   const left = Math.min(x0, x1), width = Math.abs(x1 - x0);
   const floor = u.scales.y.distr === 3 ? lowestPositiveEdge(img.yEdges) : null;
@@ -786,7 +790,7 @@ const withinLoaded = (times, t) => times.length > 0 && t >= times[0] && t <= tim
 function heatmapLine(subplot, t, yVal) {
   const cache = firstCache(subplot);
   if (!cache || yVal == null || !withinLoaded(cache.times, t)) return '';
-  const v = spectrogramValueAt(cache.times, cache.rows, binsOf(cache), t, yVal);
+  const v = spectrogramValueAt(cache.times, cache.rows, (i) => cache.yTables[cache.yIndex[i]], t, yVal);
   if (v == null) return '';
   return swatch('#91cc75', 5) + escapeHtml(cache.yAxisName || 'value') + ' ' + fmtValue(yVal)
     + (cache.yAxisUnit ? ' ' + escapeHtml(cache.yAxisUnit) : '') + ': <b>' + fmtValue(v) + '</b>'
