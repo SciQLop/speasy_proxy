@@ -20,12 +20,12 @@ if [ ! -f "$VERIFIER_DIR/verify.js" ]; then
   git clone --quiet https://github.com/hapi-server/verifier-nodejs.git "$VERIFIER_DIR"
   git -C "$VERIFIER_DIR" checkout --quiet "$VERIFIER_SHA"
   git -C "$VERIFIER_DIR" submodule update --quiet --init --recursive
-  (cd "$VERIFIER_DIR" && npm ci --no-audit --no-fund --silent)
+  (cd "$VERIFIER_DIR" && npm ci --ignore-scripts --no-audit --no-fund --silent)
 fi
 
 cd "$ROOT"
 LOG=$(mktemp)
-uv run uvicorn --app-dir tests/hapi_conformance server:app --port "$PORT" > "$LOG" 2>&1 &
+uv run --locked uvicorn --app-dir tests/hapi_conformance server:app --port "$PORT" > "$LOG" 2>&1 &
 SERVER=$!
 trap 'kill $SERVER 2>/dev/null || true; rm -f "$LOG"' EXIT
 
