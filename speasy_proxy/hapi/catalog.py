@@ -123,91 +123,89 @@ def _uid_tail(p: ParameterIndex) -> str:
     return p.spz_uid().rsplit("/", 1)[-1]
 
 
-def _amda(flat) -> Iterable[HapiDataset]:
-    for uid, ds in flat.datasets.items():
-        if not _is_public(ds):
-            continue
-        params = [p for p in _parameters_of(ds) if _is_public(p)]
-        description = _plain(getattr(ds, "desc", None))
-        title = description.split(";", 1)[0] if description else ds.spz_name()
-        yield _make(f"amda/{uid}", title, ds, params, _uid_tail, description=description)
+def _amda(uid: str, ds: DatasetIndex) -> Iterable[HapiDataset]:
+    if not _is_public(ds):
+        return []
+    params = [p for p in _parameters_of(ds) if _is_public(p)]
+    description = _plain(getattr(ds, "desc", None))
+    title = description.split(";", 1)[0] if description else ds.spz_name()
+    return [_make(f"amda/{uid}", title, ds, params, _uid_tail, description=description)]
 
 
-def _csa(flat) -> Iterable[HapiDataset]:
-    for uid, ds in flat.datasets.items():
-        yield _make(f"csa/{uid}", getattr(ds, "title", None) or ds.spz_name(), ds, _parameters_of(ds), _uid_tail,
-                    description=getattr(ds, "description", None))
+def _csa(uid: str, ds: DatasetIndex) -> Iterable[HapiDataset]:
+    return [_make(f"csa/{uid}", getattr(ds, "title", None) or ds.spz_name(), ds, _parameters_of(ds), _uid_tail,
+                  description=getattr(ds, "description", None))]
 
 
-def _cda_groups(params: List[ParameterIndex]) -> Optional[List[List[ParameterIndex]]]:
+class _MissingDepend0(Exception):
+    """Inventories built by speasy < SciQLop/speasy#401 don't record DEPEND_0: without it, which
+    parameters share a time axis is unknown."""
+
+
+def _cda_groups(params: List[ParameterIndex]) -> List[List[ParameterIndex]]:
     groups: Dict[str, List[ParameterIndex]] = {}
     for p in params:
         depend_0 = getattr(p, "DEPEND_0", None)
         if not depend_0:
-            return None
+            raise _MissingDepend0()
         groups.setdefault(depend_0, []).append(p)
     return list(groups.values())
 
 
-def _cda(flat) -> Iterable[HapiDataset]:
-    without_depend_0 = 0
-    for uid, ds in flat.datasets.items():
-        params = _parameters_of(ds)
-        groups = _cda_groups(params)
-        if groups is None:
-            # Inventories built by speasy < SciQLop/speasy#401 don't record DEPEND_0: without it,
-            # which parameters share a time axis is unknown.
-            without_depend_0 += 1
-            continue
-        title = getattr(ds, "description", None) or ds.spz_name()
-        resource_url = f"https://cdaweb.gsfc.nasa.gov/misc/Notes{uid[0]}.html#{uid}"
-        for i, group in enumerate(groups):
-            dataset_id = f"cda/{uid}" if len(groups) == 1 else f"cda/{uid}@{i}"
-            yield _make(dataset_id, title, ds, group, _uid_tail, description=title, resource_url=resource_url)
-    if without_depend_0:
-        log.warning(f"{without_depend_0} CDA datasets left out of the HAPI catalog: "
-                    f"their inventory has no DEPEND_0 (needs speasy with SciQLop/speasy#401)")
+def _cda(uid: str, ds: DatasetIndex) -> Iterable[HapiDataset]:
+    groups = _cda_groups(_parameters_of(ds))
+    title = getattr(ds, "description", None) or ds.spz_name()
+    resource_url = f"https://cdaweb.gsfc.nasa.gov/misc/Notes{uid[0]}.html#{uid}"
+    return [_make(f"cda/{uid}" if len(groups) == 1 else f"cda/{uid}@{i}", title, ds, group, _uid_tail,
+                  description=title, resource_url=resource_url)
+            for i, group in enumerate(groups)]
 
 
 def _trajectories(provider: str):
     option, frames = _FRAME_OPTION[provider], _FRAMES[provider]
 
-    def build(flat) -> Iterable[HapiDataset]:
-        for uid, p in flat.parameters.items():
-            dates = _dates(p)
-            if dates is None:
-                continue
-            first = f"position_{frames[0]}"
-            sources = tuple(
-                HapiParameterSource(name=f"position_{frame}", path=_path(p), options=((option, frame),),
-                                    description=f"{p.spz_name()} position in {frame.upper()}",
-                                    like=None if i == 0 else first, coordinate_system=frame.upper())
-                for i, frame in enumerate(frames))
-            yield HapiDataset(id=f"{provider}/{uid}", title=f"{p.spz_name()} trajectory", start_date=dates[0],
-                              stop_date=dates[1], parameters=sources, description=getattr(p, "description", None))
+    def build(uid: str, p: ParameterIndex) -> Iterable[HapiDataset]:
+        dates = _dates(p)
+        if dates is None:
+            return []
+        first = f"position_{frames[0]}"
+        sources = tuple(
+            HapiParameterSource(name=f"position_{frame}", path=_path(p), options=((option, frame),),
+                                description=f"{p.spz_name()} position in {frame.upper()}",
+                                like=None if i == 0 else first, coordinate_system=frame.upper())
+            for i, frame in enumerate(frames))
+        return [HapiDataset(id=f"{provider}/{uid}", title=f"{p.spz_name()} trajectory", start_date=dates[0],
+                            stop_date=dates[1], parameters=sources, description=getattr(p, "description", None))]
     return build
 
 
+# provider -> (which flat inventory mapping to walk, builder of the HAPI datasets of one of its entries)
 _PROVIDERS = {
-    "amda": _amda,
-    "cda": _cda,
-    "csa": _csa,
-    "ssc": _trajectories("ssc"),
-    "cdpp3dview": _trajectories("cdpp3dview"),
+    "amda": ("datasets", _amda),
+    "cda": ("datasets", _cda),
+    "csa": ("datasets", _csa),
+    "ssc": ("parameters", _trajectories("ssc")),
+    "cdpp3dview": ("parameters", _trajectories("cdpp3dview")),
 }
 
 
 def build_catalog(flat_inventories) -> Dict[str, HapiDataset]:
-    """{dataset id: HapiDataset}, sorted by id. Reads the in-memory inventory only (no network)."""
+    """{dataset id: HapiDataset}, sorted by id. Reads the in-memory inventory only (no network).
+    An entry that can't be mapped is left out on its own, never its whole provider."""
     datasets: Dict[str, HapiDataset] = {}
-    for provider, build in _PROVIDERS.items():
+    for provider, (mapping, build) in _PROVIDERS.items():
         flat = flat_inventories.__dict__.get(provider)
         if flat is None:
             continue
-        try:
-            for d in build(flat):
-                if d is not None:
-                    datasets[d.id] = d
-        except Exception:
-            log.exception(f"Failed to build the HAPI catalog of {provider}; leaving it out")
+        without_depend_0 = 0
+        for uid, index in getattr(flat, mapping).items():
+            try:
+                datasets.update((d.id, d) for d in build(uid, index) if d is not None)
+            except _MissingDepend0:
+                without_depend_0 += 1
+            except Exception as e:
+                log.warning(f"HAPI: leaving {provider}/{uid} out of the catalog: {e!r}")
+        if without_depend_0:
+            log.warning(f"{without_depend_0} {provider} datasets left out of the HAPI catalog: their inventory "
+                        f"has no DEPEND_0 (needs speasy with SciQLop/speasy#401)")
     return dict(sorted(datasets.items()))

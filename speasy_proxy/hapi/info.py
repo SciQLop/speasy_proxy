@@ -18,7 +18,7 @@ from speasy.products.variable import SpeasyVariable
 
 from .catalog import HapiDataset, split_fetch_key
 from .status import HapiError
-from .times import time_length, time_unit, to_hapi_time
+from .times import time_length, to_hapi_time
 
 log = logging.getLogger(__name__)
 
@@ -227,19 +227,27 @@ def _probe(fetch: Fetch, key: str, windows, deadline: float, samples: _Samples) 
 
 
 def _sample(dataset: HapiDataset, fetch: Fetch, now: datetime, deadline: float):
-    """{fetch key: sample variable} and the window the first sample came from.
+    """{fetch key: sample variable} and a window holding data for all of them (the sample range).
 
     Empty windows cost as much as full ones (CSA: ~20 s each), so a single parameter probes for a
     window holding data first; the others are then fetched there, and further out only if missing."""
     windows = list(_sample_windows(dataset, now))
     keys = [s.key for s in dataset.parameters if s.like is None]
     samples = _Samples()
-    found = _probe(fetch, keys[0], windows, deadline, samples)
-    for start, stop in windows[found:] if found is not None else []:
+    found = None
+    for key in keys:  # a parameter can be empty everywhere (a flag, a virtual variable) while others aren't
+        found = _probe(fetch, key, windows, deadline, samples)
+        if found is not None or time.monotonic() > deadline:
+            break
+    last = found
+    for i, (start, stop) in enumerate(windows[found:] if found is not None else [], start=found or 0):
         missing = [k for k in keys if k not in samples.variables]
         if not missing or time.monotonic() > deadline:
             break
+        before = len(samples.variables)
         samples.collect(_fetch_all(fetch, missing, start, stop))
+        if len(samples.variables) > before:
+            last = i
 
     if not samples.variables:
         if samples.errors:
@@ -248,7 +256,14 @@ def _sample(dataset: HapiDataset, fetch: Fetch, now: datetime, deadline: float):
     missing = [k for k in keys if k not in samples.variables]
     if missing:
         log.warning(f"HAPI: leaving out {missing} from {dataset.id}, no data found to describe them")
-    return samples.variables, windows[found]
+    return samples.variables, windows[_covering(found, last)]
+
+
+def _covering(found: int, last: int) -> int:
+    """The window to declare as sample range: windows anchored on the same end of the dataset are
+    nested, so the last one where a parameter turned up holds data for all of them."""
+    same_end = (found < len(SAMPLE_WINDOWS)) == (last < len(SAMPLE_WINDOWS))
+    return last if same_end else found
 
 
 def nominal_cadence(time: np.ndarray) -> Optional[str]:
@@ -256,7 +271,8 @@ def nominal_cadence(time: np.ndarray) -> Optional[str]:
     if len(time) < 2:
         return None
     step = np.median(np.diff(time.astype("datetime64[ns]").view(np.int64))) / 1e9
-    return f"PT{step:.9g}S" if step > 0 else None
+    # Fixed-point: %g turns tiny steps into "2.5e-05", which isn't an ISO 8601 duration.
+    return f"PT{step:.9f}".rstrip("0").rstrip(".") + "S" if step > 0 else None
 
 
 # Clients (and the verifier) want a sample range spanning more than 10 time steps.
@@ -311,8 +327,9 @@ def build_info(dataset: HapiDataset, fetch: Fetch, now: Optional[datetime] = Non
     if not describer.parameters:
         raise HapiError(1500, f"no parameter of {dataset.id} has a HAPI type")
 
-    unit = max((time_unit(v.time) for v in samples.values()), key=["ms", "us", "ns"].index)
-    time_param = {"name": "Time", "type": "isotime", "units": "UTC", "length": time_length(unit), "fill": None}
+    # Always nanoseconds: a precision read off the sample could truncate (even merge) finer timestamps
+    # elsewhere in the dataset, e.g. CDAWeb files switching from ms to TT2000, or burst-mode data.
+    time_param = {"name": "Time", "type": "isotime", "units": "UTC", "length": time_length("ns"), "fill": None}
     cadence = nominal_cadence(max((v.time for v in samples.values()), key=len))
     sample_window = _widen_sample_window(dataset, sample_window, cadence)
     return DatasetInfo(parameters=[time_param] + describer.parameters, sources=describer.sources,

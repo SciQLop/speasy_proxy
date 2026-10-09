@@ -32,7 +32,13 @@ def test_parses_hapi_times(text, expected):
     assert parse_hapi_time(text) == expected
 
 
-@pytest.mark.parametrize("text", ["2020", "2020-13-01", "2021-366", "yesterday", "2020-01-01T00:00:00+02:00"])
+def test_parses_year_month_and_leap_seconds():
+    assert parse_hapi_time("1999-01Z") == datetime(1999, 1, 1, tzinfo=UTC)
+    assert parse_hapi_time("2016-12-31T23:59:60Z") == datetime(2016, 12, 31, 23, 59, 59, 999999, tzinfo=UTC)
+
+
+@pytest.mark.parametrize("text", ["2020", "2020-13-01", "2020-13", "2021-366", "yesterday",
+                                  "2020-01-01T00:00:00+02:00"])
 def test_rejects_non_hapi_times(text):
     with pytest.raises(ValueError):
         parse_hapi_time(text)
@@ -109,6 +115,14 @@ def test_catalog_spells_dates_as_hapi_times():
     assert (ace.start_date, ace.stop_date) == ("1997-08-25T17:48:00Z", "2026-11-09T23:49:00Z")
 
 
+def test_one_broken_entry_leaves_out_only_itself():
+    inventories = _inventories()
+    inventories.amda.datasets["broken"] = object()  # no start_date, no parameters...
+    catalog = build_catalog(inventories)
+    assert "amda/clust1-fgm" in catalog
+    assert not any(i.startswith("amda/broken") for i in catalog)
+
+
 def test_trajectories_have_one_parameter_per_frame():
     ace = build_catalog(_inventories())["ssc/ace"]
     assert [s.name for s in ace.parameters] == [f"position_{f}" for f in SSC_FRAMES]
@@ -180,7 +194,7 @@ def _hapi_dataset(paths, start="2020-01-01T00:00:00Z", stop="2020-02-01T00:00:00
 def test_info_describes_vectors_from_a_sample():
     info = build_info(_hapi_dataset(["p/vec"]), FakeUpstream({"p/vec": _vector}))
     time, vec = info.parameters
-    assert time == {"name": "Time", "type": "isotime", "units": "UTC", "length": 24, "fill": None}
+    assert time == {"name": "Time", "type": "isotime", "units": "UTC", "length": 30, "fill": None}
     assert vec["type"] == "double"
     assert vec["size"] == [3]
     assert vec["label"] == ["bx", "by", "bz"]
@@ -239,6 +253,27 @@ def test_sample_range_spans_enough_time_steps():
     info = build_info(_hapi_dataset(["p/a"]), FakeUpstream({"p/a": lambda a, b: _scalar(a, b, cadence=every_12_min)}))
     assert info.cadence == "PT720S"
     assert (info.sample_start, info.sample_stop) == ("2020-01-31T20:00:00Z", "2020-02-01T00:00:00Z")
+
+
+def test_info_probes_the_next_parameter_when_one_never_has_data():
+    upstream = FakeUpstream({"p/empty": lambda a, b: None, "p/full": _scalar})
+    info = build_info(_hapi_dataset(["p/empty", "p/full"]), upstream)
+    assert [p["name"] for p in info.parameters] == ["Time", "full"]
+
+
+@pytest.mark.parametrize("step, expected", [(np.timedelta64(4, "s"), "PT4S"), (np.timedelta64(250, "ms"), "PT0.25S"),
+                                            (np.timedelta64(25, "us"), "PT0.000025S"), (np.timedelta64(1, "ns"), "PT0.000000001S")])
+def test_cadence_is_a_fixed_point_iso_duration(step, expected):
+    from speasy_proxy.hapi.info import nominal_cadence
+    t = np.datetime64("2020-01-01", "ns") + np.arange(5) * step
+    assert nominal_cadence(t) == expected
+
+
+def test_sample_range_holds_data_for_every_parameter():
+    stops_early = datetime(2020, 1, 31, tzinfo=UTC)  # a day before the dataset's end
+    upstream = FakeUpstream({"p/a": _scalar, "p/b": lambda a, b: _scalar(a, min(b, stops_early)) if a < stops_early else None})
+    info = build_info(_hapi_dataset(["p/a", "p/b"]), upstream)
+    assert (info.sample_start, info.sample_stop) == ("2020-01-25T00:00:00Z", "2020-02-01T00:00:00Z")
 
 
 def test_info_falls_back_to_the_start_of_the_dataset():
@@ -336,14 +371,14 @@ def test_data_csv(client):
     r = client.get("/data", params={"dataset": "amda/clust1-fgm", **_RANGE})
     assert r.status_code == 200
     assert r.headers["content-type"].startswith("text/csv")
-    assert r.text.splitlines() == ["2020-01-10T00:00:00.000Z,0.0,1.0,2.0,0.0",
-                                   "2020-01-10T00:00:01.000Z,0.0,1.0,2.0,1.0",
-                                   "2020-01-10T00:00:02.000Z,0.0,1.0,2.0,2.0"]
+    assert r.text.splitlines() == ["2020-01-10T00:00:00.000000000Z,0.0,1.0,2.0,0.0",
+                                   "2020-01-10T00:00:01.000000000Z,0.0,1.0,2.0,1.0",
+                                   "2020-01-10T00:00:02.000000000Z,0.0,1.0,2.0,2.0"]
 
 
 def test_data_with_only_time(client):
     r = client.get("/data", params={"dataset": "amda/clust1-fgm", "parameters": "Time", **_RANGE})
-    assert r.text.splitlines()[0] == "2020-01-10T00:00:00.000Z"
+    assert r.text.splitlines()[0] == "2020-01-10T00:00:00.000000000Z"
 
 
 def test_errors_use_the_spec_messages(client):
@@ -354,14 +389,14 @@ def test_errors_use_the_spec_messages(client):
 def test_data_accepts_hapi2_parameter_names(client):
     r = client.get("/data", params={"id": "amda/clust1-fgm", "time.min": _RANGE["start"],
                                     "time.max": _RANGE["stop"], "parameters": "c1_btot"})
-    assert r.text.splitlines()[0] == "2020-01-10T00:00:00.000Z,0.0"
+    assert r.text.splitlines()[0] == "2020-01-10T00:00:00.000000000Z,0.0"
 
 
 def test_data_binary_matches_info(client):
     r = client.get("/data", params={"dataset": "amda/clust1-fgm", "format": "binary", **_RANGE})
-    dtype = np.dtype([("Time", "S24"), ("c1_b_gsm", "<f8", (3,)), ("c1_btot", "<f8")])
+    dtype = np.dtype([("Time", "S30"), ("c1_b_gsm", "<f8", (3,)), ("c1_btot", "<f8")])
     records = np.frombuffer(r.content, dtype=dtype)
-    assert records["Time"][0] == b"2020-01-10T00:00:00.000Z"
+    assert records["Time"][0] == b"2020-01-10T00:00:00.000000000Z"
     assert records["c1_b_gsm"][1].tolist() == [0., 1., 2.]
     assert records["c1_btot"].tolist() == [0., 1., 2.]
 
@@ -388,10 +423,42 @@ def test_data_without_data_says_so_in_the_header(client):
     assert json.loads(lines[0][1:])["status"]["code"] == 1201
 
 
+def test_parameters_covering_part_of_the_range_are_filled_elsewhere(client):
+    client.get("/info", params={"dataset": "amda/clust1-fgm"})
+    stops_early = datetime(2020, 1, 10, 0, 0, 1, tzinfo=UTC)
+    client.upstream.products["amda/c1_btot"] = lambda a, b: _scalar(a, min(b, stops_early))
+    rows = client.get("/data", params={"dataset": "amda/clust1-fgm", **_RANGE}).text.splitlines()
+    assert [r.rsplit(",", 1)[1] for r in rows] == ["0.0", "NaN", "NaN"]
+
+
+def test_empty_range_of_an_integer_parameter_without_fill(client):
+    client.upstream.products["amda/c1_b_gsm"] = lambda a, b: _vector(a, b)
+    r = client.get("/data", params={"dataset": "amda/clust1-fgm", "parameters": "c1_btot",
+                                    "start": "2020-01-10T00:00:00.1Z", "stop": "2020-01-10T00:00:00.2Z"})
+    assert (r.status_code, r.content) == (200, b"")
+
+
+def test_a_parameter_without_data_is_written_as_fill(client):
+    client.get("/info", params={"dataset": "amda/clust1-fgm"})
+    client.upstream.products["amda/c1_b_gsm"] = lambda a, b: None
+    rows = client.get("/data", params={"dataset": "amda/clust1-fgm", **_RANGE}).text.splitlines()
+    assert rows[0] == "2020-01-10T00:00:00.000000000Z,-1e+30,-1e+30,-1e+30,0.0"
+
+
+def test_catalog_accepts_depth_dataset_only(client):
+    assert client.get("/catalog", params={"depth": "dataset"}).status_code == 200
+    assert _status(client.get("/catalog", params={"depth": "all"})) == 1400
+
+
+def test_info_rejects_unknown_resolve_references_values(client):
+    r = client.get("/info", params={"dataset": "amda/clust1-fgm", "resolve_references": "maybe"})
+    assert _status(r) == 1412
+
+
 def test_data_is_trimmed_to_start_inclusive_stop_exclusive(client):
     r = client.get("/data", params={"dataset": "amda/clust1-fgm", "parameters": "c1_btot",
                                     "start": "2020-01-10T00:00:00.5Z", "stop": "2020-01-10T00:00:02Z"})
-    assert [row.split(",")[0] for row in r.text.splitlines()] == ["2020-01-10T00:00:01.000Z"]
+    assert [row.split(",")[0] for row in r.text.splitlines()] == ["2020-01-10T00:00:01.000000000Z"]
 
 
 def test_float32_fill_matches_in_csv_and_binary(client):
@@ -409,7 +476,7 @@ def test_float32_fill_matches_in_csv_and_binary(client):
     csv_value = client.get("/data", params=params).text.splitlines()[0].split(",")[1]
     assert float(csv_value) == float(fill)
     binary = np.frombuffer(client.get("/data", params={**params, "format": "binary"}).content,
-                           dtype=np.dtype([("Time", "S24"), ("c1_b_gsm", "<f8", (3,))]))
+                           dtype=np.dtype([("Time", "S30"), ("c1_b_gsm", "<f8", (3,))]))
     assert binary["c1_b_gsm"][0, 0] == float(fill)
 
 
@@ -434,7 +501,11 @@ def test_data_errors(client, params, code, http):
 
 def test_data_rejects_parameters_on_different_time_axes(client):
     client.get("/info", params={"dataset": "amda/clust1-fgm"})
-    client.upstream.products["amda/c1_btot"] = lambda a, b: _scalar(a + timedelta(milliseconds=500), b)
+    def half_a_second_late(a, b):
+        v = _scalar(a, b)
+        return SpeasyVariable(axes=[VariableTimeAxis(values=v.time + np.timedelta64(500, "ms"))],
+                              values=DataContainer(v.values, meta={}, name="s"))
+    client.upstream.products["amda/c1_btot"] = half_a_second_late
     r = client.get("/data", params={"dataset": "amda/clust1-fgm", **_RANGE})
     assert (r.status_code, _status(r)) == (500, 1500)
 
@@ -458,7 +529,7 @@ def test_trajectory_frames_are_sampled_once_and_fetched_on_demand(client):
 
     client.upstream.calls.clear()
     rows = client.get("/data", params={"dataset": "ssc/ace", "parameters": "position_gsm", **_RANGE}).text
-    assert rows.splitlines()[0] == "2020-01-10T00:00:00.000Z,10.0,11.0,12.0"
+    assert rows.splitlines()[0] == "2020-01-10T00:00:00.000000000Z,10.0,11.0,12.0"
     assert [c[3] for c in client.upstream.calls] == [{"coordinate_system": "gsm"}]
 
 
@@ -467,4 +538,4 @@ def test_spectrogram_data_carries_its_bins_centers(client):
     info = client.get("/info", params={"dataset": "cda/OMNI_HRO_1MIN"}).json()
     assert [p["name"] for p in info["parameters"]] == ["Time", "BX_GSE", "energy"]
     rows = client.get("/data", params={"dataset": "cda/OMNI_HRO_1MIN", **_RANGE}).text.splitlines()
-    assert rows[0] == "2020-01-10T00:00:00.000Z,1.0,1.0,1.0,10.0,20.0,40.0"
+    assert rows[0] == "2020-01-10T00:00:00.000000000Z,1.0,1.0,1.0,10.0,20.0,40.0"

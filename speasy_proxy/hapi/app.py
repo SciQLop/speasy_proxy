@@ -120,14 +120,20 @@ def create_hapi_app(fetch: Fetch, info_cache_path: str, max_request_duration: ti
 
     @app.get("/catalog")
     async def catalog(request: Request):
-        _query(request, set())
+        params = _query(request, {"depth"})
+        if params.get("depth", "dataset") != "dataset":
+            raise HapiError(1400, "only depth=dataset is supported")
         datasets = await run_in_threadpool(service.catalog)
         return metadata({**ok(), "catalog": [{"id": d.id, "title": d.title} for d in datasets.values()]})
 
     @app.get("/info")
     async def info(request: Request):
         params = _query(request, {"dataset", "id", "parameters", "resolve_references"})
-        dataset = service.dataset(_first(params, "dataset", "id"))
+        # Responses never contain references, so either value gives the same /info.
+        if params.get("resolve_references", "true") not in ("true", "false"):
+            raise HapiError(1412, params["resolve_references"])
+        # The first call after an inventory refresh rebuilds the catalog: off the event loop.
+        dataset = await run_in_threadpool(service.dataset, _first(params, "dataset", "id"))
         dataset_info = await run_in_threadpool(service.info, dataset)
         return metadata(_info_body(dataset, dataset_info, _select(dataset_info, params.get("parameters"))))
 
@@ -135,7 +141,7 @@ def create_hapi_app(fetch: Fetch, info_cache_path: str, max_request_duration: ti
     async def data(request: Request):
         params = _query(request, {"dataset", "id", "start", "stop", "time.min", "time.max", "parameters",
                                   "format", "include"})
-        dataset = service.dataset(_first(params, "dataset", "id"))
+        dataset = await run_in_threadpool(service.dataset, _first(params, "dataset", "id"))
         start, stop = _time_range(params, max_request_duration)
         fmt, include = _output_options(params)
 

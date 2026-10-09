@@ -26,43 +26,76 @@ def _trim(var: Optional[SpeasyVariable], start: datetime, stop: datetime) -> Opt
     return var[int(lo):int(hi)]
 
 
+def _check_aligned(present: Dict[str, SpeasyVariable]):
+    """Parameters of one dataset may cover different parts of a range (one instrument stops, a flag
+    is only recorded sometimes), but where both have data they must share timestamps: overlapping
+    spans with no timestamp in common mean they were never on the same time axis."""
+    items = list(present.items())
+    for i, (path_a, a) in enumerate(items):
+        for path_b, b in items[i + 1:]:
+            overlap = max(a.time[0], b.time[0]) <= min(a.time[-1], b.time[-1])
+            if overlap and not np.intersect1d(a.time, b.time).size:
+                raise HapiError(1500, f"the parameters don't share their time axis ({path_a}, {path_b})")
+
+
 def merge_time_axes(variables: Dict[str, Optional[SpeasyVariable]], start: datetime,
                     stop: datetime) -> Tuple[np.ndarray, Dict[str, Optional[SpeasyVariable]]]:
-    """Trims every variable to [start, stop) and checks they all share the same time axis."""
+    """Trims every variable to [start, stop) and returns the dataset's time axis over it: the union of
+    the parameters' timestamps. A parameter is written as fill where it has no record (see _column)."""
     trimmed = {path: _trim(var, start, stop) for path, var in variables.items()}
-    time = None
-    for path, var in trimmed.items():
-        t = var.time if var is not None else np.array([], dtype="datetime64[ns]")
-        if time is None:
-            time = t
-        elif not np.array_equal(time, t):
-            raise HapiError(1500, f"the parameters don't share their time axis ({path} differs)")
-    return time, trimmed
+    present = {path: var for path, var in trimmed.items() if var is not None and len(var)}
+    if not present:
+        return np.array([], dtype="datetime64[ns]"), trimmed
+    _check_aligned(present)
+    times = [var.time for var in present.values()]
+    if all(np.array_equal(times[0], t) for t in times[1:]):
+        return times[0], trimmed
+    return np.unique(np.concatenate(times)), trimmed
 
 
-def _column(meta: Dict[str, Any], source: Tuple[str, Optional[int]], variables, n: int) -> np.ndarray:
-    path, axis = source
-    var = variables[path]
-    if var is None or n == 0:
-        values = np.empty((0,))
-    else:
-        values = np.asarray(var.values if axis is None else var.axes[axis].values)
-    size = meta.get("size", [])
-    if values.size != n * int(np.prod(size, dtype=np.int64)):
+def _fill_column(meta: Dict[str, Any], n: int, size: List[int], dtype) -> np.ndarray:
+    """Cells of a parameter with no record at a timestamp of its dataset: its fill, or NaN."""
+    fill = meta.get("fill")
+    if meta["type"] == "integer":
+        if fill is None:
+            raise HapiError(1500, f"{meta['name']} misses records in this range and has no fill value for them")
+        return np.full((n, *size), int(fill), dtype="<i4")
+    # In the values' own float type: a float32 fill then prints, and widens in binary, like the data.
+    return np.full((n, *size), np.nan if fill in (None, "NaN") else float(fill), dtype=dtype)
+
+
+def _values(meta: Dict[str, Any], var: SpeasyVariable, axis: Optional[int], size: List[int]) -> np.ndarray:
+    values = np.asarray(var.values if axis is None else var.axes[axis].values)
+    if values.size != len(var) * int(np.prod(size, dtype=np.int64)):
         raise HapiError(1500, f"{meta['name']} has shape {values.shape[1:]} where /info declares {size or 'a scalar'}")
-    values = values.reshape((n, *size))
+    values = values.reshape((len(var), *size))
     if meta["type"] == "integer":
         return values.astype("<i4")
     # float32 stays float32 so that CSV prints its shortest float32 repr, not float64 noise.
     return values if values.dtype in (np.float32, np.float64) else values.astype("<f8")
 
 
+def _column(meta: Dict[str, Any], source: Tuple[str, Optional[int]], variables, time: np.ndarray) -> np.ndarray:
+    path, axis = source
+    var = variables[path]
+    size = meta.get("size", [])
+    if len(time) == 0:
+        return np.empty((0, *size), dtype="<i4" if meta["type"] == "integer" else np.float64)
+    if var is None or len(var) == 0:
+        return _fill_column(meta, len(time), size, np.float64)
+    values = _values(meta, var, axis, size)
+    if len(var) == len(time):
+        return values
+    column = _fill_column(meta, len(time), size, values.dtype)
+    column[np.searchsorted(time, var.time)] = values
+    return column
+
+
 def build_columns(parameters: List[Dict[str, Any]], sources: Dict[str, Tuple[str, Optional[int]]],
                   time: np.ndarray, variables) -> List[np.ndarray]:
     """One array per parameter (Time first, as strings of the declared length)."""
-    n = len(time)
     columns = [format_times(time, parameters[0]["length"])]
-    columns += [_column(meta, sources[meta["name"]], variables, n) for meta in parameters[1:]]
+    columns += [_column(meta, sources[meta["name"]], variables, time) for meta in parameters[1:]]
     return columns
 
 
