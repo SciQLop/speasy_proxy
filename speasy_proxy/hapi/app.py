@@ -189,7 +189,7 @@ async def _fetch_all(fetch: Fetch, keys: List[str], start, stop):
         try:
             return key, await run_in_threadpool(lambda: fetch(path, start, stop, **options))
         except Exception as e:
-            log.error(f"HAPI: failed to get {key}: {e}")
+            log.exception(f"HAPI: failed to get {key}")
             raise HapiError(1501, f"{key}: {e}")
 
     return dict(await asyncio.gather(*(one(k) for k in keys)))

@@ -172,9 +172,14 @@ class _Describer:
             meta["bins"] = bins
 
 
+def _utc(hapi_time: str) -> datetime:
+    """Catalog dates are HAPI times ending in Z, which fromisoformat only reads from Python 3.11."""
+    return datetime.fromisoformat(hapi_time.replace("Z", "+00:00"))
+
+
 def _sample_windows(dataset: HapiDataset, now: datetime):
-    start = datetime.fromisoformat(dataset.start_date.replace("Z", "+00:00"))
-    stop = min(datetime.fromisoformat(dataset.stop_date.replace("Z", "+00:00")), now)
+    start = _utc(dataset.start_date)
+    stop = min(_utc(dataset.stop_date), now)
     for anchor_at_stop in (True, False):
         for w in SAMPLE_WINDOWS:
             w = min(w, stop - start)
@@ -256,8 +261,8 @@ def _widen_sample_window(dataset: HapiDataset, window, cadence: Optional[str]):
     if cadence is None:
         return window
     needed = timedelta(seconds=float(cadence[2:-1]) * _MIN_SAMPLE_STEPS)
-    first = datetime.fromisoformat(dataset.start_date.replace("Z", "+00:00"))
-    last = datetime.fromisoformat(dataset.stop_date.replace("Z", "+00:00"))
+    first = _utc(dataset.start_date)
+    last = _utc(dataset.stop_date)
     if stop - start >= needed:
         return window
     start = max(first, stop - needed)

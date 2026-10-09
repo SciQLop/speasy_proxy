@@ -4,7 +4,7 @@
 #
 #   tests/hapi_conformance/run.sh
 #
-# Needs uv, node >= 16, npm and git. The verifier is pinned (bump VERIFIER_SHA deliberately: new
+# Needs uv (with the project's dependencies synced), node >= 16, npm and git. The verifier is pinned (bump VERIFIER_SHA deliberately: new
 # verifier versions add checks) and cached under ${XDG_CACHE_HOME:-~/.cache}.
 set -euo pipefail
 
@@ -15,7 +15,7 @@ PORT=${HAPI_CONFORMANCE_PORT:-8765}
 ROOT=$(cd "$(dirname "$0")/../.." && pwd)
 VERIFIER_DIR=${VERIFIER_DIR:-${XDG_CACHE_HOME:-$HOME/.cache}/speasy-proxy/hapi-verifier-$VERIFIER_SHA}
 
-if [ ! -f "$VERIFIER_DIR/verify.js" ]; then
+if [[ ! -f "$VERIFIER_DIR/verify.js" ]]; then
   rm -rf "$VERIFIER_DIR"
   git clone --quiet https://github.com/hapi-server/verifier-nodejs.git "$VERIFIER_DIR"
   git -C "$VERIFIER_DIR" checkout --quiet "$VERIFIER_SHA"
@@ -25,7 +25,9 @@ fi
 
 cd "$ROOT"
 LOG=$(mktemp)
-uv run --locked uvicorn --app-dir tests/hapi_conformance server:app --port "$PORT" > "$LOG" 2>&1 &
+# Run from the checkout, not an installed copy (CI installs dependencies only, nothing is built).
+PYTHONPATH="$ROOT${PYTHONPATH:+:$PYTHONPATH}" \
+  uv run --no-sync uvicorn --app-dir tests/hapi_conformance server:app --port "$PORT" > "$LOG" 2>&1 &
 SERVER=$!
 trap 'kill $SERVER 2>/dev/null || true; rm -f "$LOG"' EXIT
 
@@ -35,5 +37,6 @@ for _ in $(seq 120); do
   sleep 1
 done
 
-uv run --with "hapiclient==$HAPICLIENT_VERSION" python tests/hapi_conformance/check.py \
+# hapiclient is only published as an sdist: this pinned, pure-Python package is the one thing built here.
+uv run --no-sync --with "hapiclient==$HAPICLIENT_VERSION" python tests/hapi_conformance/check.py \
   --url "http://127.0.0.1:$PORT" --verifier "$VERIFIER_DIR/verify.js"
