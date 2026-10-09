@@ -71,7 +71,7 @@ class HapiService:
     @staticmethod
     def _info_key(dataset: HapiDataset) -> str:
         # Keyed on the parameter list too: a dataset whose parameters changed is described again.
-        digest = hashlib.sha1("\n".join(f"{s.name}={s.key}" for s in dataset.parameters).encode()).hexdigest()
+        digest = hashlib.sha256("\n".join(f"{s.name}={s.key}" for s in dataset.parameters).encode()).hexdigest()
         return f"hapi/info/v{INFO_FORMAT_VERSION}/{dataset.id}/{digest}"
 
     def info(self, dataset: HapiDataset) -> DatasetInfo:
