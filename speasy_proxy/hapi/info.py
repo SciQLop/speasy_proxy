@@ -200,46 +200,55 @@ def _fetch_all(fetch: Fetch, keys: List[str], start: datetime, stop: datetime):
         return list(pool.map(one, keys))
 
 
+class _Samples:
+    """Sample variables found so far, by fetch key, and the upstream errors met on the way."""
+
+    def __init__(self):
+        self.variables: Dict[str, SpeasyVariable] = {}
+        self.errors: List[Exception] = []
+
+    def collect(self, results):
+        for key, var, error in results:
+            if error is not None:
+                self.errors.append(error)
+            elif var is not None and len(var) > 0:
+                self.variables[key] = var
+
+
+def _probe(fetch: Fetch, key: str, windows, deadline: float, samples: _Samples) -> Optional[int]:
+    """Index of the first window where `key` has data, None if none does before the deadline."""
+    for i, (start, stop) in enumerate(windows):
+        if time.monotonic() > deadline:
+            return None
+        samples.collect(_fetch_all(fetch, [key], start, stop))
+        if samples.variables:
+            return i
+    return None
+
+
 def _sample(dataset: HapiDataset, fetch: Fetch, now: datetime, deadline: float):
     """{fetch key: sample variable} and the window the first sample came from.
 
     Empty windows cost as much as full ones (CSA: ~20 s each), so a single parameter probes for a
     window holding data first; the others are then fetched there, and further out only if missing."""
     windows = list(_sample_windows(dataset, now))
-    paths = [s.key for s in dataset.parameters if s.like is None]
-    samples: Dict[str, SpeasyVariable] = {}
-    errors = []
-
-    def collect(results):
-        for path, var, error in results:
-            if error is not None:
-                errors.append(error)
-            elif var is not None and len(var) > 0:
-                samples[path] = var
-
-    found = None
-    for i, (start, stop) in enumerate(windows):
-        if time.monotonic() > deadline:
+    keys = [s.key for s in dataset.parameters if s.like is None]
+    samples = _Samples()
+    found = _probe(fetch, keys[0], windows, deadline, samples)
+    for start, stop in windows[found:] if found is not None else []:
+        missing = [k for k in keys if k not in samples.variables]
+        if not missing or time.monotonic() > deadline:
             break
-        collect(_fetch_all(fetch, paths[:1], start, stop))
-        if samples:
-            found = i
-            break
-    if found is not None:
-        for start, stop in windows[found:]:
-            missing = [p for p in paths if p not in samples]
-            if not missing or time.monotonic() > deadline:
-                break
-            collect(_fetch_all(fetch, missing, start, stop))
+        samples.collect(_fetch_all(fetch, missing, start, stop))
 
-    if not samples:
-        if errors:
-            raise HapiError(1501, f"no sample of {dataset.id} could be fetched: {errors[-1]}")
+    if not samples.variables:
+        if samples.errors:
+            raise HapiError(1501, f"no sample of {dataset.id} could be fetched: {samples.errors[-1]}")
         raise HapiError(1500, f"found no data to describe {dataset.id}")
-    missing = [p for p in paths if p not in samples]
+    missing = [k for k in keys if k not in samples.variables]
     if missing:
         log.warning(f"HAPI: leaving out {missing} from {dataset.id}, no data found to describe them")
-    return samples, windows[found]
+    return samples.variables, windows[found]
 
 
 def nominal_cadence(time: np.ndarray) -> Optional[str]:

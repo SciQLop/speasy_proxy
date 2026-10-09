@@ -137,31 +137,40 @@ def create_hapi_app(fetch: Fetch, info_cache_path: str, max_request_duration: ti
                                   "format", "include"})
         dataset = service.dataset(_first(params, "dataset", "id"))
         start, stop = _time_range(params, max_request_duration)
-        fmt = params.get("format") or "csv"
-        if fmt not in OUTPUT_FORMATS:
-            raise HapiError(1409, fmt)
-        include = params.get("include")
-        if include not in (None, "", "header"):
-            raise HapiError(1410, include)
+        fmt, include = _output_options(params)
 
         dataset_info = await run_in_threadpool(service.info, dataset)
         parameters = _select(dataset_info, params.get("parameters"))
         # Time alone still needs a parameter fetched for its timestamps.
         paths = sorted({dataset_info.sources[p["name"]][0] for p in (parameters[1:] or dataset_info.parameters[1:2])})
         variables = await _fetch_all(service.fetch, paths, start, stop)
-        try:
-            body, n = await run_in_threadpool(_encode, parameters, dataset_info, variables, start, stop, fmt)
-        except HapiError:
-            raise
-        except Exception as e:
-            log.exception(f"HAPI: failed to encode {dataset.id}")
-            raise HapiError(1500, str(e))
+        body, n = await _encoded(dataset, parameters, dataset_info, variables, start, stop, fmt)
         if include == "header":
             header = {**_info_body(dataset, dataset_info, parameters, status=OK if n else NO_DATA), "format": fmt}
             body = header_line(header) + body
         return Response(content=body, media_type=OUTPUT_FORMATS[fmt])
 
     return app
+
+
+def _output_options(params: Dict[str, str]):
+    fmt = params.get("format") or "csv"
+    if fmt not in OUTPUT_FORMATS:
+        raise HapiError(1409, fmt)
+    include = params.get("include")
+    if include not in (None, "", "header"):
+        raise HapiError(1410, include)
+    return fmt, include
+
+
+async def _encoded(dataset: HapiDataset, parameters, dataset_info: DatasetInfo, variables, start, stop, fmt):
+    try:
+        return await run_in_threadpool(_encode, parameters, dataset_info, variables, start, stop, fmt)
+    except HapiError:
+        raise
+    except Exception as e:
+        log.exception(f"HAPI: failed to encode {dataset.id}")
+        raise HapiError(1500, str(e))
 
 
 def _time_range(params: Dict[str, str], max_request_duration: timedelta):

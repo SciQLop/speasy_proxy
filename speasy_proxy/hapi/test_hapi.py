@@ -45,7 +45,8 @@ def test_times_keep_their_precision(stamp, unit):
     t = np.array([stamp], dtype="datetime64[ns]")
     assert time_unit(t) == unit
     formatted = format_times(t, time_length(unit))
-    assert formatted[0] == stamp + "Z" and len(formatted[0]) == time_length(unit)
+    assert formatted[0] == stamp + "Z"
+    assert len(formatted[0]) == time_length(unit)
 
 
 # --- fixtures ----------------------------------------------------------------
@@ -112,7 +113,8 @@ def test_trajectories_have_one_parameter_per_frame():
     ace = build_catalog(_inventories())["ssc/ace"]
     assert [s.name for s in ace.parameters] == [f"position_{f}" for f in SSC_FRAMES]
     assert ace.parameters[1].key == "ssc/ace?coordinate_system=gsm"
-    assert ace.parameters[0].like is None and {s.like for s in ace.parameters[1:]} == {"position_gse"}
+    assert ace.parameters[0].like is None
+    assert {s.like for s in ace.parameters[1:]} == {"position_gse"}
 
 
 # --- fake upstream -----------------------------------------------------------
@@ -179,7 +181,9 @@ def test_info_describes_vectors_from_a_sample():
     info = build_info(_hapi_dataset(["p/vec"]), FakeUpstream({"p/vec": _vector}))
     time, vec = info.parameters
     assert time == {"name": "Time", "type": "isotime", "units": "UTC", "length": 24, "fill": None}
-    assert vec["type"] == "double" and vec["size"] == [3] and vec["label"] == ["bx", "by", "bz"]
+    assert vec["type"] == "double"
+    assert vec["size"] == [3]
+    assert vec["label"] == ["bx", "by", "bz"]
     assert vec["units"] == "nT"
     assert (info.sample_start, info.sample_stop) == ("2020-01-31T23:00:00Z", "2020-02-01T00:00:00Z")
 
@@ -244,16 +248,18 @@ def test_info_falls_back_to_the_start_of_the_dataset():
 
 
 def test_info_without_any_data_is_an_error():
+    dataset, upstream = _hapi_dataset(["p/a"]), FakeUpstream({"p/a": lambda a, b: None})
     with pytest.raises(HapiError) as e:
-        build_info(_hapi_dataset(["p/a"]), FakeUpstream({"p/a": lambda a, b: None}))
+        build_info(dataset, upstream)
     assert e.value.code == 1500
 
 
 def test_info_with_only_upstream_failures_is_an_upstream_error():
     def boom(a, b):
         raise RuntimeError("upstream down")
+    dataset, upstream = _hapi_dataset(["p/a"]), FakeUpstream({"p/a": boom})
     with pytest.raises(HapiError) as e:
-        build_info(_hapi_dataset(["p/a"]), FakeUpstream({"p/a": boom}))
+        build_info(dataset, upstream)
     assert e.value.code == 1501
 
 
@@ -328,7 +334,8 @@ _RANGE = {"start": "2020-01-10T00:00:00Z", "stop": "2020-01-10T00:00:03Z"}
 
 def test_data_csv(client):
     r = client.get("/data", params={"dataset": "amda/clust1-fgm", **_RANGE})
-    assert r.status_code == 200 and r.headers["content-type"].startswith("text/csv")
+    assert r.status_code == 200
+    assert r.headers["content-type"].startswith("text/csv")
     assert r.text.splitlines() == ["2020-01-10T00:00:00.000Z,0.0,1.0,2.0,0.0",
                                    "2020-01-10T00:00:01.000Z,0.0,1.0,2.0,1.0",
                                    "2020-01-10T00:00:02.000Z,0.0,1.0,2.0,2.0"]
@@ -364,7 +371,8 @@ def test_data_header(client):
                                     "parameters": "c1_btot", **_RANGE})
     header_line, *rows = r.text.splitlines()
     header = json.loads(header_line[1:])
-    assert header["format"] == "csv" and header["status"]["code"] == 1200
+    assert header["format"] == "csv"
+    assert header["status"]["code"] == 1200
     assert [p["name"] for p in header["parameters"]] == ["Time", "c1_btot"]
     assert len(rows) == 3
 
@@ -375,7 +383,8 @@ def test_data_without_data_says_so_in_the_header(client):
     client.upstream.products["amda/c1_b_gsm"] = lambda a, b: None
     r = client.get("/data", params={"dataset": "amda/clust1-fgm", "include": "header", **_RANGE})
     lines = r.text.splitlines()
-    assert r.status_code == 200 and len(lines) == 1
+    assert r.status_code == 200
+    assert len(lines) == 1
     assert json.loads(lines[0][1:])["status"]["code"] == 1201
 
 
