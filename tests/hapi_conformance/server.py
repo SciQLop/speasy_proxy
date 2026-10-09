@@ -102,6 +102,10 @@ def tick(start, stop, **_):  # int64 beyond 32 bits: declared double; same epoch
 _S60 = np.timedelta64(60, "s")
 
 
+def never(start, stop, **_):  # listed first in its group and never has data: /info probes the next one
+    return None
+
+
 def density(start, stop, **_):  # float64 with NaNs, on its own epoch
     t = _times(start, stop, _S60)
     v = (5 + np.sin(_phase(t))).reshape(-1, 1)
@@ -145,6 +149,7 @@ PRODUCTS = {
     "cda/TEST_MULTI_EPOCH/omni_flux": omni_flux,
     "cda/TEST_MULTI_EPOCH/para_flux": para_flux,
     "cda/TEST_MULTI_EPOCH/tick": tick,
+    "cda/TEST_MULTI_EPOCH/never": never,
     "cda/TEST_MULTI_EPOCH/density": density,
     "csa/TEST_PSD/psd__TEST_PSD": psd,
     "ssc/testsat": orbit,
@@ -180,6 +185,7 @@ def inventories():
         _param("cda", "TEST_MULTI_EPOCH/omni_flux", DEPEND_0="Epoch_fast", CATDESC="Omni flux"),
         _param("cda", "TEST_MULTI_EPOCH/para_flux", DEPEND_0="Epoch_fast", CATDESC="Parallel flux"),
         _param("cda", "TEST_MULTI_EPOCH/tick", DEPEND_0="Epoch_fast", CATDESC="Tick counter"),
+        _param("cda", "TEST_MULTI_EPOCH/never", DEPEND_0="Epoch_slow", CATDESC="Never recorded"),
         _param("cda", "TEST_MULTI_EPOCH/density", DEPEND_0="Epoch_slow", CATDESC="Density"),
     ], description="Test dataset with two time variables")
     csa = _dataset("csa", "TEST_PSD", [_param("csa", "TEST_PSD/psd__TEST_PSD", cat_description="Phase space density")],

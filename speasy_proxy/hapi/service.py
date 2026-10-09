@@ -18,7 +18,7 @@ log = logging.getLogger(__name__)
 
 INFO_RETENTION = timedelta(days=7)
 # Bump when the way /info is built changes: cached descriptions from older code are then ignored.
-INFO_FORMAT_VERSION = 5
+INFO_FORMAT_VERSION = 6
 # A dataset that couldn't be described is not sampled again before this.
 FAILURE_RETENTION = timedelta(hours=1)
 
@@ -82,18 +82,25 @@ class HapiService:
             return self._from_cache(cached)
         with self._catalog_lock:
             lock = self._building.setdefault(key, threading.Lock())
-        with lock:  # one build per dataset at a time, the others wait for its result
-            cached = self._info_cache.get(key)
-            if cached is not None:
-                return self._from_cache(cached)
-            try:
-                with self._info_builds:
-                    info = build_info(dataset, self.fetch)
-            except HapiError as e:
-                self._info_cache.set(key, {"error": [e.code, e.detail]}, expire=FAILURE_RETENTION.total_seconds())
-                raise
-            self._info_cache.set(key, info.to_dict(), expire=INFO_RETENTION.total_seconds())
-            return info
+        try:
+            with lock:  # one build per dataset at a time, the others wait for its result
+                return self._build_info(key, dataset)
+        finally:
+            with self._catalog_lock:  # whoever still waits holds the lock object itself
+                self._building.pop(key, None)
+
+    def _build_info(self, key: str, dataset: HapiDataset) -> DatasetInfo:
+        cached = self._info_cache.get(key)
+        if cached is not None:
+            return self._from_cache(cached)
+        try:
+            with self._info_builds:
+                info = build_info(dataset, self.fetch)
+        except HapiError as e:
+            self._info_cache.set(key, {"error": [e.code, e.detail]}, expire=FAILURE_RETENTION.total_seconds())
+            raise
+        self._info_cache.set(key, info.to_dict(), expire=INFO_RETENTION.total_seconds())
+        return info
 
     @staticmethod
     def _from_cache(cached: dict) -> DatasetInfo:

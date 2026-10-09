@@ -1,4 +1,5 @@
-"""HAPI's restricted ISO 8601: YYYY-MM-DD or YYYY-DDD, optionally followed by Thh[:mm[:ss[.f…]]] and Z."""
+"""HAPI's restricted ISO 8601: YYYY-MM-DD or YYYY-DDD, optionally followed by Thh[:mm[:ss[.f…]]], or
+YYYY-MM alone; then an optional Z."""
 import re
 from datetime import datetime, timedelta, UTC
 
@@ -8,6 +9,7 @@ from dateutil import parser as _date_parser
 _HAPI_TIME = re.compile(
     r"^(?P<year>\d{4})-(?:(?P<month>\d{2})-(?P<day>\d{2})|(?P<doy>\d{3}))"
     r"(?:T(?P<hour>\d{2})(?::?(?P<minute>\d{2})(?::?(?P<second>\d{2})(?:\.(?P<frac>\d{1,9}))?)?)?)?Z?$")
+_HAPI_MONTH = re.compile(r"^(?P<year>\d{4})-(?P<month>\d{2})Z?$")
 
 # "1970-01-01T00:00:00" + "." + fractional digits + "Z"
 _UNIT_LENGTHS = {"ms": 24, "us": 27, "ns": 30}
@@ -15,6 +17,8 @@ _UNIT_LENGTHS = {"ms": 24, "us": 27, "ns": 30}
 
 def parse_hapi_time(value: str) -> datetime:
     """Raises ValueError when `value` is not a HAPI time."""
+    if month := _HAPI_MONTH.match(value.strip()):
+        return datetime(int(month["year"]), int(month["month"]), 1, tzinfo=UTC)
     m = _HAPI_TIME.match(value.strip())
     if m is None:
         raise ValueError(f"{value!r} is not a HAPI ISO 8601 time")
@@ -32,6 +36,8 @@ def parse_hapi_time(value: str) -> datetime:
     hour, minute, second = (int(m[k] or 0) for k in ("hour", "minute", "second"))
     if hour == 24 and minute == second == micro == 0:
         return date + timedelta(days=1)
+    if second == 60:  # a leap second: datetime has none, the last instant of the minute stands for it
+        second, micro = 59, 999_999
     return date.replace(hour=hour, minute=minute, second=second, microsecond=micro)
 
 

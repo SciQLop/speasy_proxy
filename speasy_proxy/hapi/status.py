@@ -19,6 +19,7 @@ _MESSAGES = {
     1409: "HAPI error 1409: unsupported output format",
     1410: "HAPI error 1410: unsupported include value",
     1411: "HAPI error 1411: out of order or duplicate parameters",
+    1412: "HAPI error 1412: unsupported resolve_references value",
     1500: "HAPI error 1500: internal server error",
     1501: "HAPI error 1501: upstream request error",
 }
