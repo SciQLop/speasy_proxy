@@ -1,6 +1,6 @@
 __author__ = """Alexis Jeandet"""
 __email__ = 'alexis.jeandet@member.fsf.org'
-__version__ = '0.25.1'
+__version__ = '0.26.0'
 
 import asyncio
 import contextlib
