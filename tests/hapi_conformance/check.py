@@ -26,6 +26,8 @@ ALLOWED_WARNINGS = {
                                "(Starlette's GZipMiddleware compresses on the event loop, see speasy_proxy/__init__.py)",
     "is.CIdentifier": "dataset ids are speasy paths (amda/..., cda/<DATASET>@<i>) on purpose, matching /get_data "
                       "and CDAWeb's own HAPI ids",
+    "is.TooLong": "dataset titles are the upstream providers' own (AMDA, CSA, CDA); cutting them at 40 characters "
+                  "makes many identical, and CDAWeb's own HAPI server sends no titles at all",
     "is.FileStructureOK": "asks for 'HAPI 1201' in the HTTP reason phrase, which uvicorn doesn't let an app set; "
                           "1201 is in the JSON header when include=header",
 }
