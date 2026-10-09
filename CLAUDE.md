@@ -58,6 +58,13 @@ Build system: **hatchling** (pyproject.toml), managed with **uv**. Version bumps
 
 Error codes: upstream fetch failure → **502**, encode failure → **500** (both as JSON `{"error", "detail"}`).
 
+### HAPI server (`/hapi`)
+`speasy_proxy/hapi/` — a [HAPI](https://hapi-server.org) 3.2 server over speasy, built as a **self-contained FastAPI sub-app** (`create_hapi_app(...)`, mounted in `get_application()`). It imports nothing else from `speasy_proxy`: the proxy passes in `fetch(path, start, stop)`, the `/info` cache path, the max request span and `tree_lock` (the `InventoryManager`'s), so the package can be lifted out on its own. Tests: `speasy_proxy/hapi/test_hapi.py` (offline, fake inventory + fake upstream).
+- **Datasets** (`catalog.py`): amda/csa → a speasy dataset; cda → a speasy dataset split per `DEPEND_0` as `cda/<DATASET>@<i>` like CDAWeb's own HAPI server (needs speasy with `DEPEND_0` in the CDA inventory, SciQLop/speasy#401 — CDA is left out otherwise); ssc/cdpp3dview → one dataset per body with one parameter per coordinate frame (`position_gse`, `position_J2000`…, frame lists `SSC_FRAMES`/`CDPP3DVIEW_FRAMES` — a curated subset for 3DView's 106 frames), tagged with `coordinateSystemName`; only the default frame is sampled for `/info`, the others are described as copies (`like`) and fetched on demand. Parameters are fetched by a fetch key (`path?option=value`) so get_data options like the frame reach `fetch(path, start, stop, **options)`. AMDA templated and private parameters are left out.
+- **`/info`** (`info.py`) is built from a sample of real data (one probe parameter until a window has data, then the others), because clients reject `/data` that doesn't match `/info`. Cached in `diskcache` at `<SPEASY_PROXY_INDEX_PATH>/hapi_info` for 7 days (failures for 1 h); bump `INFO_FORMAT_VERSION` in `service.py` when the description logic changes. First `/info` of a dataset can be slow (minutes for CDA virtual variables).
+- **`/data`** (`encoding.py`) fetches each requested parameter, checks they share one time axis, and forces values to the declared shape/type (csv or binary). float32 fills are spelled as float32 prints so CSV and binary both match `/info`.
+- Errors are HAPI status JSON (`status.py`), never FastAPI 422s: query params are parsed by hand.
+
 ### Optional Collaboration WebSocket
 `ws_collaboration.py` — CRDT-based collaboration endpoint using pycrdt-websocket. Disabled by default; enable via `SPEASY_PROXY_COLLAB_ENDPOINT_ENABLE=True`.
 
@@ -86,3 +93,4 @@ uv run pytest
 Tests are discovered from `speasy_proxy/` (`test*.py`, per `pyproject.toml`) **and** the top-level `tests/` dir:
 - `speasy_proxy/backend/test_resample.py` — resampling behavior + numpy/numba backend equivalence (numba tests skip if not installed).
 - `tests/test_api.py` — endpoint integration tests via `fastapi.testclient.TestClient` (hits real providers, so requires network).
+- `tests/hapi_conformance/run.sh` — HAPI compliance, offline, also run in CI (`.github/workflows/hapi-conformance.yml`): starts the HAPI sub-app over a synthetic inventory (`server.py`, one dataset per shape speasy data can take) and runs `check.py`, which (1) runs the official verifier (`hapi-server/verifier-nodejs`, pinned by `VERIFIER_SHA`) on every dataset, failing on any failure or any warning not in `ALLOWED_WARNINGS` (each entry has its reason), and (2) checks the data the verifier doesn't parse: strict CSV parse, CSV/binary agreement with the `/info` layout (fill cells exact), and `hapiclient` reading both formats. Needs uv, node and git; a new dataset shape belongs in `server.py`.
