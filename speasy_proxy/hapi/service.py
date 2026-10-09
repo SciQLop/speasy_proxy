@@ -18,7 +18,7 @@ log = logging.getLogger(__name__)
 
 INFO_RETENTION = timedelta(days=7)
 # Bump when the way /info is built changes: cached descriptions from older code are then ignored.
-INFO_FORMAT_VERSION = 6
+INFO_FORMAT_VERSION = 7
 # A dataset that couldn't be described is not sampled again before this.
 FAILURE_RETENTION = timedelta(hours=1)
 
@@ -39,7 +39,8 @@ class HapiService:
         self._catalog_lock = threading.Lock()
         # Bounds the upstream load a client walking every /info can cause.
         self._info_builds = threading.BoundedSemaphore(max_concurrent_info_builds)
-        self._building: Dict[str, threading.Lock] = {}
+        # info key -> [lock, number of callers holding or waiting for it]
+        self._building: Dict[str, list] = {}
 
     def _inventory_key(self):
         if self._inventories is not None:
@@ -81,13 +82,16 @@ class HapiService:
         if cached is not None:
             return self._from_cache(cached)
         with self._catalog_lock:
-            lock = self._building.setdefault(key, threading.Lock())
+            entry = self._building.setdefault(key, [threading.Lock(), 0])
+            entry[1] += 1
         try:
-            with lock:  # one build per dataset at a time, the others wait for its result
+            with entry[0]:  # one build per dataset at a time, the others wait for its result
                 return self._build_info(key, dataset)
         finally:
-            with self._catalog_lock:  # whoever still waits holds the lock object itself
-                self._building.pop(key, None)
+            with self._catalog_lock:  # dropped once nobody holds or waits for it
+                entry[1] -= 1
+                if entry[1] == 0:
+                    del self._building[key]
 
     def _build_info(self, key: str, dataset: HapiDataset) -> DatasetInfo:
         cached = self._info_cache.get(key)

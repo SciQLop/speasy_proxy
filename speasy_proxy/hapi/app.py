@@ -122,7 +122,7 @@ def create_hapi_app(fetch: Fetch, info_cache_path: str, max_request_duration: ti
     async def catalog(request: Request):
         params = _query(request, {"depth"})
         if params.get("depth", "dataset") != "dataset":
-            raise HapiError(1400, "only depth=dataset is supported")
+            raise HapiError(1413, "only depth=dataset is supported")
         datasets = await run_in_threadpool(service.catalog)
         return metadata({**ok(), "catalog": [{"id": d.id, "title": d.title} for d in datasets.values()]})
 

@@ -201,18 +201,21 @@ def _fetch_all(fetch: Fetch, keys: List[str], start: datetime, stop: datetime):
 
 
 class _Samples:
-    """Sample variables found so far, by fetch key, and the upstream errors met on the way."""
+    """Sample variables found so far, by fetch key, the window each was found in, and the upstream
+    errors met on the way."""
 
     def __init__(self):
         self.variables: Dict[str, SpeasyVariable] = {}
+        self.found_in: Dict[str, int] = {}
         self.errors: List[Exception] = []
 
-    def collect(self, results):
+    def collect(self, results, window: int):
         for key, var, error in results:
             if error is not None:
                 self.errors.append(error)
             elif var is not None and len(var) > 0:
                 self.variables[key] = var
+                self.found_in[key] = window
 
 
 def _probe(fetch: Fetch, key: str, windows, deadline: float, samples: _Samples) -> Optional[int]:
@@ -220,17 +223,17 @@ def _probe(fetch: Fetch, key: str, windows, deadline: float, samples: _Samples) 
     for i, (start, stop) in enumerate(windows):
         if time.monotonic() > deadline:
             return None
-        samples.collect(_fetch_all(fetch, [key], start, stop))
-        if samples.variables:
+        samples.collect(_fetch_all(fetch, [key], start, stop), i)
+        if key in samples.variables:
             return i
     return None
 
 
 def _sample(dataset: HapiDataset, fetch: Fetch, now: datetime, deadline: float):
-    """{fetch key: sample variable} and a window holding data for all of them (the sample range).
+    """{fetch key: sample variable} and the window to declare as sample range.
 
     Empty windows cost as much as full ones (CSA: ~20 s each), so a single parameter probes for a
-    window holding data first; the others are then fetched there, and further out only if missing."""
+    window holding data first; the others are fetched there first, then in every other window."""
     windows = list(_sample_windows(dataset, now))
     keys = [s.key for s in dataset.parameters if s.like is None]
     samples = _Samples()
@@ -239,15 +242,12 @@ def _sample(dataset: HapiDataset, fetch: Fetch, now: datetime, deadline: float):
         found = _probe(fetch, key, windows, deadline, samples)
         if found is not None or time.monotonic() > deadline:
             break
-    last = found
-    for i, (start, stop) in enumerate(windows[found:] if found is not None else [], start=found or 0):
+    order = [] if found is None else list(range(found, len(windows))) + list(range(found))
+    for i in order:
         missing = [k for k in keys if k not in samples.variables]
         if not missing or time.monotonic() > deadline:
             break
-        before = len(samples.variables)
-        samples.collect(_fetch_all(fetch, missing, start, stop))
-        if len(samples.variables) > before:
-            last = i
+        samples.collect(_fetch_all(fetch, missing, *windows[i]), i)
 
     if not samples.variables:
         if samples.errors:
@@ -256,14 +256,17 @@ def _sample(dataset: HapiDataset, fetch: Fetch, now: datetime, deadline: float):
     missing = [k for k in keys if k not in samples.variables]
     if missing:
         log.warning(f"HAPI: leaving out {missing} from {dataset.id}, no data found to describe them")
-    return samples.variables, windows[_covering(found, last)]
+    return samples.variables, windows[_covering(samples.found_in.values())]
 
 
-def _covering(found: int, last: int) -> int:
-    """The window to declare as sample range: windows anchored on the same end of the dataset are
-    nested, so the last one where a parameter turned up holds data for all of them."""
-    same_end = (found < len(SAMPLE_WINDOWS)) == (last < len(SAMPLE_WINDOWS))
-    return last if same_end else found
+def _covering(found_in) -> int:
+    """The window to declare as sample range. Windows anchored on the same end of the dataset are
+    nested, so the widest one a parameter turned up in holds data for every parameter found on that
+    end. Parameters found on both ends (one stops early, another starts late) can't share a short
+    range: the end where most were found wins."""
+    at_stop = [i for i in found_in if i < len(SAMPLE_WINDOWS)]
+    at_start = [i for i in found_in if i >= len(SAMPLE_WINDOWS)]
+    return max(at_stop if len(at_stop) >= len(at_start) else at_start)
 
 
 def nominal_cadence(time: np.ndarray) -> Optional[str]:

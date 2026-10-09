@@ -197,8 +197,12 @@ def build_catalog(flat_inventories) -> Dict[str, HapiDataset]:
         flat = flat_inventories.__dict__.get(provider)
         if flat is None:
             continue
+        entries = getattr(flat, mapping, None)
+        if entries is None:
+            log.warning(f"HAPI: leaving {provider} out of the catalog, its inventory has no {mapping}")
+            continue
         without_depend_0 = 0
-        for uid, index in getattr(flat, mapping).items():
+        for uid, index in entries.items():
             try:
                 datasets.update((d.id, d) for d in build(uid, index) if d is not None)
             except _MissingDepend0:
