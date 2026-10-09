@@ -28,14 +28,16 @@ def _trim(var: Optional[SpeasyVariable], start: datetime, stop: datetime) -> Opt
 
 def _check_aligned(present: Dict[str, SpeasyVariable]):
     """Parameters of one dataset may cover different parts of a range (one instrument stops, a flag
-    is only recorded sometimes), but where both have data they must share timestamps: overlapping
-    spans with no timestamp in common mean they were never on the same time axis."""
-    items = list(present.items())
-    for i, (path_a, a) in enumerate(items):
-        for path_b, b in items[i + 1:]:
-            overlap = max(a.time[0], b.time[0]) <= min(a.time[-1], b.time[-1])
-            if overlap and not np.intersect1d(a.time, b.time).size:
-                raise HapiError(1500, f"the parameters don't share their time axis ({path_a}, {path_b})")
+    is only recorded sometimes), but where they overlap they must share timestamps: overlapping spans
+    with no timestamp in common mean they were never on the same time axis. Checked against the
+    longest parameter only, so the cost grows linearly with the number of parameters."""
+    ref_path, ref = max(present.items(), key=lambda item: len(item[1]))
+    for path, var in present.items():
+        if path == ref_path:
+            continue
+        overlap = max(ref.time[0], var.time[0]) <= min(ref.time[-1], var.time[-1])
+        if overlap and not np.isin(var.time, ref.time, assume_unique=True).any():
+            raise HapiError(1500, f"the parameters don't share their time axis ({ref_path}, {path})")
 
 
 def merge_time_axes(variables: Dict[str, Optional[SpeasyVariable]], start: datetime,
@@ -46,10 +48,10 @@ def merge_time_axes(variables: Dict[str, Optional[SpeasyVariable]], start: datet
     present = {path: var for path, var in trimmed.items() if var is not None and len(var)}
     if not present:
         return np.array([], dtype="datetime64[ns]"), trimmed
-    _check_aligned(present)
     times = [var.time for var in present.values()]
-    if all(np.array_equal(times[0], t) for t in times[1:]):
+    if all(np.array_equal(times[0], t) for t in times[1:]):  # the usual case: one shared time axis
         return times[0], trimmed
+    _check_aligned(present)
     return np.unique(np.concatenate(times)), trimmed
 
 

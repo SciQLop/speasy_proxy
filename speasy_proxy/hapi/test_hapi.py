@@ -115,6 +115,14 @@ def test_catalog_spells_dates_as_hapi_times():
     assert (ace.start_date, ace.stop_date) == ("1997-08-25T17:48:00Z", "2026-11-09T23:49:00Z")
 
 
+def test_a_provider_without_the_expected_mapping_is_skipped():
+    inventories = _inventories()
+    del inventories.ssc.parameters
+    catalog = build_catalog(inventories)
+    assert "amda/clust1-fgm" in catalog
+    assert not any(i.startswith("ssc/") for i in catalog)
+
+
 def test_one_broken_entry_leaves_out_only_itself():
     inventories = _inventories()
     inventories.amda.datasets["broken"] = object()  # no start_date, no parameters...
@@ -276,6 +284,18 @@ def test_sample_range_holds_data_for_every_parameter():
     assert (info.sample_start, info.sample_stop) == ("2020-01-25T00:00:00Z", "2020-02-01T00:00:00Z")
 
 
+@pytest.mark.parametrize("order", [["p/start", "p/end"], ["p/end", "p/start"]])
+def test_parameters_found_on_either_end_are_all_described(order):
+    early, late = datetime(2020, 1, 1, 1, tzinfo=UTC), datetime(2020, 1, 31, 23, tzinfo=UTC)
+    upstream = FakeUpstream({"p/start": lambda a, b: _scalar(a, min(b, early)) if a < early else None,
+                             "p/end": lambda a, b: _scalar(max(a, late), b) if b > late else None,
+                             "p/all": _scalar})
+    info = build_info(_hapi_dataset(order + ["p/all"]), upstream)
+    assert sorted(p["name"] for p in info.parameters[1:]) == ["all", "end", "start"]
+    # "all" and "end" were found at the end of the dataset: that end wins the sample range
+    assert info.sample_stop == "2020-02-01T00:00:00Z"
+
+
 def test_info_falls_back_to_the_start_of_the_dataset():
     upstream = FakeUpstream({"p/a": lambda a, b: _scalar(a, b) if a < datetime(2020, 1, 2, tzinfo=UTC) else None})
     info = build_info(_hapi_dataset(["p/a"]), upstream)
@@ -350,6 +370,11 @@ def test_info_declares_cadence_and_metadata_last_modified(client):
 def test_sends_cors_headers_on_its_own(client):
     assert client.get("/about", headers={"Origin": "https://example.org"}).headers[
         "access-control-allow-origin"] == "*"
+
+
+def test_build_locks_are_dropped_once_used(client):
+    client.get("/info", params={"dataset": "amda/clust1-fgm"})
+    assert client.app.state.hapi._building == {}
 
 
 def test_info_is_cached(client):
@@ -447,7 +472,7 @@ def test_a_parameter_without_data_is_written_as_fill(client):
 
 def test_catalog_accepts_depth_dataset_only(client):
     assert client.get("/catalog", params={"depth": "dataset"}).status_code == 200
-    assert _status(client.get("/catalog", params={"depth": "all"})) == 1400
+    assert _status(client.get("/catalog", params={"depth": "all"})) == 1413
 
 
 def test_info_rejects_unknown_resolve_references_values(client):
