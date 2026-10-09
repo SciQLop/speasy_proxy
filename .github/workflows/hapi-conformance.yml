@@ -1,0 +1,47 @@
+name: HAPI conformance
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  hapi:
+    name: HAPI unit tests and compliance
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.12"
+          enable-cache: true
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install
+        run: uv sync --extra dev
+
+      - name: Unit tests
+        # Offline: no provider is contacted (importing speasy_proxy would otherwise fetch every inventory).
+        env:
+          SPEASY_CORE_DISABLED_PROVIDERS: amda,cda,csa,ssc,cdpp3dview,archive,uiowaephtool
+          SPEASY_PROXY_ENABLED: "false"
+        run: uv run pytest speasy_proxy/hapi -q
+
+      - name: Cache the HAPI verifier
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/speasy-proxy
+          key: hapi-verifier-${{ hashFiles('tests/hapi_conformance/run.sh') }}
+
+      - name: Verifier and client checks
+        run: tests/hapi_conformance/run.sh
