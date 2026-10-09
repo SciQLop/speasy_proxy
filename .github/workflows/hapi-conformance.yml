@@ -28,14 +28,15 @@ jobs:
           node-version: "20"
 
       - name: Install
-        run: uv sync --locked --extra dev
+        # Dependencies only, from wheels: the code under test is run from the checkout.
+        run: uv sync --locked --extra dev --no-build --no-install-project
 
       - name: Unit tests
         # Offline: no provider is contacted (importing speasy_proxy would otherwise fetch every inventory).
         env:
           SPEASY_CORE_DISABLED_PROVIDERS: amda,cda,csa,ssc,cdpp3dview,archive,uiowaephtool
           SPEASY_PROXY_ENABLED: "false"
-        run: uv run --locked pytest speasy_proxy/hapi -q
+        run: uv run --no-sync --no-build python -m pytest speasy_proxy/hapi -q
 
       - name: Cache the HAPI verifier
         uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830  # v4.3.0
