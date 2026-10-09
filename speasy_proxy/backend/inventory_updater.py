@@ -80,6 +80,11 @@ class InventoryManager:
         return self._last_update
 
     @property
+    def tree_lock(self) -> threading.Lock:
+        """Held while speasy's in-memory tree is refreshed; hold it to read the tree consistently."""
+        return self._tree_lock
+
+    @property
     def update_interval(self) -> int:
         return self._update_interval
 
