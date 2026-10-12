@@ -131,6 +131,37 @@ def test_one_broken_entry_leaves_out_only_itself():
     assert not any(i.startswith("amda/broken") for i in catalog)
 
 
+def _archive_inventories():
+    istp = _dataset("archive", "my_mission/fgm", [
+        _param("archive", "my_mission/fgm/b_gse", DEPEND_0="epoch", CATDESC="B GSE"),
+        _param("archive", "my_mission/fgm/b_hr", DEPEND_0="epoch_hr"),
+    ], title="My mission FGM")
+    inline = _dataset("archive", "my_mission/csv", [_param("archive", "my_mission/csv/density"),
+                                                    _param("archive", "my_mission/csv/speed")])
+    undated = DatasetIndex(name="undated", provider="archive", uid="my_mission/undated")
+    undated.__dict__["x"] = _param("archive", "my_mission/undated/x")
+    return _flat(archive={"datasets": {"my_mission/fgm": istp, "my_mission/csv": inline,
+                                       "my_mission/undated": undated}})
+
+
+def test_archive_datasets_are_split_per_time_axis_like_cda():
+    catalog = build_catalog(_archive_inventories())
+    assert list(catalog) == ["archive/my_mission/csv", "archive/my_mission/fgm@0", "archive/my_mission/fgm@1"]
+    fgm = catalog["archive/my_mission/fgm@0"]
+    assert fgm.title == "My mission FGM"
+    assert [(s.name, s.path, s.description) for s in fgm.parameters] == [
+        ("b_gse", "archive/my_mission/fgm/b_gse", "B GSE")]
+
+
+def test_archive_parameters_without_depend_0_share_one_time_axis():
+    csv = build_catalog(_archive_inventories())["archive/my_mission/csv"]
+    assert [s.name for s in csv.parameters] == ["density", "speed"]
+
+
+def test_archive_datasets_without_dates_are_left_out():
+    assert "archive/my_mission/undated" not in build_catalog(_archive_inventories())
+
+
 def test_trajectories_have_one_parameter_per_frame():
     ace = build_catalog(_inventories())["ssc/ace"]
     assert [s.name for s in ace.parameters] == [f"position_{f}" for f in SSC_FRAMES]

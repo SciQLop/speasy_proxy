@@ -18,7 +18,7 @@ from .backend.inventory_updater import InventoryManager
 from .backend.cache_scrubber import periodic_scrub_loop, scrub_state_path
 from .backend.shared_inventory_store import SharedInventoryStore
 from .backend.request_logging import RequestLoggingMiddleware
-from .config import core as config, index as index_cfg
+from .config import core as config, index as index_cfg, hapi as hapi_cfg
 from .hapi import create_hapi_app
 from contextlib import asynccontextmanager
 import speasy as spz
@@ -51,9 +51,9 @@ def _make_hapi_app(parent: FastAPI) -> FastAPI:
         fetch=lambda path, start, stop, **options: spz.get_data(path, start, stop, **options),
         info_cache_path=os.path.join(index_cfg.path(), "hapi_info"),
         max_request_duration=timedelta(days=config.max_query_span_days.get()),
-        server_id="speasy-proxy",
-        title="speasy-proxy",
-        contact="https://github.com/SciQLop/speasy_proxy/issues",
+        server_id=hapi_cfg.server_id.get(),
+        title=hapi_cfg.title.get(),
+        contact=hapi_cfg.contact.get(),
         tree_lock=tree_lock,
         cors=False,  # added to the whole app below
     )
@@ -77,10 +77,13 @@ def get_application(lifespan=None) -> FastAPI:
         root_path=root_path,
         lifespan=lifespan
     )
-    _app.include_router(frontend_router)
-    _app.include_router(v1_api_router)
+    if hapi_cfg.only.get():
+        log.info("HAPI only: serving /hapi alone")
+    else:
+        _app.include_router(frontend_router)
+        _app.include_router(v1_api_router)
+        _app.mount("/static/", RevalidatingJSStaticFiles(directory=f"{os.path.dirname(os.path.abspath(__file__))}/static"), name="static")
     _app.mount("/hapi", _make_hapi_app(_app))
-    _app.mount("/static/", RevalidatingJSStaticFiles(directory=f"{os.path.dirname(os.path.abspath(__file__))}/static"), name="static")
 
     up_since.set(datetime.now(UTC))
 

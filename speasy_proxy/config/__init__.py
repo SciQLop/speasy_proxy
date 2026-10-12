@@ -9,11 +9,20 @@ def _parse_utc_date(value: str):
     return dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
 
 
+def _parse_bool(value: str) -> bool:
+    return value.lower() == "true"
+
+
 index = ConfigSection("PROXY_INDEX", path={"default": "/tmp"})
-collab_endpoint = ConfigSection("PROXY_COLLAB_ENDPOINT",
-                                enable={"default": False,
-                                        "type_ctor": lambda x: {'true': True,
-                                                                'false': False}.get(x.lower(), False)})
+collab_endpoint = ConfigSection("PROXY_COLLAB_ENDPOINT", enable={"default": False, "type_ctor": _parse_bool})
+hapi = ConfigSection("PROXY_HAPI",
+                     only={"default": False, "type_ctor": _parse_bool,
+                           "description": "Serve the HAPI server (/hapi) alone: no web pages, no speasy /get_data API."},
+                     server_id={"default": "speasy-proxy", "description": "HAPI /about id."},
+                     title={"default": "speasy-proxy", "description": "HAPI /about title, also the landing page title."},
+                     contact={"default": "https://github.com/SciQLop/speasy_proxy/issues",
+                              "description": "HAPI /about contact."},
+                     )
 core = ConfigSection("PROXY_CORE",
                      inventory_update_interval={"default": 60 * 60 * 2, "type_ctor": int, "description": "Interval in seconds to update the inventory."},
                      inventory_sync_poll_interval={"default": 60, "type_ctor": int, "description": "Seconds between shared-store inventory syncs in each worker."},

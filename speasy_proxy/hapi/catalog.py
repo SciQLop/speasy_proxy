@@ -7,7 +7,9 @@ parameter. So a HAPI dataset is a group of speasy parameters known to share thei
 - cda: a speasy dataset split per time variable (DEPEND_0) the way CDAWeb's own HAPI server does,
   as ``<DATASET>@<i>`` when it has several, ``<DATASET>`` otherwise;
 - ssc, cdpp3dview: a body's trajectory, with one parameter per coordinate frame
-  (``position_gse``, ``position_GSM``...): all frames share the time axis, shape and units.
+  (``position_gse``, ``position_GSM``...): all frames share the time axis, shape and units;
+- archive (speasy's generic archive, i.e. your own YAML-declared files): split per DEPEND_0 like cda,
+  as ``archive/<inventory_path>/<name>``; it needs ``start_date``/``stop_date`` in the YAML ``meta``.
 
 /data still checks the time axes really match before merging parameters.
 """
@@ -142,23 +144,39 @@ class _MissingDepend0(Exception):
     parameters share a time axis is unknown."""
 
 
-def _cda_groups(params: List[ParameterIndex]) -> List[List[ParameterIndex]]:
-    groups: Dict[str, List[ParameterIndex]] = {}
+def _time_axis_groups(params: List[ParameterIndex], time_axis_of: Callable) -> List[List[ParameterIndex]]:
+    groups: Dict[Optional[str], List[ParameterIndex]] = {}
     for p in params:
-        depend_0 = getattr(p, "DEPEND_0", None)
-        if not depend_0:
-            raise _MissingDepend0()
-        groups.setdefault(depend_0, []).append(p)
+        groups.setdefault(time_axis_of(p), []).append(p)
     return list(groups.values())
 
 
+def _cda_depend_0(p: ParameterIndex) -> str:
+    depend_0 = getattr(p, "DEPEND_0", None)
+    if not depend_0:
+        raise _MissingDepend0()
+    return depend_0
+
+
+def _split_per_time_axis(dataset_id: str, title: str, ds: DatasetIndex, groups: List[List[ParameterIndex]],
+                         **kwargs) -> Iterable[HapiDataset]:
+    return [_make(dataset_id if len(groups) == 1 else f"{dataset_id}@{i}", title, ds, group, _uid_tail, **kwargs)
+            for i, group in enumerate(groups)]
+
+
 def _cda(uid: str, ds: DatasetIndex) -> Iterable[HapiDataset]:
-    groups = _cda_groups(_parameters_of(ds))
     title = getattr(ds, "description", None) or ds.spz_name()
     resource_url = f"https://cdaweb.gsfc.nasa.gov/misc/Notes{uid[0]}.html#{uid}"
-    return [_make(f"cda/{uid}" if len(groups) == 1 else f"cda/{uid}@{i}", title, ds, group, _uid_tail,
-                  description=title, resource_url=resource_url)
-            for i, group in enumerate(groups)]
+    return _split_per_time_axis(f"cda/{uid}", title, ds, _time_axis_groups(_parameters_of(ds), _cda_depend_0),
+                                description=title, resource_url=resource_url)
+
+
+def _archive(uid: str, ds: DatasetIndex) -> Iterable[HapiDataset]:
+    # Parameters without DEPEND_0 (inline YAML variables, non-ISTP codecs) are taken as sharing one time axis.
+    groups = _time_axis_groups(_parameters_of(ds), lambda p: getattr(p, "DEPEND_0", None))
+    title = getattr(ds, "title", None) or getattr(ds, "Logical_source_description", None) or ds.spz_name()
+    return _split_per_time_axis(f"archive/{uid}", str(title), ds, groups,
+                                description=getattr(ds, "description", None))
 
 
 def _trajectories(provider: str):
@@ -186,6 +204,7 @@ _PROVIDERS = {
     "csa": ("datasets", _csa),
     "ssc": ("parameters", _trajectories("ssc")),
     "cdpp3dview": ("parameters", _trajectories("cdpp3dview")),
+    "archive": ("datasets", _archive),
 }
 
 

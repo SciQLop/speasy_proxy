@@ -34,6 +34,9 @@ curl "$BASE/get_data?path=amda/imf&start_time=2020-01-01&stop_time=2020-02-01&fo
 
 ## Deploying your own instance
 
+> Want a [HAPI](https://hapi-server.org) server over **your own files**? See [docs/hapi-server.md](docs/hapi-server.md):
+> a YAML file describing them, an optional codec, and `SPEASY_PROXY_HAPI_ONLY=true`.
+
 ### Container (recommended)
 
 Podman is recommended, but Docker works too.
@@ -83,6 +86,8 @@ All settings are controlled via environment variables:
 | `SPEASY_PROXY_CORE_INVENTORY_LEASE_TTL` | TTL of the cross-worker refresh lease (s) | `600` |
 | `SPEASY_PROXY_CORE_INVENTORY_SHARED_PATH` | Shared inventory store directory | `<index path>/inventory_shared` |
 | `SPEASY_PROXY_CORE_CACHE_SCRUB_INTERVAL` | Seconds between full cache scrubs | `604800` |
+| `SPEASY_PROXY_HAPI_ONLY` | Serve the HAPI server (`/hapi`) alone | `False` |
+| `SPEASY_PROXY_HAPI_SERVER_ID`, `_TITLE`, `_CONTACT` | HAPI `/about` identity | `speasy-proxy`, `speasy-proxy`, issue tracker |
 | `SPEASY_PROXY_CORE_CACHE_SCRUB_STATE_PATH` | Scrub schedule/lease store (must persist) | `<speasy index>/speasy_proxy_scrub` |
 | `SPEASY_CACHE_PATH` | Cache storage path | |
 | `SPEASY_INDEX_PATH` | Index storage path | |
@@ -102,6 +107,7 @@ Key endpoints:
 | `GET /get_speasy_version` | Version of the underlying speasy library. |
 | `GET /is_up` | Is an upstream provider reachable (`?provider=amda`). |
 | `GET /healthz` | Liveness probe for this server; never contacts a provider. |
+| `/hapi` | [HAPI](https://hapi-server.org) 3.2 server over the same data (`/hapi/catalog`, `/hapi/info`, `/hapi/data`). |
 
 ## Development
 
