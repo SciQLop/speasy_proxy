@@ -13,6 +13,48 @@ So publishing a mission archive as HAPI takes three things:
 No Python code in speasy-proxy to touch.
 HAPI clients (hapiclient, Autoplot, SciQLop, the HAPI verifier) then see your data like any other server's.
 
+This page covers the HAPI side.
+speasy's [direct archive access guide](https://speasy.readthedocs.io/en/latest/user/direct_archive/direct_archive.html) has the full details on the YAML inventories and on codecs.
+
+## How it fits together
+
+At startup, speasy reads your YAML files and builds its inventory.
+speasy-proxy turns that inventory into the HAPI catalog.
+A `/data` request then goes down to your files and back:
+
+```mermaid
+flowchart LR
+    client["HAPI client<br/>hapiclient, Autoplot, SciQLop"]
+    subgraph proxy["speasy-proxy (SPEASY_PROXY_HAPI_ONLY=true)"]
+        hapi["/hapi<br/>catalog · info · data"]
+    end
+    subgraph speasy["speasy"]
+        inventory["inventory"]
+        archive["generic archive provider"]
+        codec["codec<br/>CDF · NetCDF · yours"]
+    end
+    yaml[("your YAML files")]
+    files[("your files<br/>local or http(s)")]
+
+    yaml -- "read at startup<br/>and every refresh" --> inventory
+    inventory -- "datasets & parameters" --> hapi
+    client -- "GET /hapi/data" --> hapi
+    hapi -- "get_data(path, start, stop)" --> archive
+    archive -- "url_pattern → file names" --> files
+    files -- "bytes" --> codec
+    codec -- "SpeasyVariable" --> hapi
+    hapi -- "CSV / binary" --> client
+```
+
+Each box on the right is a place to plug in your own code:
+
+| You want to… | Hook | Section |
+|---|---|---|
+| Publish files speasy can read (CDF, NetCDF) | a YAML file | [1](#1-describe-your-files) |
+| Read another file format | a codec | [3](#3-write-a-codec) |
+| Serve data that isn't in files | your own `fetch` | [4](#4-other-hooks) |
+| Add a whole new data source | a speasy provider | [4](#4-other-hooks) |
+
 ## 1. Describe your files
 
 Drop a `*.yaml` file in a directory of your choice.
@@ -39,6 +81,22 @@ fgm_l2:                                   # dataset name
 The dataset shows up in HAPI as `archive/my_mission/fgm/fgm_l2`.
 Variables on different time axes (`DEPEND_0`) are split into one HAPI dataset each, as `…@0`, `…@1`.
 This is what CDAWeb's own HAPI server does.
+
+```mermaid
+flowchart LR
+    yaml["YAML entry <b>fgm_l2</b><br/>inventory_path: my_mission/fgm"]
+    b_gse["b_gse<br/>DEPEND_0 = epoch"]
+    b_tot["b_total<br/>DEPEND_0 = epoch"]
+    b_hr["b_hr<br/>DEPEND_0 = epoch_hr"]
+    d0["HAPI dataset<br/>archive/my_mission/fgm/fgm_l2@0<br/>Time, b_gse, b_total"]
+    d1["HAPI dataset<br/>archive/my_mission/fgm/fgm_l2@1<br/>Time, b_hr"]
+
+    yaml --> b_gse & b_tot & b_hr
+    b_gse & b_tot --> d0
+    b_hr --> d1
+```
+
+With a single time axis there is no suffix: just `archive/my_mission/fgm/fgm_l2`.
 
 ### Any other format
 
@@ -82,6 +140,9 @@ Without `DEPEND_0`, inline variables are taken as sharing one time axis.
 | `meta_priority` | `file` (default) or `yaml`: who wins when a file and the YAML disagree on a metadata key |
 
 speasy's bundled `cda.yaml` (in `speasy/data/archive/`) has many more real examples.
+speasy documents every field in its [YAML field reference](https://speasy.readthedocs.io/en/latest/user/direct_archive/direct_archive.html#yaml-field-reference),
+including [URL placeholders](https://speasy.readthedocs.io/en/latest/user/direct_archive/direct_archive.html#url-pattern-placeholders), [randomly split (burst) datasets](https://speasy.readthedocs.io/en/latest/user/direct_archive/direct_archive.html#randomly-split-datasets-burst-data)
+and [troubleshooting](https://speasy.readthedocs.io/en/latest/user/direct_archive/direct_archive.html#troubleshooting).
 A dataset without `start_date`/`stop_date` is left out of HAPI (it stays usable through speasy).
 
 ## 2. Run it
@@ -160,6 +221,9 @@ class SolarWindCsv:
     supported_mimetypes = []
     name = "sw_csv"
 ```
+
+speasy's guide goes further: [writing a reusable codec](https://speasy.readthedocs.io/en/latest/user/direct_archive/direct_archive.html#writing-a-reusable-codec-recommended)
+and [shipping it as a package](https://speasy.readthedocs.io/en/latest/user/direct_archive/direct_archive.html#shipping-a-codec-as-a-package).
 
 `any_loc_open` reads local paths and URLs alike, and caches remote files.
 Metadata you put in `DataContainer(meta=…)` (`UNITS`, `FILLVAL`, `CATDESC`…) reaches `/info`; the YAML `meta` can fill or override it.
