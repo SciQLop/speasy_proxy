@@ -6,6 +6,79 @@
 
 A fast caching proxy server for [speasy](https://github.com/SciQLop/speasy), reducing load on upstream data providers (AMDA, CDAWeb, SSCWeb) and improving response times for space physics data access.
 
+## How it works
+
+speasy-proxy is speasy behind HTTP.
+Each request runs through the same speasy library you use on your laptop, with its own cache.
+So one fetch from a provider serves every user who asks for the same data after it.
+
+```mermaid
+flowchart LR
+    subgraph you["Your machine"]
+        user_spz["speasy<br/>+ local cache"]
+    end
+    others["curl · JS · Julia · IDL<br/>HAPI clients · browser /plot"]
+    subgraph proxy["speasy-proxy"]
+        api["/get_data · /get_inventory<br/>/hapi · /plot"]
+        proxy_spz["speasy<br/>+ shared cache"]
+        api --> proxy_spz
+    end
+    providers[("AMDA · CDAWeb · CSA<br/>SSCWeb · 3DView<br/>your archives")]
+
+    user_spz -- "python_dict pickle" --> api
+    others -- "JSON · CDF · HAPI CSV/binary" --> api
+    proxy_spz --> providers
+```
+
+A request goes down the layers until one has the data:
+
+```mermaid
+sequenceDiagram
+    participant U as your speasy
+    participant P as speasy-proxy
+    participant S as provider (e.g. CDAWeb)
+    U->>U: local cache?
+    alt hit
+        U-->>U: done, no network
+    else miss
+        U->>P: GET /get_data
+        P->>P: shared cache?
+        alt miss
+            P->>S: fetch
+            S-->>P: data (cached for everyone)
+        end
+        P-->>U: data (cached locally)
+    end
+```
+
+Inventories (the product trees) take the same path: speasy downloads them from the proxy, already parsed, instead of crawling every provider.
+
+### Chaining proxies
+
+The speasy inside the proxy is a normal speasy.
+So it can use a proxy too.
+Point it at another speasy-proxy and you get a chain, as long as you want:
+
+```mermaid
+flowchart LR
+    laptops["laptops<br/>speasy"]
+    lab["lab speasy-proxy<br/>SPEASY_PROXY_URL=public proxy"]
+    public["public speasy-proxy<br/>SPEASY_PROXY_ENABLED=false"]
+    providers[("AMDA · CDAWeb · CSA · SSCWeb · 3DView")]
+    lab_files[("lab archive<br/>YAML + files")]
+
+    laptops --> lab --> public --> providers
+    lab --> lab_files
+```
+
+- Each layer caches. The layer closest to the user answers first.
+  A lab proxy keeps a busy team's data on the local network.
+- Each layer can add its own data. The archive provider never goes through a proxy.
+  A lab proxy therefore serves its own files (see [docs/hapi-server.md](docs/hapi-server.md)) next to everything upstream.
+- The last layer must talk to the providers itself: set `SPEASY_PROXY_ENABLED=false` there.
+  Otherwise it would ask a proxy for data it is meant to fetch.
+- Clients don't see any difference. They talk to the nearest layer like to any speasy-proxy.
+
 ## Using the public instance
 
 A public instance is available at: https://sciqlop.lpp.polytechnique.fr/cache/
