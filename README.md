@@ -56,14 +56,15 @@ Inventories (the product trees) take the same path: speasy downloads them from t
 ### Chaining proxies
 
 The speasy inside the proxy is a normal speasy.
-So it can use a proxy too.
-Point it at another speasy-proxy and you get a chain, as long as you want:
+So it uses a proxy too, and by default that is the public one.
+A speasy-proxy you deploy is therefore already a layer in front of the public instance, with no configuration.
+Add more layers the same way, as many as you want:
 
 ```mermaid
 flowchart LR
     laptops["laptops<br/>speasy"]
-    lab["lab speasy-proxy<br/>SPEASY_PROXY_URL=public proxy"]
-    public["public speasy-proxy<br/>SPEASY_PROXY_ENABLED=false"]
+    lab["lab speasy-proxy<br/>zero config: speasy defaults<br/>to the public proxy"]
+    public["public speasy-proxy<br/>talks to the providers"]
     providers[("AMDA · CDAWeb · CSA · SSCWeb · 3DView")]
     lab_files[("lab archive<br/>YAML + files")]
 
@@ -75,8 +76,8 @@ flowchart LR
   A lab proxy keeps a busy team's data on the local network.
 - Each layer can add its own data. The archive provider never goes through a proxy.
   A lab proxy therefore serves its own files (see [docs/hapi-server.md](docs/hapi-server.md)) next to everything upstream.
-- The last layer must talk to the providers itself: set `SPEASY_PROXY_ENABLED=false` there.
-  Otherwise it would ask a proxy for data it is meant to fetch.
+- `SPEASY_PROXY_URL` points a layer at another proxy than the public one.
+  `SPEASY_PROXY_ENABLED=false` makes it talk to the providers directly instead.
 - Clients don't see any difference. They talk to the nearest layer like to any speasy-proxy.
 
 ## Using the public instance
