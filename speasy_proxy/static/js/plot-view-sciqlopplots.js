@@ -6,6 +6,11 @@
 // products are added with the tree's + button. Port them once this backend is kept.
 import { productTitle } from './plot-core.js';
 
+// The uPlot view's colours (plot-view.js), so both backends look the same on the page.
+const THEME = {
+  background: '#0b0e17', foreground: '#8892b0', grid: '#1e2640', subGrid: '#141a2e',
+  selection: '#6b8afd', legendBackground: '#1a1f36', legendBorder: '#2a3358',
+};
 const MS_PER_S = 1e3;  // plot.js works in ms, SciQLopPlots in seconds
 const SAME_VIEW_MS = 1e-3;
 
@@ -87,6 +92,7 @@ export function createPlotView(root, { onViewChange }) {
   loadSciQLopPlots(root)
     .then((module) => {
       spz = module;
+      spz.setTheme('dark', THEME);
       spz.onTimeRangeChanged(onTimeRangeChanged);
       draw();
     })
