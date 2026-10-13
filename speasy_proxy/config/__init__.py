@@ -23,6 +23,10 @@ hapi = ConfigSection("PROXY_HAPI",
                      contact={"default": "https://github.com/SciQLop/speasy_proxy/issues",
                               "description": "HAPI /about contact."},
                      )
+sciqlopplots = ConfigSection("PROXY_SCIQLOPPLOTS",
+                             path={"default": "",
+                                   "description": "Directory of a SciQLopPlots WebAssembly build (sciqlopplots.js, sciqlopplots.wasm, qtloader.js). When set, /plot?backend=sciqlopplots draws with it instead of uPlot."},
+                             )
 core = ConfigSection("PROXY_CORE",
                      inventory_update_interval={"default": 60 * 60 * 2, "type_ctor": int, "description": "Interval in seconds to update the inventory."},
                      inventory_sync_poll_interval={"default": 60, "type_ctor": int, "description": "Seconds between shared-store inventory syncs in each worker."},

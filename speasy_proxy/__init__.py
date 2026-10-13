@@ -13,12 +13,13 @@ from datetime import datetime, UTC
 from .index import up_since
 from .api.v1 import api_router as v1_api_router
 from .frontend import frontend_router
+from .frontend.home import CROSS_ORIGIN_ISOLATION
 import logging
 from .backend.inventory_updater import InventoryManager
 from .backend.cache_scrubber import periodic_scrub_loop, scrub_state_path
 from .backend.shared_inventory_store import SharedInventoryStore
 from .backend.request_logging import RequestLoggingMiddleware
-from .config import core as config, index as index_cfg, hapi as hapi_cfg
+from .config import core as config, index as index_cfg, hapi as hapi_cfg, sciqlopplots as sciqlopplots_cfg
 from .hapi import create_hapi_app
 from contextlib import asynccontextmanager
 import speasy as spz
@@ -38,6 +39,15 @@ class RevalidatingJSStaticFiles(StaticFiles):
         response = await super().get_response(path, scope)
         if path.endswith(".js"):
             response.headers["Cache-Control"] = "no-cache"
+        return response
+
+
+class CrossOriginIsolatedStaticFiles(StaticFiles):
+    # The wasm threads are workers started from sciqlopplots.js: an isolated page only
+    # starts workers whose script carries a compatible embedder policy.
+    async def get_response(self, path, scope):
+        response = await super().get_response(path, scope)
+        response.headers.update(CROSS_ORIGIN_ISOLATION)
         return response
 
 
@@ -83,6 +93,8 @@ def get_application(lifespan=None) -> FastAPI:
         _app.include_router(frontend_router)
         _app.include_router(v1_api_router)
         _app.mount("/static/", RevalidatingJSStaticFiles(directory=f"{os.path.dirname(os.path.abspath(__file__))}/static"), name="static")
+        if sciqlopplots_cfg.path.get():
+            _app.mount("/sciqlopplots/", CrossOriginIsolatedStaticFiles(directory=sciqlopplots_cfg.path.get()), name="sciqlopplots")
     _app.mount("/hapi", _make_hapi_app(_app))
 
     up_since.set(datetime.now(UTC))

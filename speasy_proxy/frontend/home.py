@@ -3,10 +3,16 @@ from typing import Annotated
 from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
 from .routes import router
+from ..config import sciqlopplots as sciqlopplots_cfg
 import logging
 import os
 
 log = logging.getLogger(__name__)
+
+# Wasm threads need SharedArrayBuffer, which browsers only give cross-origin isolated
+# pages. credentialless rather than require-corp: the page also loads flatpickr from a CDN.
+CROSS_ORIGIN_ISOLATION = {"Cross-Origin-Opener-Policy": "same-origin",
+                          "Cross-Origin-Embedder-Policy": "credentialless"}
 
 templates = Jinja2Templates(directory=f"{os.path.dirname(os.path.abspath(__file__))}/../templates")
 
@@ -30,10 +36,19 @@ def home(request: Request, user_agent: Annotated[str | None, Header()] = None,
     return templates.TemplateResponse(request, name="index.html", context={"request": request, 'base_url': base_url})
 
 
+def _plot_backend(requested: str | None) -> str:
+    return "sciqlopplots" if requested == "sciqlopplots" and sciqlopplots_cfg.path.get() else ""
+
+
 @router.get('/plot', response_class=HTMLResponse)
-def plot(request: Request, x_scheme: Annotated[str | None, Header()] = None):
+def plot(request: Request, backend: str | None = None, x_scheme: Annotated[str | None, Header()] = None):
     base_url = _build_base_url(request, x_scheme)
-    return templates.TemplateResponse(request, name="plot.html", context={"request": request, 'base_url': base_url})
+    plot_backend = _plot_backend(backend)
+    response = templates.TemplateResponse(request, name="plot.html", context={
+        "request": request, 'base_url': base_url, 'plot_backend': plot_backend})
+    if plot_backend:
+        response.headers.update(CROSS_ORIGIN_ISOLATION)
+    return response
 
 
 @router.get('/demo_3d', response_class=HTMLResponse)

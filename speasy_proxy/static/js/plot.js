@@ -15,6 +15,7 @@ import {
 import { spectrogramTables } from './spectrogram.js';
 import { fetchData as apiFetchData, fetchInventory } from './api-client.js';
 import { createPlotView, PRODUCT_MIME } from './plot-view.js';
+import { createPlotView as createSciQLopPlotsView } from './plot-view-sciqlopplots.js';
 import { presetConfig, configStory, pythonSnippet, dataUrls, historyMode, addRecent, recentsFrom, recentLabel,
     savePreset, removePreset, userPresetsFrom } from './plot-share.js';
 
@@ -417,12 +418,21 @@ import { presetConfig, configStory, pythonSnippet, dataUrls, historyMode, addRec
 
     function initChart() {
         const el = document.getElementById('chart');
-        plotView = createPlotView(el, { onViewChange, onAction: subplotAction, paramSpecsOf, coverageOf });
+        plotView = chartBackend()(el, { onViewChange, onAction: subplotAction, paramSpecsOf, coverageOf });
         let resizeRaf = 0;
         new ResizeObserver(() => {
             if (resizeRaf) return;
             resizeRaf = requestAnimationFrame(() => { resizeRaf = 0; plotView.resize(); });
         }).observe(el);
+    }
+
+    // SciQLopPlots runs wasm threads, which need a cross-origin isolated page: browsers
+    // without credentialless COEP (Safari) keep uPlot.
+    function chartBackend() {
+        if (window.SPEASY_PLOT_BACKEND !== 'sciqlopplots') return createPlotView;
+        if (window.crossOriginIsolated) return createSciQLopPlotsView;
+        console.warn('SciQLopPlots needs a cross-origin isolated page; drawing with uPlot');
+        return createPlotView;
     }
 
     function bindControls() {
@@ -526,7 +536,8 @@ import { presetConfig, configStory, pythonSnippet, dataUrls, historyMode, addRec
 
     function exportPng() {
         if (!plotView || plotState.plots.length === 0) return;
-        download(plotView.toDataURL(2, '#0b0e17'), 'speasy-plot.png');
+        const png = plotView.toDataURL(2, '#0b0e17');
+        if (png) download(png, 'speasy-plot.png');
     }
 
     // Line data of the visible window, one CSV block per product; spectrograms are skipped.
