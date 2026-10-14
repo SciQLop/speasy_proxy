@@ -4,7 +4,7 @@
 // panel: pan/zoom, the shared time axis, legends and the crosshair are SciQLopPlots' own.
 // simplify: no per-subplot toolbar or badges, and events are shown read-only (no
 // Shift+drag to add one, no dragging to move one). Port them once this backend is kept.
-import { productTitle, dropZone } from './plot-core.js';
+import { productTitle } from './plot-core.js';
 import { utcMs } from './common.js';
 import { PRODUCT_MIME } from './plot-view.js';
 
@@ -27,17 +27,20 @@ export function lineColumns(cache) {
   };
 }
 
-// The onAction a product dropped offsetY px down a panel of `height` px with `count`
-// subplots asks for: into a subplot, or a new one on its edge (dropZone), as in plot-view.js.
-// simplify: the library gives no plot geometry, so subplots are taken as equal slices of the
-// panel; a drop near a border can land one subplot off. Ask SciQLopPlots for plot rects to fix.
-export function dropAction(offsetY, height, count) {
+const EDGE_PX = 12;
+
+// The onAction a product dropped at (x, y) px in the panel asks for, plotAt being the panel's:
+// into the plot under it, or a new subplot when it lands within EDGE_PX of a plot's top or
+// bottom, in a gap, or away from every plot.
+export function dropAction(plotAt, x, y, count) {
   if (count === 0) return { type: 'addProduct', index: null };
-  const slice = height / count;
-  const index = Math.min(count - 1, Math.floor(offsetY / slice));
-  const zone = dropZone(offsetY - index * slice, slice);
-  if (zone === 'into') return { type: 'addProduct', index };
-  return { type: 'insertProduct', index: zone === 'before' ? index : index + 1 };
+  const indexAt = (dy) => plotAt(x, y + dy)?.index ?? null;
+  const [above, here, below] = [indexAt(-EDGE_PX), indexAt(0), indexAt(EDGE_PX)];
+  const insert = (index) => ({ type: 'insertProduct', index });
+  if (here === null) return insert(above !== null ? above + 1 : below ?? count);
+  if (above !== here) return insert(here);
+  if (below !== here) return insert(here + 1);
+  return { type: 'addProduct', index: here };
 }
 
 // A spectrogram: one shared y axis, or one per row (n × m) when its channels change over time.
@@ -87,7 +90,8 @@ export function createPlotView(root, { onViewChange, onAction = () => {} }) {
   let spans = [];
   let view = { start: null, end: null };
 
-  bindProductDrops(root, (offsetY, height, path) => onAction({ ...dropAction(offsetY, height, plots.length), path }));
+  bindProductDrops(root, (x, y, path) =>
+    onAction({ ...dropAction((px, py) => panel.plotAt(px, py), x, y, panel ? plots.length : 0), path }));
   loadSciQLopPlots(root)
     .then((loaded) => {
       panel = loaded;
@@ -216,6 +220,6 @@ function bindProductDrops(root, onDrop) {
     e.preventDefault();
     e.stopPropagation();
     const r = root.getBoundingClientRect();
-    onDrop(e.clientY - r.top, r.height, path);
+    onDrop(e.clientX - r.left, e.clientY - r.top, path);
   }, { capture: true });
 }

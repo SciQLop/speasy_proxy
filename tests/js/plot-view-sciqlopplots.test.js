@@ -37,22 +37,31 @@ describe('colormapArrays', () => {
 });
 
 describe('dropAction', () => {
+  // A fake panel.plotAt: two plots, rows 0-290 and 310-600, a gap between them.
+  const plotAt = (x, y) => (y >= 0 && y <= 290 ? { index: 0 } : y >= 310 && y <= 600 ? { index: 1 } : null);
+  const drop = (y) => dropAction(plotAt, 100, y, 2);
+
   it('adds a new subplot when the panel is empty', () => {
-    expect(dropAction(10, 600, 0)).toEqual({ type: 'addProduct', index: null });
+    expect(dropAction(() => null, 100, 10, 0)).toEqual({ type: 'addProduct', index: null });
   });
 
-  it('adds into the subplot under the pointer, the panel split evenly', () => {
-    expect(dropAction(150, 600, 2)).toEqual({ type: 'addProduct', index: 0 });
-    expect(dropAction(450, 600, 2)).toEqual({ type: 'addProduct', index: 1 });
+  it('adds into the plot under the pointer', () => {
+    expect(drop(150)).toEqual({ type: 'addProduct', index: 0 });
+    expect(drop(450)).toEqual({ type: 'addProduct', index: 1 });
   });
 
-  it('inserts a new subplot on the edge of one', () => {
-    expect(dropAction(5, 600, 2)).toEqual({ type: 'insertProduct', index: 0 });
-    expect(dropAction(295, 600, 2)).toEqual({ type: 'insertProduct', index: 1 });
-    expect(dropAction(599, 600, 2)).toEqual({ type: 'insertProduct', index: 2 });
+  it('inserts a new subplot on the top or bottom edge of a plot', () => {
+    expect(drop(5)).toEqual({ type: 'insertProduct', index: 0 });
+    expect(drop(285)).toEqual({ type: 'insertProduct', index: 1 });
+    expect(drop(315)).toEqual({ type: 'insertProduct', index: 1 });
+    expect(drop(595)).toEqual({ type: 'insertProduct', index: 2 });
   });
 
-  it('keeps a drop on the bottom pixel in the last subplot', () => {
-    expect(dropAction(600, 600, 2)).toEqual({ type: 'insertProduct', index: 2 });
+  it('inserts a new subplot after the plot above a gap', () => {
+    expect(drop(300)).toEqual({ type: 'insertProduct', index: 1 });
+  });
+
+  it('appends a new subplot when nothing is near the pointer', () => {
+    expect(drop(700)).toEqual({ type: 'insertProduct', index: 2 });
   });
 });
