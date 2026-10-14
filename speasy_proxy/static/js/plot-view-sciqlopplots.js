@@ -2,11 +2,11 @@
 // drawn by SciQLopPlots built for WebAssembly (its sciqlopplots.mjs library), served at
 // /sciqlopplots/ when the proxy has SPEASY_PROXY_SCIQLOPPLOTS_PATH. Qt draws the whole
 // panel: pan/zoom, the shared time axis, legends and the crosshair are SciQLopPlots' own.
-// simplify: no per-subplot toolbar, badges or drop targets, and events are shown read-only
-// (no Shift+drag to add one, no dragging to move one); products are added with the tree's
-// + button. Port them once this backend is kept.
-import { productTitle } from './plot-core.js';
+// simplify: no per-subplot toolbar or badges, and events are shown read-only (no
+// Shift+drag to add one, no dragging to move one). Port them once this backend is kept.
+import { productTitle, dropZone } from './plot-core.js';
 import { utcMs } from './common.js';
+import { PRODUCT_MIME } from './plot-view.js';
 
 // The uPlot view's colours (plot-view.js), so both backends look the same on the page.
 const THEME = {
@@ -25,6 +25,19 @@ export function lineColumns(cache) {
     t: seconds(cache.times),
     columns: cache.columnNames.map((name) => Float64Array.from(cache.columns[name], numberOrNaN)),
   };
+}
+
+// The onAction a product dropped offsetY px down a panel of `height` px with `count`
+// subplots asks for: into a subplot, or a new one on its edge (dropZone), as in plot-view.js.
+// simplify: the library gives no plot geometry, so subplots are taken as equal slices of the
+// panel; a drop near a border can land one subplot off. Ask SciQLopPlots for plot rects to fix.
+export function dropAction(offsetY, height, count) {
+  if (count === 0) return { type: 'addProduct', index: null };
+  const slice = height / count;
+  const index = Math.min(count - 1, Math.floor(offsetY / slice));
+  const zone = dropZone(offsetY - index * slice, slice);
+  if (zone === 'into') return { type: 'addProduct', index };
+  return { type: 'insertProduct', index: zone === 'before' ? index : index + 1 };
 }
 
 // A spectrogram: one shared y axis, or one per row (n × m) when its channels change over time.
@@ -66,7 +79,7 @@ async function loadSciQLopPlots(root) {
   return spz.panel(root, { theme: { base: 'dark', colors: THEME } });
 }
 
-export function createPlotView(root, { onViewChange }) {
+export function createPlotView(root, { onViewChange, onAction = () => {} }) {
   let panel = null;
   let plots = [];
   let intervals = [];
@@ -74,6 +87,7 @@ export function createPlotView(root, { onViewChange }) {
   let spans = [];
   let view = { start: null, end: null };
 
+  bindProductDrops(root, (offsetY, height, path) => onAction({ ...dropAction(offsetY, height, plots.length), path }));
   loadSciQLopPlots(root)
     .then((loaded) => {
       panel = loaded;
@@ -187,4 +201,21 @@ export function createPlotView(root, { onViewChange }) {
     getView: () => ({ ...view }),
     resize: () => {},          // Qt follows its container's size itself
   };
+}
+
+const carriesProduct = (e) => Array.from(e.dataTransfer?.types || []).includes(PRODUCT_MIME);
+
+// Capture phase: Qt's canvas inside root handles drag events for its own widgets.
+function bindProductDrops(root, onDrop) {
+  root.addEventListener('dragover', (e) => {
+    if (carriesProduct(e)) e.preventDefault();
+  }, { capture: true });
+  root.addEventListener('drop', (e) => {
+    const path = e.dataTransfer?.getData(PRODUCT_MIME);
+    if (!path) return;
+    e.preventDefault();
+    e.stopPropagation();
+    const r = root.getBoundingClientRect();
+    onDrop(e.clientY - r.top, r.height, path);
+  }, { capture: true });
 }
