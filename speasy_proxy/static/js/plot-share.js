@@ -95,11 +95,12 @@ export function historyMode(kind, lastWrite, nowMs, settleMs) {
 
 // Each product once, even when two subplots show it; the same path with other
 // parameters (frame, AMDA arguments) is another product.
+const productKey = (p) => JSON.stringify([p.path, p.coordinate_system, p.product_inputs]);
+
 function distinctProducts(config) {
   const seen = new Map();
   for (const p of config.plots.flatMap((sp) => sp.products)) {
-    const key = JSON.stringify([p.path, p.coordinate_system, p.product_inputs]);
-    if (!seen.has(key)) seen.set(key, p);
+    if (!seen.has(productKey(p))) seen.set(productKey(p), p);
   }
   return [...seen.values()];
 }
@@ -129,7 +130,7 @@ function pyNames(products) {
 }
 
 // One spz.get_data call per product, with the keyword arguments speasy takes
-// (the same ones get_data.py forwards).
+// (the same ones get_data.py forwards), then one matplotlib axis per subplot.
 export function pythonSnippet(config) {
   const start = JSON.stringify(isoTime(config.time_range.start));
   const stop = JSON.stringify(isoTime(config.time_range.stop));
@@ -141,7 +142,28 @@ export function pythonSnippet(config) {
     if (p.product_inputs) args.push('product_inputs=' + pyDict(p.product_inputs));
     return names[i] + ' = spz.get_data(' + args.join(', ') + ')';
   });
-  return ['import speasy as spz', '', ...calls, ''].join('\n');
+  const nameOf = new Map(products.map((p, i) => [productKey(p), names[i]]));
+  return ['import speasy as spz', 'import matplotlib.pyplot as plt', '', ...calls, '',
+    ...matplotlibLines(config.plots, nameOf), ''].join('\n');
+}
+
+const pyBool = (b) => (b ? 'True' : 'False');
+
+// Only the choices the view saved: speasy reads the rest (log scales) from the ISTP metadata.
+function plotOptions(sp) {
+  const opts = [];
+  if (sp.y_axis) opts.push('logy=' + pyBool(sp.y_axis.log));
+  if (sp.log_z !== undefined) opts.push('logz=' + pyBool(sp.log_z));
+  if (sp.colormap) opts.push('cmap=' + JSON.stringify(sp.colormap));
+  if (sp.z_range) opts.push('vmin=' + sp.z_range[0], 'vmax=' + sp.z_range[1]);
+  return opts;
+}
+
+function matplotlibLines(plots, nameOf) {
+  const draws = plots.flatMap((sp, i) => sp.products.map((p) =>
+    nameOf.get(productKey(p)) + '.plot(' + [`ax=axes[${i}, 0]`, ...plotOptions(sp)].join(', ') + ')'));
+  return [`fig, axes = plt.subplots(${plots.length}, sharex=True, squeeze=False, layout="constrained", figsize=(10, ${2.5 * plots.length}))`,
+    ...draws, 'plt.show()'];
 }
 
 // "/" and ":" are legal in a query string; keeping them makes the URL readable.

@@ -52,20 +52,35 @@ describe('pythonSnippet', () => {
     expect(pythonSnippet(view)).toContain('lambda_ = spz.get_data(');
   });
 
-  it('fetches each distinct product of the view with speasy', () => {
+  it('fetches each distinct product of the view with speasy, then plots each subplot with matplotlib', () => {
     expect(pythonSnippet(view)).toBe([
       'import speasy as spz',
+      'import matplotlib.pyplot as plt',
       '',
       'thb_peim_velocity_gsm = spz.get_data("cda/THB_L2_MOM/thb_peim_velocity_gsm", "2008-02-26T04:30:00Z", "2008-02-26T05:20:00.500Z")',
       'ace = spz.get_data("ssc/ace", "2008-02-26T04:30:00Z", "2008-02-26T05:20:00.500Z", coordinate_system="gsm")',
       'bepi_sixp = spz.get_data("amda/bepi_sixp", "2008-02-26T04:30:00Z", "2008-02-26T05:20:00.500Z", product_inputs={"side": "1"})',
       '',
+      'fig, axes = plt.subplots(2, sharex=True, squeeze=False, layout="constrained", figsize=(10, 5))',
+      'thb_peim_velocity_gsm.plot(ax=axes[0, 0])',
+      'ace.plot(ax=axes[0, 0])',
+      'thb_peim_velocity_gsm.plot(ax=axes[1, 0])',
+      'bepi_sixp.plot(ax=axes[1, 0])',
+      'plt.show()',
+      '',
     ].join("\n"));
+  });
+
+  it('carries the scales and colours chosen in the view to the plot calls', () => {
+    const tuned = { ...view, plots: [{ products: [{ path: 'cda/X/flux' }],
+      y_axis: { log: false }, log_z: true, colormap: 'turbo', z_range: [1, 1e6] }] };
+    expect(pythonSnippet(tuned))
+      .toContain('flux.plot(ax=axes[0, 0], logy=False, logz=True, cmap="turbo", vmin=1, vmax=1000000)');
   });
 
   it('gives a product the same name twice only once, and never a name Python rejects', () => {
     const twice = { ...view, plots: [{ products: [{ path: 'ssc/ace', coordinate_system: 'gse' }, { path: 'ssc/ace', coordinate_system: 'gsm' }, { path: 'amda/1-min.b' }] }] };
-    const names = pythonSnippet(twice).split("\n").slice(2, 5).map((l) => l.split(' = ')[0]);
+    const names = pythonSnippet(twice).split("\n").slice(3, 6).map((l) => l.split(' = ')[0]);
     expect(names).toEqual(['ace', 'ace_2', '_1_min_b']);
   });
 });
