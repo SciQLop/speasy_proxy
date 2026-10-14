@@ -149,13 +149,17 @@ export function pythonSnippet(config) {
 
 const pyBool = (b) => (b ? 'True' : 'False');
 
+// A share link can carry anything: only finite numbers reach the code the user will run.
+const finitePair = (range) =>
+  Array.isArray(range) && range.length === 2 && range.every((v) => typeof v === 'number' && Number.isFinite(v));
+
 // Only the choices the view saved: speasy reads the rest (log scales) from the ISTP metadata.
 function plotOptions(sp) {
   const opts = [];
   if (sp.y_axis) opts.push('logy=' + pyBool(sp.y_axis.log));
   if (sp.log_z !== undefined) opts.push('logz=' + pyBool(sp.log_z));
   if (sp.colormap) opts.push('cmap=' + JSON.stringify(sp.colormap));
-  if (sp.z_range) opts.push('vmin=' + sp.z_range[0], 'vmax=' + sp.z_range[1]);
+  if (finitePair(sp.z_range)) opts.push('vmin=' + sp.z_range[0], 'vmax=' + sp.z_range[1]);
   return opts;
 }
 

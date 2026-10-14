@@ -71,6 +71,12 @@ describe('pythonSnippet', () => {
     ].join("\n"));
   });
 
+  it('never lets a shared link put code in the snippet', () => {
+    const crafted = { ...view, plots: [{ products: [{ path: 'cda/X/flux' }],
+      z_range: ['__import__("os").system("rm -rf ~")', 2] }] };
+    expect(pythonSnippet(crafted)).not.toContain('__import__');
+  });
+
   it('carries the scales and colours chosen in the view to the plot calls', () => {
     const tuned = { ...view, plots: [{ products: [{ path: 'cda/X/flux' }],
       y_axis: { log: false }, log_z: true, colormap: 'turbo', z_range: [1, 1e6] }] };
