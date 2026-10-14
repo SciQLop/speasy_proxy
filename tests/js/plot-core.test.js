@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
-  mergeSorted, spliceRows, mergeIntervals, evictProductCache,
+  spliceColumns, spliceRows, mergeIntervals, evictProductCache,
   detectPlotType, configToBase64, base64ToConfig, isCovered, resolutionSufficient, rangesOverlap, trimCacheWindow, cacheToCsv,
   createSubplotData, createProductCache, subplotToConfig, subplotFromConfig, paramValue, withParam, editedRange, zRangeOf, outOfCoverage, formatSpan,
   normalizeWheelDelta, wheelIntent, zoomRange, panRange, zoomToward, pinchRange, structureKey, resampleTarget,
@@ -9,10 +9,12 @@ import {
 } from '../../speasy_proxy/static/js/plot-core.js';
 
 describe('merge', () => {
-  it('mergeSorted interleaves by time, preferring new on ties', () => {
-    const r = mergeSorted([1, 3], [2, 3], { a: [10, 30] }, [[20], [99]], ['a']);
-    expect(r.times).toEqual([1, 2, 3]);
-    expect(r.columns.a).toEqual([10, 20, 99]);
+  // A zoom-in fetch interleaved with the coarse rows of an earlier zoom-out made uneven
+  // steps, and SciQLopPlots breaks a line at an uneven step: the line drew as dashes.
+  it('spliceColumns replaces the old line rows inside the fetched window', () => {
+    const r = spliceColumns([0, 10, 20, 30, 40], { a: [0, 10, 20, 30, 40] }, [15, 25], [[15], [25]], ['a'], 12, 32);
+    expect(r.times).toEqual([0, 10, 15, 25, 40]);
+    expect(r.columns.a).toEqual([0, 10, 15, 25, 40]);
   });
   it('spliceRows puts new rows next to old ones outside the fetched window', () => {
     const r = spliceRows([1, 4], [[1, 1], [4, 4]], [2], [[2, 2]], 2, 3);

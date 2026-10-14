@@ -169,37 +169,13 @@ export function spliceRows(oldTimes, oldRows, newTimes, newRows, startMs, stopMs
   };
 }
 
-export function mergeSorted(oldTimes, newTimes, oldColumns, newValues, columnNames) {
-  const resultTimes = [];
-  const resultColumns = {};
-  for (const cn of columnNames) resultColumns[cn] = [];
-  let i = 0, j = 0;
-  while (i < oldTimes.length && j < newTimes.length) {
-    if (oldTimes[i] < newTimes[j]) {
-      resultTimes.push(oldTimes[i]);
-      for (const cn of columnNames) resultColumns[cn].push(oldColumns[cn][i]);
-      i++;
-    } else if (oldTimes[i] > newTimes[j]) {
-      resultTimes.push(newTimes[j]);
-      for (let c = 0; c < columnNames.length; c++) resultColumns[columnNames[c]].push(newValues[j][c]);
-      j++;
-    } else {
-      resultTimes.push(newTimes[j]);
-      for (let c = 0; c < columnNames.length; c++) resultColumns[columnNames[c]].push(newValues[j][c]);
-      i++; j++;
-    }
-  }
-  while (i < oldTimes.length) {
-    resultTimes.push(oldTimes[i]);
-    for (const cn of columnNames) resultColumns[cn].push(oldColumns[cn][i]);
-    i++;
-  }
-  while (j < newTimes.length) {
-    resultTimes.push(newTimes[j]);
-    for (let c = 0; c < columnNames.length; c++) resultColumns[columnNames[c]].push(newValues[j][c]);
-    j++;
-  }
-  return { times: resultTimes, columns: resultColumns };
+// spliceRows for a line cache, which holds one array per column.
+export function spliceColumns(oldTimes, oldColumns, newTimes, newValues, columnNames, startMs, stopMs) {
+  const splice = (oldRows, newRows) => spliceRows(oldTimes, oldRows, newTimes, newRows, startMs, stopMs);
+  return {
+    times: splice([], []).times,
+    columns: Object.fromEntries(columnNames.map((cn, c) => [cn, splice(oldColumns[cn], newValues.map((row) => row[c])).rows])),
+  };
 }
 
 export function mergeIntervals(intervals) {

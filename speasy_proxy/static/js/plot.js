@@ -6,7 +6,7 @@ import {
 import { getDisplayName, getProductPath, shouldSkipNode, SKIP_KEYS, isSpzMetaKey, isSelectableProduct, browsableChildKeys, hasSelectableDescendant, paramSpecs, nodeTooltip } from './inventory-tree.js';
 import {
   createSubplotData, createProductCache, subplotToConfig, subplotFromConfig,
-  detectPlotType, mergeSorted, spliceRows, mergeIntervals, evictProductCache,
+  detectPlotType, spliceColumns, spliceRows, mergeIntervals, evictProductCache,
   configToBase64, base64ToConfig, isCovered, resolutionSufficient, rangesOverlap, trimCacheWindow, cacheToCsv,
   structureKey, resampleTarget, plotTypeFromCache, computeValueRange, mergeValueRange, cleanText, distinctCrumbs,
   logHintFromRange,
@@ -962,7 +962,7 @@ import { presetConfig, configStory, pythonSnippet, dataUrls, viewQuery, shareQrS
                 cache.rows = merged.rows;
                 cache.valueRange = mergeValueRange(cache.valueRange, cache.rows, newValues);
             } else {
-                const merged = mergeSorted(cache.times, newTimes, cache.columns, newValues, cache.columnNames);
+                const merged = spliceColumns(cache.times, cache.columns, newTimes, newValues, cache.columnNames, fetchStart, fetchStop);
                 cache.times = merged.times;
                 cache.columns = merged.columns;
             }
