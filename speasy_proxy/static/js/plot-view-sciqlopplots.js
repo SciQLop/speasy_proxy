@@ -27,20 +27,10 @@ export function lineColumns(cache) {
   };
 }
 
-const EDGE_PX = 12;
-
-// The onAction a product dropped at (x, y) px in the panel asks for, plotAt being the panel's:
-// into the plot under it, or a new subplot when it lands within EDGE_PX of a plot's top or
-// bottom, in a gap, or away from every plot.
-export function dropAction(plotAt, x, y, count) {
-  if (count === 0) return { type: 'addProduct', index: null };
-  const indexAt = (dy) => plotAt(x, y + dy)?.index ?? null;
-  const [above, here, below] = [indexAt(-EDGE_PX), indexAt(0), indexAt(EDGE_PX)];
-  const insert = (index) => ({ type: 'insertProduct', index });
-  if (here === null) return insert(above !== null ? above + 1 : below ?? count);
-  if (above !== here) return insert(here);
-  if (below !== here) return insert(here + 1);
-  return { type: 'addProduct', index: here };
+// The onAction a product dropped on the panel asks for. target comes from the panel's
+// acceptDrops: the plot dropped on, or the new plot it made where its placeholder showed.
+export function dropAction({ index, newPlot }) {
+  return { type: newPlot ? 'insertProduct' : 'addProduct', index };
 }
 
 // A spectrogram: one shared y axis, or one per row (n × m) when its channels change over time.
@@ -90,12 +80,11 @@ export function createPlotView(root, { onViewChange, onAction = () => {} }) {
   let spans = [];
   let view = { start: null, end: null };
 
-  bindProductDrops(root, (x, y, path) =>
-    onAction({ ...dropAction((px, py) => panel.plotAt(px, py), x, y, panel ? plots.length : 0), path }));
   loadSciQLopPlots(root)
     .then((loaded) => {
       panel = loaded;
       panel.on('timeRangeChanged', onTimeRangeChanged);
+      panel.acceptDrops(PRODUCT_MIME, (target, path) => onAction({ ...dropAction(target), path }));
       draw();
     })
     .catch((e) => {
@@ -205,27 +194,4 @@ export function createPlotView(root, { onViewChange, onAction = () => {} }) {
     getView: () => ({ ...view }),
     resize: () => {},          // Qt follows its container's size itself
   };
-}
-
-const carriesProduct = (e) => Array.from(e.dataTransfer?.types || []).includes(PRODUCT_MIME);
-
-// Capture phase, stopped there: Qt's window inside root handles drags too, and on dragover it
-// sets dropEffect 'none' when no Qt widget takes one, after which the browser fires no drop.
-export function bindProductDrops(root, onDrop) {
-  const acceptProduct = (e) => {
-    if (!carriesProduct(e)) return;
-    e.preventDefault();
-    e.stopPropagation();
-    e.dataTransfer.dropEffect = 'copy';
-  };
-  root.addEventListener('dragenter', acceptProduct, { capture: true });
-  root.addEventListener('dragover', acceptProduct, { capture: true });
-  root.addEventListener('drop', (e) => {
-    const path = e.dataTransfer?.getData(PRODUCT_MIME);
-    if (!path) return;
-    e.preventDefault();
-    e.stopPropagation();
-    const r = root.getBoundingClientRect();
-    onDrop(e.clientX - r.left, e.clientY - r.top, path);
-  }, { capture: true });
 }

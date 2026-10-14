@@ -1,5 +1,5 @@
-import { describe, it, expect, vi } from 'vitest';
-import { lineColumns, colormapArrays, dropAction, bindProductDrops } from '../../speasy_proxy/static/js/plot-view-sciqlopplots.js';
+import { describe, it, expect } from 'vitest';
+import { lineColumns, colormapArrays, dropAction } from '../../speasy_proxy/static/js/plot-view-sciqlopplots.js';
 
 const asArray = (typed) => Array.from(typed);
 
@@ -37,80 +37,13 @@ describe('colormapArrays', () => {
 });
 
 describe('dropAction', () => {
-  // A fake panel.plotAt: two plots, rows 0-290 and 310-600, a gap between them.
-  const plotAt = (x, y) => (y >= 0 && y <= 290 ? { index: 0 } : y >= 310 && y <= 600 ? { index: 1 } : null);
-  const drop = (y) => dropAction(plotAt, 100, y, 2);
-
-  it('adds a new subplot when the panel is empty', () => {
-    expect(dropAction(() => null, 100, 10, 0)).toEqual({ type: 'addProduct', index: null });
+  it('adds into the plot the product was dropped on', () => {
+    expect(dropAction({ index: 2, newPlot: false })).toEqual({ type: 'addProduct', index: 2 });
   });
 
-  it('adds into the plot under the pointer', () => {
-    expect(drop(150)).toEqual({ type: 'addProduct', index: 0 });
-    expect(drop(450)).toEqual({ type: 'addProduct', index: 1 });
-  });
-
-  it('inserts a new subplot on the top or bottom edge of a plot', () => {
-    expect(drop(5)).toEqual({ type: 'insertProduct', index: 0 });
-    expect(drop(285)).toEqual({ type: 'insertProduct', index: 1 });
-    expect(drop(315)).toEqual({ type: 'insertProduct', index: 1 });
-    expect(drop(595)).toEqual({ type: 'insertProduct', index: 2 });
-  });
-
-  it('inserts a new subplot after the plot above a gap', () => {
-    expect(drop(300)).toEqual({ type: 'insertProduct', index: 1 });
-  });
-
-  it('appends a new subplot when nothing is near the pointer', () => {
-    expect(drop(700)).toEqual({ type: 'insertProduct', index: 2 });
-  });
-});
-
-describe('bindProductDrops', () => {
-  const PRODUCT = 'application/x-speasy-product';
-  const bind = () => {
-    const handlers = {};
-    const root = {
-      addEventListener: (type, fn, opts) => { handlers[type] = { fn, capture: opts?.capture }; },
-      getBoundingClientRect: () => ({ left: 10, top: 20 }),
-    };
-    const onDrop = vi.fn();
-    bindProductDrops(root, onDrop);
-    return { handlers, onDrop };
-  };
-  const dragEvent = (types, data = {}) => ({
-    clientX: 110, clientY: 220,
-    dataTransfer: { types, dropEffect: 'none', getData: (t) => data[t] ?? '' },
-    preventDefault: vi.fn(), stopPropagation: vi.fn(),
-  });
-
-  // Qt's own drag handlers sit inside root: on dragover they set dropEffect 'none' when no
-  // Qt widget takes the drag, and the browser then never fires drop.
-  it('keeps a product drag from Qt and accepts it as a copy, before Qt sees it', () => {
-    const { handlers } = bind();
-    for (const type of ['dragenter', 'dragover']) {
-      const e = dragEvent([PRODUCT]);
-      handlers[type].fn(e);
-      expect(handlers[type].capture).toBe(true);
-      expect(e.preventDefault).toHaveBeenCalled();
-      expect(e.stopPropagation).toHaveBeenCalled();
-      expect(e.dataTransfer.dropEffect).toBe('copy');
-    }
-  });
-
-  it('leaves other drags to Qt', () => {
-    const { handlers } = bind();
-    const e = dragEvent(['Files']);
-    handlers.dragover.fn(e);
-    expect(e.stopPropagation).not.toHaveBeenCalled();
-    expect(e.dataTransfer.dropEffect).toBe('none');
-  });
-
-  it('hands the dropped product and its point in root to onDrop', () => {
-    const { handlers, onDrop } = bind();
-    const e = dragEvent([PRODUCT], { [PRODUCT]: 'amda/imf' });
-    handlers.drop.fn(e);
-    expect(e.stopPropagation).toHaveBeenCalled();
-    expect(onDrop).toHaveBeenCalledWith(100, 200, 'amda/imf');
+  // The panel made a new plot at index for the drop (its placeholder); the page makes the subplot.
+  it('inserts a new subplot where the panel placed the new plot', () => {
+    expect(dropAction({ index: 0, newPlot: true })).toEqual({ type: 'insertProduct', index: 0 });
+    expect(dropAction({ index: 3, newPlot: true })).toEqual({ type: 'insertProduct', index: 3 });
   });
 });
