@@ -1,5 +1,5 @@
-import { describe, it, expect } from 'vitest';
-import { lineColumns, colormapArrays, dropAction } from '../../speasy_proxy/static/js/plot-view-sciqlopplots.js';
+import { describe, it, expect, vi } from 'vitest';
+import { lineColumns, colormapArrays, dropAction, bindProductDrops } from '../../speasy_proxy/static/js/plot-view-sciqlopplots.js';
 
 const asArray = (typed) => Array.from(typed);
 
@@ -63,5 +63,54 @@ describe('dropAction', () => {
 
   it('appends a new subplot when nothing is near the pointer', () => {
     expect(drop(700)).toEqual({ type: 'insertProduct', index: 2 });
+  });
+});
+
+describe('bindProductDrops', () => {
+  const PRODUCT = 'application/x-speasy-product';
+  const bind = () => {
+    const handlers = {};
+    const root = {
+      addEventListener: (type, fn, opts) => { handlers[type] = { fn, capture: opts?.capture }; },
+      getBoundingClientRect: () => ({ left: 10, top: 20 }),
+    };
+    const onDrop = vi.fn();
+    bindProductDrops(root, onDrop);
+    return { handlers, onDrop };
+  };
+  const dragEvent = (types, data = {}) => ({
+    clientX: 110, clientY: 220,
+    dataTransfer: { types, dropEffect: 'none', getData: (t) => data[t] ?? '' },
+    preventDefault: vi.fn(), stopPropagation: vi.fn(),
+  });
+
+  // Qt's own drag handlers sit inside root: on dragover they set dropEffect 'none' when no
+  // Qt widget takes the drag, and the browser then never fires drop.
+  it('keeps a product drag from Qt and accepts it as a copy, before Qt sees it', () => {
+    const { handlers } = bind();
+    for (const type of ['dragenter', 'dragover']) {
+      const e = dragEvent([PRODUCT]);
+      handlers[type].fn(e);
+      expect(handlers[type].capture).toBe(true);
+      expect(e.preventDefault).toHaveBeenCalled();
+      expect(e.stopPropagation).toHaveBeenCalled();
+      expect(e.dataTransfer.dropEffect).toBe('copy');
+    }
+  });
+
+  it('leaves other drags to Qt', () => {
+    const { handlers } = bind();
+    const e = dragEvent(['Files']);
+    handlers.dragover.fn(e);
+    expect(e.stopPropagation).not.toHaveBeenCalled();
+    expect(e.dataTransfer.dropEffect).toBe('none');
+  });
+
+  it('hands the dropped product and its point in root to onDrop', () => {
+    const { handlers, onDrop } = bind();
+    const e = dragEvent([PRODUCT], { [PRODUCT]: 'amda/imf' });
+    handlers.drop.fn(e);
+    expect(e.stopPropagation).toHaveBeenCalled();
+    expect(onDrop).toHaveBeenCalledWith(100, 200, 'amda/imf');
   });
 });

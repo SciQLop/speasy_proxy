@@ -209,11 +209,17 @@ export function createPlotView(root, { onViewChange, onAction = () => {} }) {
 
 const carriesProduct = (e) => Array.from(e.dataTransfer?.types || []).includes(PRODUCT_MIME);
 
-// Capture phase: Qt's canvas inside root handles drag events for its own widgets.
-function bindProductDrops(root, onDrop) {
-  root.addEventListener('dragover', (e) => {
-    if (carriesProduct(e)) e.preventDefault();
-  }, { capture: true });
+// Capture phase, stopped there: Qt's window inside root handles drags too, and on dragover it
+// sets dropEffect 'none' when no Qt widget takes one, after which the browser fires no drop.
+export function bindProductDrops(root, onDrop) {
+  const acceptProduct = (e) => {
+    if (!carriesProduct(e)) return;
+    e.preventDefault();
+    e.stopPropagation();
+    e.dataTransfer.dropEffect = 'copy';
+  };
+  root.addEventListener('dragenter', acceptProduct, { capture: true });
+  root.addEventListener('dragover', acceptProduct, { capture: true });
   root.addEventListener('drop', (e) => {
     const path = e.dataTransfer?.getData(PRODUCT_MIME);
     if (!path) return;
