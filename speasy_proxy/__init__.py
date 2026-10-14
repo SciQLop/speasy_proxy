@@ -15,7 +15,7 @@ from .api.v1 import api_router as v1_api_router
 from .frontend import frontend_router
 from .frontend.home import CROSS_ORIGIN_ISOLATION
 import logging
-from .backend.inventory_updater import InventoryManager
+from .backend.inventory_updater import InventoryManager, update_inventories
 from .backend.cache_scrubber import periodic_scrub_loop, scrub_state_path
 from .backend.shared_inventory_store import SharedInventoryStore
 from .backend.request_logging import RequestLoggingMiddleware
@@ -27,7 +27,7 @@ import speasy as spz
 log = logging.getLogger(__name__)
 
 log.info("Updating inventories at import time (runs once with --preload)...")
-spz.update_inventories()
+update_inventories()
 log.info("Inventories updated.")
 
 

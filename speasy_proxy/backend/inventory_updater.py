@@ -18,7 +18,15 @@ from speasy_proxy.api.compression import compress_if_asked
 from .shared_inventory_store import SharedInventoryStore
 from ..config import core as config, index as index_cfg
 
+try:
+    from .hapi_dumps import hapi_inventory
+except ImportError:  # speasy without the HAPI provider
+    hapi_inventory = None
+
 log = logging.getLogger(__name__)
+
+# Served in place of speasy's own tree node, by provider (see update_inventories).
+_served_overrides: Dict[str, SpeasyIndex] = {}
 
 _INVENTORY_KEY = "inventory/{provider}/{fmt}"
 
@@ -38,6 +46,26 @@ def _default_shared_path() -> str:
 def _available_providers() -> set:
     """Providers that are both enabled in speasy and present in the loaded tree."""
     return set(PROVIDERS).intersection(tree.__dict__.keys())
+
+
+def update_inventories():
+    """speasy's inventories, then the HAPI servers' products from their nightly dumps."""
+    spz.update_inventories()
+    update_hapi_dumps()
+
+
+def update_hapi_dumps():
+    """Network (~33 MB): run it outside the tree lock, speasy's tree is only read."""
+    if hapi_inventory is not None and "hapi" in tree.__dict__:
+        _served_overrides["hapi"] = hapi_inventory(tree.__dict__["hapi"])
+
+
+def _served(provider: str) -> SpeasyIndex:
+    return _served_overrides[provider] if provider in _served_overrides else tree.__dict__[provider]
+
+
+def _served_all() -> SpeasyIndex:
+    return SpeasyIndex(name="all", provider="speasy_proxy", uid="", meta={**tree.__dict__, **_served_overrides})
 
 
 class InventoryManager:
@@ -147,9 +175,8 @@ class InventoryManager:
         self._ensure_tree_build_date()
         result: Dict[str, bytes | str] = {}
         for provider in _available_providers():
-            self._build_eager_inventories(tree.__dict__[provider], provider, result)
-        _all = SpeasyIndex(name="all", provider="speasy_proxy", uid="", meta=tree.__dict__)
-        self._build_eager_inventories(_all, "all", result)
+            self._build_eager_inventories(_served(provider), provider, result)
+        self._build_eager_inventories(_served_all(), "all", result)
         return self._compress_all(result)
 
     def _collect_build_dates(self) -> Dict[str, str]:
@@ -245,10 +272,7 @@ class InventoryManager:
             return None
         try:
             with self._tree_lock:
-                if provider == "all":
-                    source = SpeasyIndex(name="all", provider="speasy_proxy", uid="", meta=tree.__dict__)
-                else:
-                    source = tree.__dict__[provider]
+                source = _served_all() if provider == "all" else _served(provider)
                 data = pickle_data(to_dict(source, version=version), pickle_proto)
         except Exception:
             log.exception(f"Failed to lazily build {key}.")
@@ -309,6 +333,7 @@ class InventoryManager:
                 self._shared.set_last_attempt(now)  # set before network so a crash still backs off
                 with self._tree_lock:  # excludes a concurrent lazy build from a torn tree read
                     spz.update_inventories()
+                update_hapi_dumps()
                 payload = self._build_all_inventories()
                 build_dates = self._collect_build_dates()
                 generation = self._shared.publish(payload, build_dates)
