@@ -8,7 +8,7 @@ import {
   createSubplotData, createProductCache, subplotToConfig, subplotFromConfig,
   detectPlotType, spliceColumns, spliceRows, mergeIntervals, evictProductCache,
   configToBase64, base64ToConfig, isCovered, resolutionSufficient, rangesOverlap, trimCacheWindow, cacheToCsv,
-  structureKey, resampleTarget, plotTypeFromCache, computeValueRange, mergeValueRange, cleanText, distinctCrumbs,
+  structureKey, resampleTarget, shiftIntoView, plotTypeFromCache, computeValueRange, mergeValueRange, cleanText, distinctCrumbs,
   logHintFromRange,
   paramValue, withParam, editedRange, formatSpan, colorHex, withHue, formatDuration, fmtEventRange,
 } from './plot-core.js';
@@ -496,7 +496,16 @@ import { presetConfig, configStory, pythonSnippet, dataUrls, viewQuery, shareQrS
             const open = popover.style.display === 'none';
             if (open) fillPopover(popoverId);
             popover.style.display = open ? '' : 'none';  // '': the stylesheet's display
+            if (open) keepInView(popover);
         });
+    }
+
+    // A popover opens rightwards from its button, which may sit at either end of the bar.
+    function keepInView(popover) {
+        popover.style.translate = '';
+        const r = popover.getBoundingClientRect();
+        const shift = shiftIntoView(r.left, r.right, window.innerWidth);
+        popover.style.translate = shift ? shift + 'px' : '';
     }
 
     function fillPopover(popoverId) {

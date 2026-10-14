@@ -490,6 +490,13 @@ export function distinctCrumbs(crumbs) {
 // Where a product dropped at offsetY on a subplot of heightPx goes: a new subplot
 // 'before'/'after' it when near an edge, else 'into' it. Edge bands are 24 px, at most a
 // quarter of the height each, so short plots keep a middle band.
+// The horizontal shift (px) that brings a box spanning [left, right] inside a window of
+// viewportWidth px, `margin` px from its edges; the left edge wins when the box is too wide.
+export function shiftIntoView(left, right, viewportWidth, margin = 8) {
+  const overRight = right - (viewportWidth - margin);
+  return Math.max(margin - left, overRight > 0 ? -overRight : 0);
+}
+
 export function dropZone(offsetY, heightPx) {
   const band = Math.min(24, heightPx / 4);
   if (offsetY < band) return 'before';

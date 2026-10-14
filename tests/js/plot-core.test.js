@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
-  spliceColumns, spliceRows, mergeIntervals, evictProductCache,
+  spliceColumns, spliceRows, shiftIntoView, mergeIntervals, evictProductCache,
   detectPlotType, configToBase64, base64ToConfig, isCovered, resolutionSufficient, rangesOverlap, trimCacheWindow, cacheToCsv,
   createSubplotData, createProductCache, subplotToConfig, subplotFromConfig, paramValue, withParam, editedRange, zRangeOf, outOfCoverage, formatSpan,
   normalizeWheelDelta, wheelIntent, zoomRange, panRange, zoomToward, pinchRange, structureKey, resampleTarget,
@@ -831,5 +831,23 @@ describe('instants and event ranges at the precision that matters', () => {
     expect(fmtEventRange(t0, t0 + 0.0352)).toBe('2020-01-01 13:05:02.123456 — 13:05:02.123491');
     expect(fmtEventRange(t0, t0 + 20)).toBe('2020-01-01 13:05:02.123 — 13:05:02.143');
     expect(fmtEventRange(t0, t0 + 2.5)).toBe('2020-01-01 13:05:02.123456 — 13:05:02.125956');
+  });
+});
+
+describe('shiftIntoView', () => {
+  it('leaves a box that fits alone', () => {
+    expect(shiftIntoView(100, 480, 1200)).toBe(0);
+  });
+
+  it('moves a box that runs off the right edge back in', () => {
+    expect(shiftIntoView(1000, 1380, 1200)).toBe(-188);
+  });
+
+  it('moves a box that starts off the left edge back in', () => {
+    expect(shiftIntoView(-50, 330, 1200)).toBe(58);
+  });
+
+  it('keeps the left edge visible when the box is wider than the window', () => {
+    expect(shiftIntoView(100, 600, 400)).toBe(-92);
   });
 });
