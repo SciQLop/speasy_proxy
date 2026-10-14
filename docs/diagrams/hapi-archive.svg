@@ -1,0 +1,82 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1060 350" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, Helvetica, Arial, sans-serif">
+  <style>
+    text { fill: #1f2937; text-anchor: middle; font-size: 13px; }
+    .title { font-size: 15px; font-weight: 600; }
+    .muted { fill: #64748b; }
+    .label { fill: #64748b; font-size: 12px; }
+    .code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 12.5px; }
+    .speasy-label { fill: #64748b; font-size: 13px; font-weight: 600; text-anchor: start; }
+    .user { fill: #f8fafc; stroke: #cbd5e1; }
+    .proxy { fill: #eef2ff; stroke: #6b8afd; }
+    .lib { fill: #ffffff; stroke: #cbd5e1; }
+    .data { fill: #ecfdf5; stroke: #10b981; }
+    .speasy { fill: #94a3b8; fill-opacity: 0.08; stroke: #94a3b8; stroke-dasharray: 5 4; }
+    .arrow { fill: none; stroke: #94a3b8; stroke-width: 1.6; marker-end: url(#head); }
+    .head { fill: #94a3b8; }
+    @media (prefers-color-scheme: dark) {
+      text { fill: #e5e7eb; }
+      .muted, .label, .speasy-label { fill: #94a3b8; }
+      .user { fill: #1e293b; stroke: #475569; }
+      .proxy { fill: #1e2547; stroke: #6b8afd; }
+      .lib { fill: #161b22; stroke: #475569; }
+      .data { fill: #0f2a24; stroke: #34d399; }
+      .speasy { stroke: #475569; }
+      .arrow { stroke: #64748b; }
+      .head { fill: #64748b; }
+    }
+  </style>
+  <defs>
+    <marker id="head" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0 0 L10 5 L0 10 z" class="head"/>
+    </marker>
+  </defs>
+
+  <rect class="user" x="20" y="135" width="150" height="90" rx="12"/>
+  <text class="title" x="95" y="166">HAPI client</text>
+  <text class="muted" x="95" y="188">hapiclient · Autoplot</text>
+  <text class="muted" x="95" y="206">SciQLop</text>
+
+  <rect class="proxy" x="280" y="100" width="160" height="160" rx="12"/>
+  <text class="title" x="360" y="134">speasy-proxy</text>
+  <text class="muted code" x="360" y="166">/hapi</text>
+  <text class="muted" x="360" y="190">catalog · info</text>
+  <text class="muted" x="360" y="214">data</text>
+
+  <rect class="speasy" x="560" y="12" width="220" height="326" rx="16"/>
+  <text class="speasy-label" x="576" y="36">speasy</text>
+  <rect class="lib" x="580" y="52" width="180" height="64" rx="12"/>
+  <text class="title" x="670" y="80">inventory</text>
+  <text class="muted" x="670" y="100">datasets, parameters</text>
+  <rect class="lib" x="580" y="148" width="180" height="64" rx="12"/>
+  <text class="title" x="670" y="176">archive provider</text>
+  <text class="muted" x="670" y="196">finds the files</text>
+  <rect class="lib" x="580" y="244" width="180" height="74" rx="12"/>
+  <text class="title" x="670" y="274">codec</text>
+  <text class="muted" x="670" y="296">CDF · NetCDF · yours</text>
+
+  <rect class="data" x="890" y="52" width="150" height="64" rx="12"/>
+  <text class="title" x="965" y="80">your YAML</text>
+  <text class="muted" x="965" y="100">what and where</text>
+  <rect class="data" x="890" y="196" width="150" height="80" rx="12"/>
+  <text class="title" x="965" y="228">your files</text>
+  <text class="muted" x="965" y="250">local or http(s)</text>
+
+  <path class="arrow" d="M170 166 L 278 166"/>
+  <text class="label" x="224" y="156">GET /hapi/data</text>
+  <path class="arrow" d="M280 196 L 172 196"/>
+  <text class="label" x="224" y="216">CSV · binary</text>
+
+  <path class="arrow" d="M890 84 L 762 84"/>
+  <text class="label" x="834" y="74">read at startup</text>
+  <text class="label" x="834" y="102">and each refresh</text>
+  <path class="arrow" d="M580 84 C 510 84, 510 130, 442 130"/>
+  <text class="label" x="500" y="80">datasets</text>
+  <path class="arrow" d="M440 180 L 578 180"/>
+  <text class="label" x="509" y="172">get_data()</text>
+  <path class="arrow" d="M760 180 C 825 180, 825 222, 888 222"/>
+  <text class="label" x="834" y="168">file names</text>
+  <path class="arrow" d="M890 250 C 825 250, 825 281, 762 281"/>
+  <text class="label" x="834" y="300">bytes</text>
+  <path class="arrow" d="M580 281 C 510 281, 510 230, 442 230"/>
+  <text class="label" x="505" y="300">SpeasyVariable</text>
+</svg>

@@ -1,0 +1,69 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1040 240" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, Helvetica, Arial, sans-serif">
+  <style>
+    text { fill: #1f2937; text-anchor: middle; font-size: 13px; }
+    .title { font-size: 15px; font-weight: 600; }
+    .muted { fill: #64748b; }
+    .label { fill: #64748b; font-size: 12px; }
+    .data-label { fill: #059669; font-size: 12px; }
+    .user { fill: #f8fafc; stroke: #cbd5e1; }
+    .proxy { fill: #eef2ff; stroke: #6b8afd; }
+    .data { fill: #ecfdf5; stroke: #10b981; }
+    .pill { fill: #ffffff; stroke: #cbd5e1; stroke-dasharray: 3 3; }
+    .arrow { fill: none; stroke: #94a3b8; stroke-width: 1.6; marker-end: url(#head); }
+    .back { fill: none; stroke: #10b981; stroke-width: 1.6; stroke-dasharray: 6 4; marker-end: url(#data-head); }
+    .head { fill: #94a3b8; }
+    .data-head { fill: #10b981; }
+    @media (prefers-color-scheme: dark) {
+      text { fill: #e5e7eb; }
+      .muted, .label { fill: #94a3b8; }
+      .data-label { fill: #34d399; }
+      .user { fill: #1e293b; stroke: #475569; }
+      .proxy { fill: #1e2547; stroke: #6b8afd; }
+      .data { fill: #0f2a24; stroke: #34d399; }
+      .pill { fill: #0d1117; stroke: #475569; }
+      .arrow { stroke: #64748b; }
+      .back { stroke: #34d399; }
+      .head { fill: #64748b; }
+      .data-head { fill: #34d399; }
+    }
+  </style>
+  <defs>
+    <marker id="head" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0 0 L10 5 L0 10 z" class="head"/>
+    </marker>
+    <marker id="data-head" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0 0 L10 5 L0 10 z" class="data-head"/>
+    </marker>
+  </defs>
+
+  <path class="back" d="M905 56 V40 Q905 28 893 28 H147 Q135 28 135 40 V54"/>
+  <path class="back" d="M520 28 V54"/>
+  <text class="data-label" x="712" y="20">the data comes back, cached at each level</text>
+
+  <rect class="user" x="20" y="58" width="230" height="80" rx="12"/>
+  <text class="title" x="135" y="92">Your speasy</text>
+  <text class="muted" x="135" y="114">in the local cache?</text>
+
+  <rect class="proxy" x="405" y="58" width="230" height="80" rx="12"/>
+  <text class="title" x="520" y="92">speasy-proxy</text>
+  <text class="muted" x="520" y="114">in the shared cache?</text>
+
+  <rect class="data" x="790" y="58" width="230" height="80" rx="12"/>
+  <text class="title" x="905" y="92">Provider</text>
+  <text class="muted" x="905" y="114">e.g. CDAWeb</text>
+
+  <path class="arrow" d="M250 98 L 403 98"/>
+  <text class="label" x="327" y="88">no: GET /get_data</text>
+  <path class="arrow" d="M635 98 L 788 98"/>
+  <text class="label" x="712" y="88">no: fetch</text>
+
+  <path class="arrow" d="M135 138 L 135 180"/>
+  <text class="label" x="148" y="164" style="text-anchor: start">yes</text>
+  <rect class="pill" x="40" y="182" width="190" height="38" rx="19"/>
+  <text class="muted" x="135" y="206">done, no network</text>
+
+  <path class="arrow" d="M520 138 L 520 180"/>
+  <text class="label" x="533" y="164" style="text-anchor: start">yes</text>
+  <rect class="pill" x="425" y="182" width="190" height="38" rx="19"/>
+  <text class="muted" x="520" y="206">no provider call</text>
+</svg>

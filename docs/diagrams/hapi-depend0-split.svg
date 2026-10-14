@@ -1,0 +1,58 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 260" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, Helvetica, Arial, sans-serif">
+  <style>
+    text { fill: #1f2937; text-anchor: middle; font-size: 13px; }
+    .title { font-size: 15px; font-weight: 600; }
+    .muted { fill: #64748b; }
+    .code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 12.5px; }
+    .user { fill: #f8fafc; stroke: #cbd5e1; }
+    .epoch { fill: #eef2ff; stroke: #6b8afd; }
+    .epoch-hr { fill: #fff7ed; stroke: #f59e0b; }
+    .arrow { fill: none; stroke: #94a3b8; stroke-width: 1.6; marker-end: url(#head); }
+    .head { fill: #94a3b8; }
+    @media (prefers-color-scheme: dark) {
+      text { fill: #e5e7eb; }
+      .muted { fill: #94a3b8; }
+      .user { fill: #1e293b; stroke: #475569; }
+      .epoch { fill: #1e2547; stroke: #6b8afd; }
+      .epoch-hr { fill: #2d1f0a; stroke: #f59e0b; }
+      .arrow { stroke: #64748b; }
+      .head { fill: #64748b; }
+    }
+  </style>
+  <defs>
+    <marker id="head" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0 0 L10 5 L0 10 z" class="head"/>
+    </marker>
+  </defs>
+
+  <rect class="user" x="20" y="82" width="220" height="96" rx="12"/>
+  <text class="title" x="130" y="112">YAML entry fgm_l2</text>
+  <text class="muted code" x="130" y="138">inventory_path:</text>
+  <text class="muted code" x="130" y="158">my_mission/fgm</text>
+
+  <rect class="epoch" x="330" y="38" width="230" height="54" rx="12"/>
+  <text class="title" x="445" y="61">b_gse</text>
+  <text class="muted code" x="445" y="80">DEPEND_0 = epoch</text>
+  <rect class="epoch" x="330" y="103" width="230" height="54" rx="12"/>
+  <text class="title" x="445" y="126">b_total</text>
+  <text class="muted code" x="445" y="145">DEPEND_0 = epoch</text>
+  <rect class="epoch-hr" x="330" y="168" width="230" height="54" rx="12"/>
+  <text class="title" x="445" y="191">b_hr</text>
+  <text class="muted code" x="445" y="210">DEPEND_0 = epoch_hr</text>
+
+  <rect class="epoch" x="660" y="24" width="320" height="96" rx="12"/>
+  <text class="title" x="820" y="52">HAPI dataset</text>
+  <text class="code" x="820" y="78">archive/my_mission/fgm/fgm_l2@0</text>
+  <text class="muted" x="820" y="102">Time · b_gse · b_total</text>
+  <rect class="epoch-hr" x="660" y="148" width="320" height="96" rx="12"/>
+  <text class="title" x="820" y="176">HAPI dataset</text>
+  <text class="code" x="820" y="202">archive/my_mission/fgm/fgm_l2@1</text>
+  <text class="muted" x="820" y="226">Time · b_hr</text>
+
+  <path class="arrow" d="M240 130 C 285 130, 285 65, 328 65"/>
+  <path class="arrow" d="M240 130 L 328 130"/>
+  <path class="arrow" d="M240 130 C 285 130, 285 195, 328 195"/>
+  <path class="arrow" d="M560 65 C 610 65, 610 62, 658 62"/>
+  <path class="arrow" d="M560 130 C 610 130, 610 88, 658 88"/>
+  <path class="arrow" d="M560 195 C 610 195, 610 196, 658 196"/>
+</svg>

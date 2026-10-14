@@ -1,0 +1,58 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1040 250" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, Helvetica, Arial, sans-serif">
+  <style>
+    text { fill: #1f2937; text-anchor: middle; font-size: 13px; }
+    .title { font-size: 15px; font-weight: 600; }
+    .muted { fill: #64748b; }
+    .label { fill: #64748b; font-size: 12px; }
+    .user { fill: #f8fafc; stroke: #cbd5e1; }
+    .proxy { fill: #eef2ff; stroke: #6b8afd; }
+    .data { fill: #ecfdf5; stroke: #10b981; }
+    .arrow { fill: none; stroke: #94a3b8; stroke-width: 1.6; marker-end: url(#head); }
+    .head { fill: #94a3b8; }
+    @media (prefers-color-scheme: dark) {
+      text { fill: #e5e7eb; }
+      .muted, .label { fill: #94a3b8; }
+      .user { fill: #1e293b; stroke: #475569; }
+      .proxy { fill: #1e2547; stroke: #6b8afd; }
+      .data { fill: #0f2a24; stroke: #34d399; }
+      .arrow { stroke: #64748b; }
+      .head { fill: #64748b; }
+    }
+  </style>
+  <defs>
+    <marker id="head" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0 0 L10 5 L0 10 z" class="head"/>
+    </marker>
+  </defs>
+
+  <rect class="user" x="20" y="30" width="190" height="96" rx="12"/>
+  <text class="title" x="115" y="64">Laptops</text>
+  <text class="muted" x="115" y="88">speasy, pointed at</text>
+  <text class="muted" x="115" y="106">the lab proxy</text>
+
+  <rect class="proxy" x="300" y="30" width="190" height="96" rx="12"/>
+  <text class="title" x="395" y="64">Lab speasy-proxy</text>
+  <text class="muted" x="395" y="88">zero config: chains</text>
+  <text class="muted" x="395" y="106">to the public one</text>
+
+  <rect class="proxy" x="580" y="30" width="190" height="96" rx="12"/>
+  <text class="title" x="675" y="64">Public speasy-proxy</text>
+  <text class="muted" x="675" y="88">talks to</text>
+  <text class="muted" x="675" y="106">the providers</text>
+
+  <rect class="data" x="850" y="30" width="170" height="96" rx="12"/>
+  <text class="title" x="935" y="64">Data providers</text>
+  <text class="muted" x="935" y="88">AMDA · CDAWeb · CSA</text>
+  <text class="muted" x="935" y="106">SSCWeb · 3DView</text>
+
+  <rect class="data" x="300" y="170" width="190" height="66" rx="12"/>
+  <text class="title" x="395" y="198">Lab archive</text>
+  <text class="muted" x="395" y="220">YAML + files</text>
+
+  <path class="arrow" d="M210 78 L 298 78"/>
+  <path class="arrow" d="M490 78 L 578 78"/>
+  <text class="label" x="534" y="68">by default</text>
+  <path class="arrow" d="M770 78 L 848 78"/>
+  <text class="label" x="809" y="68">fetch</text>
+  <path class="arrow" d="M395 126 L 395 168"/>
+</svg>

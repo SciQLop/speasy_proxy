@@ -22,29 +22,7 @@ At startup, speasy reads your YAML files and builds its inventory.
 speasy-proxy turns that inventory into the HAPI catalog.
 A `/data` request then goes down to your files and back:
 
-```mermaid
-flowchart LR
-    client["HAPI client<br/>hapiclient, Autoplot, SciQLop"]
-    subgraph proxy["speasy-proxy (SPEASY_PROXY_HAPI_ONLY=true)"]
-        hapi["/hapi<br/>catalog · info · data"]
-    end
-    subgraph speasy["speasy"]
-        inventory["inventory"]
-        archive["generic archive provider"]
-        codec["codec<br/>CDF · NetCDF · yours"]
-    end
-    yaml[("your YAML files")]
-    files[("your files<br/>local or http(s)")]
-
-    yaml -- "read at startup<br/>and every refresh" --> inventory
-    inventory -- "datasets & parameters" --> hapi
-    client -- "GET /hapi/data" --> hapi
-    hapi -- "get_data(path, start, stop)" --> archive
-    archive -- "url_pattern → file names" --> files
-    files -- "bytes" --> codec
-    codec -- "SpeasyVariable" --> hapi
-    hapi -- "CSV / binary" --> client
-```
+![A HAPI client asks speasy-proxy /hapi. The catalog comes from speasy's inventory, built from your YAML. A data request goes to the archive provider, which finds your files; a codec decodes them into a SpeasyVariable, sent back as CSV or binary.](diagrams/hapi-archive.svg)
 
 Each box on the right is a place to plug in your own code:
 
@@ -82,19 +60,7 @@ The dataset shows up in HAPI as `archive/my_mission/fgm/fgm_l2`.
 Variables on different time axes (`DEPEND_0`) are split into one HAPI dataset each, as `…@0`, `…@1`.
 This is what CDAWeb's own HAPI server does.
 
-```mermaid
-flowchart LR
-    yaml["YAML entry <b>fgm_l2</b><br/>inventory_path: my_mission/fgm"]
-    b_gse["b_gse<br/>DEPEND_0 = epoch"]
-    b_tot["b_total<br/>DEPEND_0 = epoch"]
-    b_hr["b_hr<br/>DEPEND_0 = epoch_hr"]
-    d0["HAPI dataset<br/>archive/my_mission/fgm/fgm_l2@0<br/>Time, b_gse, b_total"]
-    d1["HAPI dataset<br/>archive/my_mission/fgm/fgm_l2@1<br/>Time, b_hr"]
-
-    yaml --> b_gse & b_tot & b_hr
-    b_gse & b_tot --> d0
-    b_hr --> d1
-```
+![The YAML entry fgm_l2 has b_gse and b_total on DEPEND_0 epoch, and b_hr on epoch_hr: they become two HAPI datasets, fgm_l2@0 with Time, b_gse, b_total and fgm_l2@1 with Time, b_hr.](diagrams/hapi-depend0-split.svg)
 
 With a single time axis there is no suffix: just `archive/my_mission/fgm/fgm_l2`.
 

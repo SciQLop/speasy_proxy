@@ -12,44 +12,11 @@ speasy-proxy is speasy behind HTTP.
 Each request runs through the same speasy library you use on your laptop, with its own cache.
 So one fetch from a provider serves every user who asks for the same data after it.
 
-```mermaid
-flowchart LR
-    subgraph you["Your machine"]
-        user_spz["speasy<br/>+ local cache"]
-    end
-    others["curl · JS · Julia · IDL<br/>HAPI clients · browser /plot"]
-    subgraph proxy["speasy-proxy"]
-        api["/get_data · /get_inventory<br/>/hapi · /plot"]
-        proxy_spz["speasy<br/>+ shared cache"]
-        api --> proxy_spz
-    end
-    providers[("AMDA · CDAWeb · CSA<br/>SSCWeb · 3DView<br/>your archives")]
-
-    user_spz -- "python_dict pickle" --> api
-    others -- "JSON · CDF · HAPI CSV/binary" --> api
-    proxy_spz --> providers
-```
+![Your speasy and any HTTP client call the speasy-proxy HTTP API; the proxy runs speasy with a shared cache, which fetches from the data providers.](docs/diagrams/how-it-works.svg)
 
 A request goes down the layers until one has the data:
 
-```mermaid
-sequenceDiagram
-    participant U as your speasy
-    participant P as speasy-proxy
-    participant S as provider (e.g. CDAWeb)
-    U->>U: local cache?
-    alt hit
-        U-->>U: done, no network
-    else miss
-        U->>P: GET /get_data
-        P->>P: shared cache?
-        alt miss
-            P->>S: fetch
-            S-->>P: data (cached for everyone)
-        end
-        P-->>U: data (cached locally)
-    end
-```
+![Your speasy checks its local cache, then asks the proxy, which checks its shared cache, then fetches from the provider. The data comes back cached at each level.](docs/diagrams/two-caches.svg)
 
 Inventories (the product trees) take the same path: speasy downloads them from the proxy, already parsed, instead of crawling every provider.
 
@@ -60,17 +27,7 @@ So it uses a proxy too, and by default that is the public one.
 A speasy-proxy you deploy is therefore already a layer in front of the public instance, with no configuration.
 Add more layers the same way, as many as you want:
 
-```mermaid
-flowchart LR
-    laptops["laptops<br/>speasy"]
-    lab["lab speasy-proxy<br/>zero config: speasy defaults<br/>to the public proxy"]
-    public["public speasy-proxy<br/>talks to the providers"]
-    providers[("AMDA · CDAWeb · CSA · SSCWeb · 3DView")]
-    lab_files[("lab archive<br/>YAML + files")]
-
-    laptops --> lab --> public --> providers
-    lab --> lab_files
-```
+![Laptops point at a lab speasy-proxy, which chains to the public speasy-proxy by default, which talks to the providers. The lab proxy also serves a lab archive.](docs/diagrams/proxy-chaining.svg)
 
 - Each layer caches. The layer closest to the user answers first.
   A lab proxy keeps a busy team's data on the local network.
