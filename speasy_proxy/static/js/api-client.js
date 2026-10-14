@@ -47,13 +47,14 @@ if (typeof globalThis !== 'undefined' && globalThis.SPEASY_USE_CDF) {
 }
 
 // opts: { baseUrl (ends with '/'), path, startISO, stopISO, maxPoints,
-//         coordinateSystem?, productInputs?, signal? }
+//         resampleStrategy?, coordinateSystem?, productInputs?, signal? }
 export function buildDataUrl(o, format = 'json') {
   let url =
     o.baseUrl + 'get_data?format=' + format + '&path=' + encodeURIComponent(o.path) +
     '&start_time=' + encodeURIComponent(o.startISO) +
     '&stop_time=' + encodeURIComponent(o.stopISO) +
     '&max_points=' + o.maxPoints;
+  if (o.resampleStrategy) url += '&resample_strategy=' + o.resampleStrategy;
   if (o.coordinateSystem) url += '&coordinate_system=' + encodeURIComponent(o.coordinateSystem);
   if (o.productInputs) url += '&product_inputs=' + encodeURIComponent(JSON.stringify(o.productInputs));
   return url;

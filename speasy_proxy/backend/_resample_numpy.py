@@ -1,30 +1,26 @@
 import numpy as np
 
 
-def min_max_indices(values: np.ndarray, n_buckets: int) -> np.ndarray:
-    """Return sorted unique indices capturing min and max per bucket per column."""
+def min_max_slots(buckets: np.ndarray, values: np.ndarray, n_buckets: int) -> np.ndarray:
+    """Per time bucket and column, the rows of its two extremes in time order:
+    slots[b, c] = [earlier, later], [-1, -1] where the bucket has no value. `buckets`
+    holds each row's bucket, non-decreasing. Ties keep the first row, as numba does."""
     n, n_cols = values.shape
-    indices = set()
-    indices.add(0)
-    indices.add(n - 1)
-
+    slots = np.full((n_buckets, n_cols, 2), -1, dtype=np.int64)
+    rows = np.arange(n)
     for col in range(n_cols):
-        col_data = values[:, col]
-        for i in range(n_buckets):
-            # Identical integer edges to the numba backend so both return the
-            # same indices regardless of which backend is installed (BL-1).
-            start = int(i * n / n_buckets)
-            end = int((i + 1) * n / n_buckets)
-            if start >= end:
-                continue
-            bucket = col_data[start:end]
-            valid = ~np.isnan(bucket)
-            if not valid.any():
-                continue
-            indices.add(start + int(np.nanargmin(bucket)))
-            indices.add(start + int(np.nanargmax(bucket)))
+        valid = ~np.isnan(values[:, col])
+        r, b, v = rows[valid], buckets[valid], values[valid, col]
+        kept, mins = _first_per_bucket(b, r, np.lexsort((r, v, b)))
+        _, maxs = _first_per_bucket(b, r, np.lexsort((r, -v, b)))
+        slots[kept, col, 0] = np.minimum(mins, maxs)
+        slots[kept, col, 1] = np.maximum(mins, maxs)
+    return slots
 
-    return np.array(sorted(indices))
+
+def _first_per_bucket(buckets, rows, order):
+    kept, first = np.unique(buckets[order], return_index=True)
+    return kept, rows[order][first]
 
 
 def lttb_single_indices(values_1d: np.ndarray, n_out: int) -> np.ndarray:

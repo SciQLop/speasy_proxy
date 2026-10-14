@@ -72,6 +72,77 @@ def test_preserves_time_ordering():
     assert np.all(times[1:] >= times[:-1])
 
 
+def _key_gaps(times):
+    """Steps SciQLopPlots (NeoQCP detectKeyGaps) breaks a line at: wider than 1.5 times
+    the narrower of the two neighbouring steps."""
+    steps = np.diff(np.asarray(times, dtype='int64')).astype(float)
+    return [i for i in range(len(steps))
+            if steps[i] > 1.5 * min(steps[j] for j in (i - 1, i + 1) if 0 <= j < len(steps))]
+
+
+def _irregular_var_with_hole(n_cols=3):
+    """Jittered 1 s sampling with a 1000 s hole, as real instruments give."""
+    rng = np.random.default_rng(5)
+    times_s = np.cumsum(rng.uniform(0.5, 1.5, 20000))
+    keep = (times_s < 8000) | (times_s > 9000)
+    times = (times_s[keep] * 1e9).astype('int64').astype('datetime64[ns]')
+    values = rng.standard_normal((len(times), n_cols))
+    return SpeasyVariable(axes=[VariableTimeAxis(values=times, meta={})],
+                          values=DataContainer(values=values, meta={}, name='b'))
+
+
+def test_min_max_rows_sit_on_a_regular_grid_and_only_real_gaps_break_the_line():
+    """Each column's min and max at their real times were 0 to 2 buckets apart, so
+    SciQLopPlots' gap detection chopped resampled lines into fragments. Two slots per
+    time bucket, at its quarter and three quarters, keep the steps even."""
+    var = _irregular_var_with_hole()
+    result = resample(var, max_points=1000, strategy='min_max')
+    assert len(result) <= 1000
+    hole_start, hole_stop = np.datetime64(8000, 's'), np.datetime64(9000, 's')
+    gaps = _key_gaps(result.time)
+    assert len(gaps) == 1
+    # A row sits up to one bucket from the data it stands for (sub-pixel on a plot).
+    bucket = (var.time[-1] - var.time[0]) / 500
+    assert hole_start - bucket < result.time[gaps[0]] < hole_start + bucket
+    assert hole_stop - bucket < result.time[gaps[0] + 1] < hole_stop + bucket
+
+
+def test_min_max_keeps_each_column_extremes_in_their_order():
+    values = np.zeros((1000, 2))
+    values[5, 0], values[15, 0] = 5.0, -5.0       # column 0: max, then min
+    values[5, 1], values[15, 1] = -7.0, 7.0       # column 1: min, then max
+    var = _make_var(1000, values=values)
+    result = resample(var, max_points=100, strategy='min_max')
+    assert list(result.values[:2, 0]) == [5.0, -5.0]
+    assert list(result.values[:2, 1]) == [-7.0, 7.0]
+
+
+def test_min_max_column_without_data_in_a_bucket_is_nan_there():
+    values = np.random.default_rng(1).standard_normal((1000, 2))
+    values[:100, 1] = np.nan
+    var = _make_var(1000, values=values)
+    result = resample(var, max_points=100, strategy='min_max')
+    assert np.isnan(result.values[:2, 1]).all()
+    assert not np.isnan(result.values[:, 0]).any()
+
+
+def test_min_max_does_not_touch_the_fetched_variable():
+    var = _irregular_var_with_hole()
+    times, values = var.time.copy(), var.values.copy()
+    resample(var, max_points=1000, strategy='min_max')
+    assert np.array_equal(var.time, times) and np.array_equal(var.values, values)
+
+
+def test_min_max_bucketing_survives_multi_year_spans():
+    times = (np.arange(20000) * 3600).astype('datetime64[s]').astype('datetime64[ns]')
+    var = SpeasyVariable(axes=[VariableTimeAxis(values=times, meta={})],
+                         values=DataContainer(values=np.random.default_rng(2).standard_normal((20000, 2)),
+                                              meta={}, name='b'))
+    result = resample(var, max_points=10000, strategy='min_max')
+    assert len(result) <= 10000
+    assert np.all(np.diff(result.time.astype('int64')) > 0)
+
+
 def test_lttb_reduces_points():
     var = _make_var(10000, n_cols=1)
     result = resample(var, max_points=200, strategy='lttb')
@@ -183,16 +254,34 @@ except ImportError:
     HAS_NUMBA = False
 
 
-@pytest.mark.parametrize("n,n_cols,n_buckets", [
-    (100, 1, 10), (1000, 3, 50), (10000, 2, 99),
-])
-def test_min_max_backends_match(n, n_cols, n_buckets):
+def _random_slots_input(rng):
+    n = int(rng.integers(20, 5000))
+    n_cols = int(rng.integers(1, 4))
+    n_buckets = int(rng.integers(2, min(n, 300)))
+    buckets = np.sort(rng.integers(0, n_buckets, n))     # some buckets stay empty
+    values = rng.standard_normal((n, n_cols))
+    values[rng.random((n, n_cols)) < 0.1] = np.nan
+    values[rng.random((n, n_cols)) < 0.05] = 0.0          # ties: the first one wins
+    return buckets, values, n_buckets
+
+
+@pytest.mark.parametrize("seed", range(20))
+def test_min_max_slots_backends_match_randomized(seed):
+    """Property: the two backends must return identical slots for any input,
+    including NaNs, ties and empty buckets, so the served data does not depend on
+    whether numba is installed."""
     if not HAS_NUMBA:
         pytest.skip("numba not installed")
-    values = np.random.default_rng(42).standard_normal((n, n_cols))
-    np_idx = np_backend.min_max_indices(values, n_buckets)
-    nb_idx = nb_backend.min_max_indices(values, n_buckets)
-    np.testing.assert_array_equal(np_idx, nb_idx)
+    buckets, values, n_buckets = _random_slots_input(np.random.default_rng(seed))
+    np.testing.assert_array_equal(np_backend.min_max_slots(buckets, values, n_buckets),
+                                  nb_backend.min_max_slots(buckets, values, n_buckets))
+
+
+def test_min_max_slots_hold_the_earlier_then_the_later_extreme():
+    buckets = np.array([0, 0, 0, 2, 2])
+    values = np.array([[1.0], [3.0], [-1.0], [np.nan], [4.0]])
+    slots = np_backend.min_max_slots(buckets, values, 3)
+    assert slots[:, 0].tolist() == [[1, 2], [-1, -1], [4, 4]]
 
 
 @pytest.mark.parametrize("n,n_out", [
@@ -204,36 +293,6 @@ def test_lttb_backends_match(n, n_out):
     values = np.random.default_rng(42).standard_normal(n)
     np_idx = np_backend.lttb_single_indices(values, n_out)
     nb_idx = nb_backend.lttb_single_indices(values, n_out)
-    np.testing.assert_array_equal(np_idx, nb_idx)
-
-
-def test_min_max_backends_match_diverging_case():
-    """Regression for BL-1: numpy used linspace edges, numba integer edges; they
-    must agree. n=60, n_buckets=22 was a known divergence."""
-    if not HAS_NUMBA:
-        pytest.skip("numba not installed")
-    values = np.random.default_rng(0).standard_normal((60, 2))
-    np_idx = np_backend.min_max_indices(values, 22)
-    nb_idx = nb_backend.min_max_indices(values, 22)
-    np.testing.assert_array_equal(np_idx, nb_idx)
-
-
-@pytest.mark.parametrize("seed", range(20))
-def test_min_max_backends_match_randomized(seed):
-    """Property: the two backends must return identical indices for any input,
-    including NaNs, so the served data does not depend on whether numba is
-    installed."""
-    if not HAS_NUMBA:
-        pytest.skip("numba not installed")
-    rng = np.random.default_rng(seed)
-    n = int(rng.integers(20, 5000))
-    n_cols = int(rng.integers(1, 4))
-    n_buckets = int(rng.integers(2, min(n, 300)))
-    values = rng.standard_normal((n, n_cols))
-    nan_mask = rng.random((n, n_cols)) < 0.1
-    values[nan_mask] = np.nan
-    np_idx = np_backend.min_max_indices(values, n_buckets)
-    nb_idx = nb_backend.min_max_indices(values, n_buckets)
     np.testing.assert_array_equal(np_idx, nb_idx)
 
 

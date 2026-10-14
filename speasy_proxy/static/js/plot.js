@@ -844,8 +844,11 @@ import { presetConfig, configStory, pythonSnippet, dataUrls, historyMode, addRec
         const stopISO = new Date(Math.max(Math.ceil(stopTime), Math.floor(startTime) + 1)).toISOString();
         const chartWidth = document.getElementById('chart')?.clientWidth || 0;
         const maxPoints = resampleTarget(chartWidth, POINTS_PER_PIXEL, BUFFER_RATIO);
+        // min_max keeps every bucket's extremes on a regular time grid, so spikes survive
+        // and SciQLopPlots' gap detection only sees real gaps (the API default is lttb).
         return apiFetchData({
             baseUrl: API_BASE, path: product, startISO, stopISO, maxPoints, signal,
+            resampleStrategy: 'min_max',
             coordinateSystem: extraParams?.coordinateSystem,
             productInputs: extraParams?.productInputs,
         });

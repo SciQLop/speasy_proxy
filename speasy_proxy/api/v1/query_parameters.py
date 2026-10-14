@@ -20,4 +20,4 @@ DataFormat = Annotated[Literal["python_dict", "speasy_variable", "html_bokeh", "
                 "'html_bokeh' returns an interactive HTML plot.")]
 MaxPoints = Annotated[Optional[int], Query(ge=10, description="Target max points per component. None = full resolution.")]
 ResampleStrategy = Annotated[Literal["lttb", "min_max"], Query(
-    description="Downsampling used with max_points: 'lttb' keeps the visual shape, 'min_max' keeps each bucket's extremes.")]
+    description="Downsampling used with max_points: 'lttb' keeps the visual shape, 'min_max' keeps each time bucket's extremes, on a regular time grid.")]

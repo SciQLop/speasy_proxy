@@ -5,45 +5,29 @@ import numpy as np
 
 
 @numba.njit(cache=True)
-def min_max_indices(values: np.ndarray, n_buckets: int) -> np.ndarray:
-    """Return sorted unique indices capturing min and max per bucket per column."""
+def min_max_slots(buckets: np.ndarray, values: np.ndarray, n_buckets: int) -> np.ndarray:
+    """Per time bucket and column, the rows of its two extremes in time order:
+    slots[b, c] = [earlier, later], [-1, -1] where the bucket has no value. `buckets`
+    holds each row's bucket, non-decreasing. Ties keep the first row, as numpy does."""
     n, n_cols = values.shape
-    max_indices = 2 + 2 * n_cols * n_buckets
-    raw = np.empty(max_indices, dtype=np.intp)
-    count = 0
-    raw[count] = 0
-    count += 1
-    raw[count] = n - 1
-    count += 1
-
-    for col in range(n_cols):
-        for i in range(n_buckets):
-            start = int(i * n / n_buckets)
-            end = int((i + 1) * n / n_buckets)
-            if start >= end:
+    mins = np.full((n_buckets, n_cols), -1, dtype=np.int64)
+    maxs = np.full((n_buckets, n_cols), -1, dtype=np.int64)
+    for j in range(n):
+        b = buckets[j]
+        for col in range(n_cols):
+            v = values[j, col]
+            if math.isnan(v):
                 continue
-            mn_idx = -1
-            mx_idx = -1
-            mn_val = math.inf
-            mx_val = -math.inf
-            for j in range(start, end):
-                v = values[j, col]
-                if math.isnan(v):
-                    continue
-                if v < mn_val:
-                    mn_val = v
-                    mn_idx = j
-                if v > mx_val:
-                    mx_val = v
-                    mx_idx = j
-            if mn_idx >= 0:
-                raw[count] = mn_idx
-                count += 1
-            if mx_idx >= 0:
-                raw[count] = mx_idx
-                count += 1
-
-    return np.unique(raw[:count])
+            if mins[b, col] < 0 or v < values[mins[b, col], col]:
+                mins[b, col] = j
+            if maxs[b, col] < 0 or v > values[maxs[b, col], col]:
+                maxs[b, col] = j
+    slots = np.empty((n_buckets, n_cols, 2), dtype=np.int64)
+    for b in range(n_buckets):
+        for col in range(n_cols):
+            slots[b, col, 0] = min(mins[b, col], maxs[b, col])
+            slots[b, col, 1] = max(mins[b, col], maxs[b, col])
+    return slots
 
 
 @numba.njit(cache=True)

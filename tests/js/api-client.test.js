@@ -12,6 +12,11 @@ describe('buildDataUrl', () => {
     expect(url).toContain('path=amda%2Fb%20gsm');
     expect(url).toContain('max_points=5000');
     expect(url).not.toContain('coordinate_system');
+    expect(url).not.toContain('resample_strategy');
+  });
+  it('appends resample_strategy when provided', () => {
+    const url = buildDataUrl({ baseUrl: 'b/', path: 'amda/imf', startISO: 'a', stopISO: 'b', maxPoints: 100, resampleStrategy: 'min_max' });
+    expect(url).toContain('resample_strategy=min_max');
   });
   it('appends coordinate_system when provided', () => {
     const url = buildDataUrl({ baseUrl: 'b/', path: 'ssc/ace', startISO: 'a', stopISO: 'b', maxPoints: 100, coordinateSystem: 'GSE' });
