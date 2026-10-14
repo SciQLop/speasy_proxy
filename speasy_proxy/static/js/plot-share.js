@@ -91,6 +91,13 @@ export function historyMode(kind, lastWrite, nowMs, settleMs) {
   return sameGesture ? 'replace' : 'push';
 }
 
+// The /plot query for a view: its config, plus the chart backend the page was opened with
+// (search: location.search), so a view change or a shared link keeps drawing with it.
+export function viewQuery(encodedConfig, search) {
+  const backend = new URLSearchParams(search).get('backend');
+  return '?config=' + encodedConfig + (backend ? '&backend=' + encodeURIComponent(backend) : '');
+}
+
 // --- code for the current view ------------------------------------------------------
 
 // Each product once, even when two subplots show it; the same path with other

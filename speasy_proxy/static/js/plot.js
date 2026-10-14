@@ -16,7 +16,7 @@ import { spectrogramTables } from './spectrogram.js';
 import { fetchData as apiFetchData, fetchInventory } from './api-client.js';
 import { createPlotView, PRODUCT_MIME } from './plot-view.js';
 import { createPlotView as createSciQLopPlotsView } from './plot-view-sciqlopplots.js';
-import { presetConfig, configStory, pythonSnippet, dataUrls, historyMode, addRecent, recentsFrom, recentLabel,
+import { presetConfig, configStory, pythonSnippet, dataUrls, viewQuery, historyMode, addRecent, recentsFrom, recentLabel,
     savePreset, removePreset, userPresetsFrom } from './plot-share.js';
 
     const BASE_URL = (window.SPEASY_BASE_URL || '').replace(/\/$/, '');
@@ -698,7 +698,7 @@ import { presetConfig, configStory, pythonSnippet, dataUrls, historyMode, addRec
         const encoded = configToBase64(config);
         // origin + pathname, not BASE_URL: behind a reverse proxy BASE_URL already
         // carries the root_path prefix that pathname repeats.
-        const fullUrl = window.location.origin + window.location.pathname + '?config=' + encoded;
+        const fullUrl = window.location.origin + window.location.pathname + viewQuery(encoded, window.location.search);
         document.getElementById('share-url').value = fullUrl;
     }
 
@@ -1137,7 +1137,7 @@ import { presetConfig, configStory, pythonSnippet, dataUrls, historyMode, addRec
     function updateURL(kind = 'tweak') {
         if (plotState.plots.length === 0) return;
         const config = stateToConfig();
-        writeHistory(window.location.pathname + '?config=' + configToBase64(config), kind);
+        writeHistory(window.location.pathname + viewQuery(configToBase64(config), window.location.search), kind);
         rememberView(config);
         refreshOpenPopovers();
     }

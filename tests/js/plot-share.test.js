@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { presetConfig, configStory, pythonSnippet, dataUrls, historyMode, addRecent, recentsFrom, recentLabel, savePreset, removePreset, userPresetsFrom } from '../../speasy_proxy/static/js/plot-share.js';
+import { presetConfig, configStory, pythonSnippet, viewQuery, dataUrls, historyMode, addRecent, recentsFrom, recentLabel, savePreset, removePreset, userPresetsFrom } from '../../speasy_proxy/static/js/plot-share.js';
 
 describe('presetConfig', () => {
   const preset = {
@@ -197,5 +197,19 @@ describe('user presets', () => {
     expect(userPresetsFrom(JSON.stringify([good, { name: 'B' }, { config: view('x') }, null]))).toEqual([good]);
     expect(userPresetsFrom('not json')).toEqual([]);
     expect(userPresetsFrom(null)).toEqual([]);
+  });
+});
+
+describe('viewQuery', () => {
+  it('is the encoded config', () => {
+    expect(viewQuery('abc', '')).toBe('?config=abc');
+  });
+
+  it('keeps the chart backend the page was opened with', () => {
+    expect(viewQuery('abc', '?backend=sciqlopplots&config=old')).toBe('?config=abc&backend=sciqlopplots');
+  });
+
+  it('drops the legacy path link the config replaces', () => {
+    expect(viewQuery('abc', '?path=amda/imf&start=a&stop=b')).toBe('?config=abc');
   });
 });
