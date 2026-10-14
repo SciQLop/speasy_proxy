@@ -1616,3 +1616,27 @@ describe('a preset keeps its story', () => {
     expect(sharedConfig()).not.toHaveProperty('name');
   });
 });
+
+describe('Export menu', () => {
+  const click = (id) => dom.getById(id).addEventListener.mock.calls.filter(([t]) => t === 'click').at(-1)[1]();
+
+  it('offers no PDF when the chart cannot draw one (uPlot)', () => {
+    dom.getById('export-pdf').hidden = false;
+    initChart();
+    expect(dom.getById('export-pdf').hidden).toBe(true);
+  });
+
+  it('opens on the Export button and closes once a format is picked', () => {
+    initChart();
+    bindControls();
+    applyConfig({ version: 1, time_range: { start: '2008-02-26T04:30:00Z', stop: '2008-02-26T05:20:00Z' },
+      plots: [{ products: [{ path: 'cda/thb' }] }] });
+    dom.getById('export-popover').style.display = 'none';
+
+    click('btn-export');
+    expect(dom.getById('export-popover').style.display).not.toBe('none');
+
+    click('export-csv');
+    expect(dom.getById('export-popover').style.display).toBe('none');
+  });
+});

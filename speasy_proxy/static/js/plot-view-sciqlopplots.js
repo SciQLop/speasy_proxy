@@ -191,13 +191,13 @@ export function createPlotView(root, { onViewChange, onAction = () => {} }) {
     return plot.colormap(t, y, z, { name: productTitle(prod, cache), yLog: !!sp.y_axis?.log, zLog: !!sp.logScale });
   }
 
-  // plot.js downloads this URL; a blob: URL, which it revokes after the download starts.
-  function toDataURL() {
-    return panel ? URL.createObjectURL(panel.export('png')) : null;
-  }
+  // plot.js downloads these URLs: blob: URLs, which it revokes after the download starts.
+  const exportURL = (format) => (panel ? URL.createObjectURL(panel.export(format)) : null);
 
   return {
-    render, update, setView, clear, toDataURL,
+    render, update, setView, clear,
+    toDataURL: () => exportURL('png'),
+    toPdfURL: () => exportURL('pdf'),
     getView: () => ({ ...view }),
     resize: () => {},          // Qt follows its container's size itself
   };

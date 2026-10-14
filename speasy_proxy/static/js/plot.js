@@ -419,6 +419,7 @@ import { presetConfig, configStory, pythonSnippet, dataUrls, viewQuery, historyM
     function initChart() {
         const el = document.getElementById('chart');
         plotView = chartBackend()(el, { onViewChange, onAction: subplotAction, paramSpecsOf, coverageOf });
+        document.getElementById('export-pdf').hidden = !plotView.toPdfURL;
         let resizeRaf = 0;
         new ResizeObserver(() => {
             if (resizeRaf) return;
@@ -462,8 +463,12 @@ import { presetConfig, configStory, pythonSnippet, dataUrls, viewQuery, historyM
             else if (e.key === 'ArrowRight') { e.preventDefault(); panTime(1); }
         });
         document.getElementById('btn-clear').addEventListener('click', clearAllPlots);
-        document.getElementById('btn-export-png').addEventListener('click', exportPng);
-        document.getElementById('btn-export-csv').addEventListener('click', exportCsv);
+        for (const [id, exportAs] of [['export-png', exportPng], ['export-pdf', exportPdf], ['export-csv', exportCsv]]) {
+            document.getElementById(id).addEventListener('click', () => {
+                document.getElementById('export-popover').style.display = 'none';
+                exportAs();
+            });
+        }
 
         for (const [button, popover] of Object.entries(POPOVERS)) bindPopover(button, popover);
         bindCopy('btn-copy-url', 'share-url');
@@ -477,7 +482,8 @@ import { presetConfig, configStory, pythonSnippet, dataUrls, viewQuery, historyM
 
     // Top-bar popovers: button id -> popover id. Each is refilled from the current view
     // when it opens, and while open (refreshOpenPopovers).
-    const POPOVERS = { 'btn-share': 'share-popover', 'btn-code': 'code-popover' };
+    const POPOVERS = { 'btn-share': 'share-popover', 'btn-code': 'code-popover', 'btn-export': 'export-popover' };
+    const FILL_POPOVER = { 'share-popover': () => updateShareURL(), 'code-popover': () => updateCodeSnippets() };
 
     function bindPopover(buttonId, popoverId) {
         const button = document.getElementById(buttonId);
@@ -494,8 +500,7 @@ import { presetConfig, configStory, pythonSnippet, dataUrls, viewQuery, historyM
     }
 
     function fillPopover(popoverId) {
-        if (popoverId === 'share-popover') updateShareURL();
-        else updateCodeSnippets();
+        FILL_POPOVER[popoverId]?.();
     }
 
     function refreshOpenPopovers() {
@@ -540,6 +545,15 @@ import { presetConfig, configStory, pythonSnippet, dataUrls, viewQuery, historyM
         if (!png) return;
         download(png, 'speasy-plot.png');
         if (png.startsWith('blob:')) URL.revokeObjectURL(png);
+    }
+
+    // Only a chart that draws vectors offers it (SciQLopPlots); the button is hidden otherwise.
+    function exportPdf() {
+        if (!plotView?.toPdfURL || plotState.plots.length === 0) return;
+        const pdf = plotView.toPdfURL();
+        if (!pdf) return;
+        download(pdf, 'speasy-plot.pdf');
+        URL.revokeObjectURL(pdf);
     }
 
     // Line data of the visible window, one CSV block per product; spectrograms are skipped.
@@ -685,7 +699,7 @@ import { presetConfig, configStory, pythonSnippet, dataUrls, viewQuery, historyM
     // the bar from reflowing as subplots come and go.
     function syncBarActions() {
         const none = plotState.plots.length === 0;
-        for (const id of ['btn-export-png', 'btn-export-csv', 'btn-share', 'btn-code', 'btn-clear', 'btn-save-preset']) {
+        for (const id of ['btn-export', 'btn-share', 'btn-code', 'btn-clear', 'btn-save-preset']) {
             document.getElementById(id).disabled = none;
         }
         document.getElementById('events-container').hidden = none;  // its hint tells how to add one
