@@ -545,6 +545,15 @@ describe('share URL behind a reverse-proxy prefix', () => {
     expect(url.startsWith('https://host/cache/plot?config=')).toBe(true);
     expect(url).not.toContain('/cache/cache/');
   });
+
+  it('shows the link as a QR code too', () => {
+    initChart();
+    plotState.plots = [heatmapSubplot()];
+    updateShareURL();
+
+    expect(dom.getById('share-qr').innerHTML).toMatch(/^<svg/);
+    expect(dom.getById('share-qr').hidden).toBe(false);
+  });
 });
 
 describe('removing a product from a subplot', () => {

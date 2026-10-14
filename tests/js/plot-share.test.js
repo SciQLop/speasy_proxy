@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { presetConfig, configStory, pythonSnippet, viewQuery, dataUrls, historyMode, addRecent, recentsFrom, recentLabel, savePreset, removePreset, userPresetsFrom } from '../../speasy_proxy/static/js/plot-share.js';
+import { presetConfig, configStory, pythonSnippet, viewQuery, shareQrSvg, dataUrls, historyMode, addRecent, recentsFrom, recentLabel, savePreset, removePreset, userPresetsFrom } from '../../speasy_proxy/static/js/plot-share.js';
 
 describe('presetConfig', () => {
   const preset = {
@@ -211,5 +211,15 @@ describe('viewQuery', () => {
 
   it('drops the legacy path link the config replaces', () => {
     expect(viewQuery('abc', '?path=amda/imf&start=a&stop=b')).toBe('?config=abc');
+  });
+});
+
+describe('shareQrSvg', () => {
+  it('draws the link as a QR code', () => {
+    expect(shareQrSvg('https://host/cache/plot?config=abc')).toMatch(/^<svg[^>]*viewBox=/);
+  });
+
+  it('is null for a link too long for a QR code', () => {
+    expect(shareQrSvg('https://host/plot?config=' + 'x'.repeat(5000))).toBeNull();
   });
 });

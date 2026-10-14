@@ -52,6 +52,9 @@ Each template ends with:
   `dist/uPlot.esm.js` and `dist/uPlot.min.css` of the new release over those files.
   Gotcha: uPlot deep-copies series options, so never hang data or cache references on a
   series — `plot-view.js` keeps them in a parallel `meta` array.
+- The Share popover's QR code comes from **uqr** 0.1.3 (MIT, no dependencies), vendored as
+  `vendor/uqr.mjs` (its `dist/index.mjs`) with `vendor/uqr.LICENSE`; `plot-share.js`
+  `shareQrSvg` uses it.
 - `/demo_3d` still uses ECharts + ECharts-GL (3D), loaded as CDN globals via `<script>`
   tags; `demo3d.js` references the `echarts` global directly.
 

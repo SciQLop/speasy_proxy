@@ -3,6 +3,7 @@
 
 import { parseUtc } from './common.js';
 import { formatSpan } from './plot-core.js';
+import { renderSVG } from './vendor/uqr.mjs';
 
 // The config a preset opens with. The server keeps name and description beside the
 // config; folding them in makes the story travel with the share URL.
@@ -96,6 +97,16 @@ export function historyMode(kind, lastWrite, nowMs, settleMs) {
 export function viewQuery(encodedConfig, search) {
   const backend = new URLSearchParams(search).get('backend');
   return '?config=' + encodedConfig + (backend ? '&backend=' + encodeURIComponent(backend) : '');
+}
+
+// The share link as an SVG QR code, or null when the view's config is too long for one
+// (a QR code holds about 2.9 KB). Border 4: the quiet zone the QR spec asks for.
+export function shareQrSvg(url) {
+  try {
+    return renderSVG(url, { ecc: 'L', border: 4, pixelSize: 4 });
+  } catch {
+    return null;
+  }
 }
 
 // --- code for the current view ------------------------------------------------------

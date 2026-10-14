@@ -171,10 +171,13 @@
         .bar-actions button:not(:disabled):hover { background: #1a2138; color: #e0e6f0; border-color: #6b8afd; }
         .bar-actions #btn-clear:not(:disabled):hover { border-color: #ee6666; color: #ee6666; }
         .bar-actions #btn-copy-url, .code-popover button { background: #6b8afd; border: none; color: #fff; font-weight: 600; }
-        .code-popover { position: absolute; top: 100%; right: 0; z-index: 100; width: min(640px, 90vw);
+        .code-popover { position: absolute; top: 100%; left: 0; z-index: 100; width: min(640px, 90vw);
             display: flex; flex-direction: column; gap: 6px; padding: 10px; background: #1a1f36;
             border: 1px solid #2a3358; border-radius: 6px; box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4); }
         .code-label { color: #8892b0; font-size: 0.75rem; }
+        .share-qr { margin-top: 8px; display: flex; justify-content: center; }
+        .share-qr[hidden] { display: none; }
+        .share-qr svg { width: 100%; height: auto; display: block; border-radius: 4px; }
         .export-menu { position: absolute; top: 100%; left: 0; z-index: 100; display: flex; flex-direction: column;
             gap: 4px; padding: 6px; background: #1a1f36; border: 1px solid #2a3358; border-radius: 6px;
             box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4); min-width: 140px; }
@@ -434,9 +437,10 @@
             </div>
             <div style="position:relative;display:inline-block;">
                 <button id="btn-share" disabled>Share</button>
-                <div id="share-popover" style="display:none;position:absolute;top:100%;right:0;z-index:100;background:#1a1f36;border:1px solid #2a3358;border-radius:6px;padding:10px;box-shadow:0 4px 12px rgba(0,0,0,0.4);min-width:300px;">
+                <div id="share-popover" style="display:none;position:absolute;top:100%;left:0;z-index:100;background:#1a1f36;border:1px solid #2a3358;border-radius:6px;padding:10px;box-shadow:0 4px 12px rgba(0,0,0,0.4);width:min(380px, 90vw);box-sizing:border-box;">
                     <input type="text" id="share-url" readonly style="width:100%;background:#0b0e17;border:1px solid #2a3358;color:#e0e6f0;padding:6px 8px;border-radius:4px;font-size:0.8rem;margin-bottom:6px;">
                     <button id="btn-copy-url" style="width:100%;">Copy URL</button>
+                    <div id="share-qr" class="share-qr" hidden title="Scan to open this view"></div>
                 </div>
             </div>
             <div style="position:relative;display:inline-block;">

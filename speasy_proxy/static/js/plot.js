@@ -16,7 +16,7 @@ import { spectrogramTables } from './spectrogram.js';
 import { fetchData as apiFetchData, fetchInventory } from './api-client.js';
 import { createPlotView, PRODUCT_MIME } from './plot-view.js';
 import { createPlotView as createSciQLopPlotsView } from './plot-view-sciqlopplots.js';
-import { presetConfig, configStory, pythonSnippet, dataUrls, viewQuery, historyMode, addRecent, recentsFrom, recentLabel,
+import { presetConfig, configStory, pythonSnippet, dataUrls, viewQuery, shareQrSvg, historyMode, addRecent, recentsFrom, recentLabel,
     savePreset, removePreset, userPresetsFrom } from './plot-share.js';
 
     const BASE_URL = (window.SPEASY_BASE_URL || '').replace(/\/$/, '');
@@ -714,6 +714,10 @@ import { presetConfig, configStory, pythonSnippet, dataUrls, viewQuery, historyM
         // carries the root_path prefix that pathname repeats.
         const fullUrl = window.location.origin + window.location.pathname + viewQuery(encoded, window.location.search);
         document.getElementById('share-url').value = fullUrl;
+        const qr = document.getElementById('share-qr');
+        const svg = shareQrSvg(fullUrl);
+        qr.innerHTML = svg || '';
+        qr.hidden = !svg;
     }
 
     async function fetchProductAndRender(subplot, productPath) {
