@@ -1,10 +1,12 @@
 // Opt-in chart layer of /plot (?backend=sciqlopplots): the interface of plot-view.js,
-// drawn by SciQLopPlots built for WebAssembly, served at /sciqlopplots/ when the proxy
-// has SPEASY_PROXY_SCIQLOPPLOTS_PATH. Qt draws the whole panel: pan/zoom, the shared time
-// axis, legends and the crosshair are SciQLopPlots' own.
-// simplify: no per-subplot toolbar, badges, drop targets, intervals or PNG export yet;
-// products are added with the tree's + button. Port them once this backend is kept.
+// drawn by SciQLopPlots built for WebAssembly (its sciqlopplots.mjs library), served at
+// /sciqlopplots/ when the proxy has SPEASY_PROXY_SCIQLOPPLOTS_PATH. Qt draws the whole
+// panel: pan/zoom, the shared time axis, legends and the crosshair are SciQLopPlots' own.
+// simplify: no per-subplot toolbar, badges or drop targets, and events are shown read-only
+// (no Shift+drag to add one, no dragging to move one); products are added with the tree's
+// + button. Port them once this backend is kept.
 import { productTitle } from './plot-core.js';
+import { utcMs } from './common.js';
 
 // The uPlot view's colours (plot-view.js), so both backends look the same on the page.
 const THEME = {
@@ -17,26 +19,22 @@ const SAME_VIEW_MS = 1e-3;
 const seconds = (ms) => Float64Array.from(ms, (t) => t / MS_PER_S);
 const numberOrNaN = (v) => (v == null ? Number.NaN : v);
 
-// Row-major [n, columns] values of a line product.
-export function lineArrays(cache) {
-  const n = cache.times.length, width = cache.columnNames.length;
-  const values = new Float64Array(n * width);
-  cache.columnNames.forEach((name, c) =>
-    cache.columns[name].forEach((v, i) => { values[i * width + c] = numberOrNaN(v); }));
-  return { t: seconds(cache.times), values, shape: [n, width] };
+// Times in seconds and one column per component of a line product.
+export function lineColumns(cache) {
+  return {
+    t: seconds(cache.times),
+    columns: cache.columnNames.map((name) => Float64Array.from(cache.columns[name], numberOrNaN)),
+  };
 }
 
-// A spectrogram: one shared y axis, or one per row when its channels change over time.
+// A spectrogram: one shared y axis, or one per row (n × m) when its channels change over time.
 export function colormapArrays(cache) {
-  const n = cache.times.length;
   const width = Math.max(0, ...cache.yTables.map((table) => table.length));
   const shared = cache.yTables.length === 1;
   return {
     t: seconds(cache.times),
     y: shared ? Float64Array.from(cache.yTables[0]) : padded(cache.yIndex.map((i) => cache.yTables[i]), width),
-    yShape: shared ? [width] : [n, width],
     z: padded(cache.rows, width),
-    zShape: [n, width],
   };
 }
 
@@ -61,39 +59,25 @@ function yLabel(sp) {
   return [...new Set(units.filter(Boolean))].join(', ');
 }
 
-function loadScript(src) {
-  return new Promise((resolve, reject) => {
-    const script = document.createElement('script');
-    script.src = src;
-    script.onload = resolve;
-    script.onerror = () => reject(new Error('could not load ' + src));
-    document.head.appendChild(script);
-  });
-}
-
-// Qt's loader replaces Emscripten's locateFile and drops the script's directory, so the
-// .wasm would be looked for next to the page: give its full URL.
 async function loadSciQLopPlots(root) {
   const base = `${window.SPEASY_BASE_URL}/sciqlopplots/`;
-  await loadScript(base + 'sciqlopplots.js');
-  await loadScript(base + 'qtloader.js');
-  return window.qtLoad({
-    locateFile: (file) => base + file,
-    qt: { entryFunction: window.sciqlopplots_entry, containerElements: [root] },
-  });
+  const { load } = await import(base + 'sciqlopplots.mjs');
+  const spz = await load({ base });
+  return spz.panel(root, { theme: { base: 'dark', colors: THEME } });
 }
 
 export function createPlotView(root, { onViewChange }) {
-  let spz = null;
+  let panel = null;
   let plots = [];
-  let slots = [];   // per subplot: { plot: id, items: Map(product path → plottable id) }
+  let intervals = [];
+  let slots = [];   // per subplot: { plot, items: Map(product path → Graph or ColorMap) }
+  let spans = [];
   let view = { start: null, end: null };
 
   loadSciQLopPlots(root)
-    .then((module) => {
-      spz = module;
-      spz.setTheme('dark', THEME);
-      spz.onTimeRangeChanged(onTimeRangeChanged);
+    .then((loaded) => {
+      panel = loaded;
+      panel.on('timeRangeChanged', onTimeRangeChanged);
       draw();
     })
     .catch((e) => {
@@ -109,15 +93,16 @@ export function createPlotView(root, { onViewChange }) {
     onViewChange({ ...view });
   }
 
-  function render(nextPlots, nextView) {
+  function render(nextPlots, nextView, opts = {}) {
     plots = nextPlots;
+    intervals = opts.intervals || [];
     view = { ...nextView };
     draw();
   }
 
   function update(nextPlots) {
     plots = nextPlots;
-    if (!spz) return;
+    if (!panel) return;
     if (slots.length !== plots.length) draw();
     else plots.forEach((sp, i) => fill(sp, slots[i]));
   }
@@ -129,73 +114,77 @@ export function createPlotView(root, { onViewChange }) {
 
   function clear() {
     plots = [];
+    intervals = [];
+    removeSpans();
     slots = [];
-    spz?.clear();
+    panel?.clear();
   }
 
   // A new plot fits its y axis to the data in view, so the time range goes first.
   function draw() {
-    if (!spz) return;
-    spz.clear();
+    if (!panel) return;
+    removeSpans();
+    panel.clear();
     showView();
     slots = plots.map(addSlot);
     plots.forEach((sp, i) => fill(sp, slots[i]));
+    spans = intervals.map(addSpan);
   }
 
   function showView() {
-    if (spz && view.start != null) spz.setTimeRange(view.start / MS_PER_S, view.end / MS_PER_S);
+    if (panel && view.start != null) panel.setTimeRange(view.start / MS_PER_S, view.end / MS_PER_S);
+  }
+
+  function addSpan(iv) {
+    return panel.addSpan(utcMs(iv.start) / MS_PER_S, utcMs(iv.stop) / MS_PER_S,
+      { color: iv.color, tooltip: iv.label || '', readOnly: true });
+  }
+
+  function removeSpans() {
+    spans.forEach((span) => span.remove());
+    spans = [];
   }
 
   function addSlot(sp) {
-    const plot = spz.addPlot();
-    if (!isHeatmap(sp)) spz.setYLog(plot, !!sp.y_axis?.log);
-    spz.setYLabel(plot, yLabel(sp));
+    const plot = panel.addPlot();
+    plot.setAxis('y', isHeatmap(sp) ? { label: yLabel(sp) } : { label: yLabel(sp), log: !!sp.y_axis?.log });
     return { plot, items: new Map() };
   }
 
   function fill(sp, slot) {
     const heatmap = isHeatmap(sp);
-    const lineProducts = drawables(sp).length;
+    const nProducts = drawables(sp).length;
     for (const { prod, cache } of drawables(sp)) {
-      const id = slot.items.get(prod.path);
-      if (!cache || (id == null && cache.times.length === 0)) continue;
-      const created = heatmap ? fillColormap(sp, slot.plot, id, prod, cache) : fillLine(slot.plot, id, prod, cache, lineProducts);
-      slot.items.set(prod.path, created);
+      const item = slot.items.get(prod.path);
+      if (!cache || (!item && cache.times.length === 0)) continue;
+      slot.items.set(prod.path, heatmap
+        ? fillColormap(sp, slot.plot, item, prod, cache)
+        : fillLine(slot.plot, item, prod, cache, nProducts));
     }
   }
 
-  function fillLine(plot, id, prod, cache, nProducts) {
-    const { t, values, shape } = lineArrays(cache);
-    return withBuffers([[t, [t.length]], [values, shape]], (x, y) => {
-      if (id != null) { spz.setLineData(id, x, y); return id; }
-      const name = productTitle(prod, cache);
-      const labels = cache.columnNames.map((c) => (nProducts > 1 ? `${name} ${c}` : c));
-      return spz.line(plot, x, y, labels);
-    });
+  function fillLine(plot, graph, prod, cache, nProducts) {
+    const { t, columns } = lineColumns(cache);
+    if (graph) { graph.setData(t, columns); return graph; }
+    const name = productTitle(prod, cache);
+    const labels = cache.columnNames.map((c) => (nProducts > 1 ? `${name} ${c}` : c));
+    return plot.line(t, columns, { labels });
   }
 
-  function fillColormap(sp, plot, id, prod, cache) {
-    const { t, y, yShape, z, zShape } = colormapArrays(cache);
-    return withBuffers([[t, [t.length]], [y, yShape], [z, zShape]], (x, yb, zb) => {
-      if (id != null) { spz.setColormapData(id, x, yb, zb); return id; }
-      return spz.colormap(plot, x, yb, zb, productTitle(prod, cache), !!sp.y_axis?.log, !!sp.logScale);
-    });
+  function fillColormap(sp, plot, map, prod, cache) {
+    const { t, y, z } = colormapArrays(cache);
+    if (map) { map.setData(t, y, z); return map; }
+    return plot.colormap(t, y, z, { name: productTitle(prod, cache), yLog: !!sp.y_axis?.log, zLog: !!sp.logScale });
   }
 
-  // Embind objects live in wasm memory until deleted; SciQLopPlots keeps its own copy.
-  function withBuffers(arrays, use) {
-    const buffers = arrays.map(([array, shape]) => spz.Buffer.fromArray(array, shape));
-    try {
-      return use(...buffers);
-    } finally {
-      buffers.forEach((b) => b.delete());
-    }
+  // plot.js downloads this URL; a blob: URL, which it revokes after the download starts.
+  function toDataURL() {
+    return panel ? URL.createObjectURL(panel.export('png')) : null;
   }
 
   return {
-    render, update, setView, clear,
+    render, update, setView, clear, toDataURL,
     getView: () => ({ ...view }),
     resize: () => {},          // Qt follows its container's size itself
-    toDataURL: () => null,
   };
 }

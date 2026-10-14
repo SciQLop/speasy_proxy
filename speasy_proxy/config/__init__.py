@@ -25,7 +25,7 @@ hapi = ConfigSection("PROXY_HAPI",
                      )
 sciqlopplots = ConfigSection("PROXY_SCIQLOPPLOTS",
                              path={"default": "",
-                                   "description": "Directory of a SciQLopPlots WebAssembly build (sciqlopplots.js, sciqlopplots.wasm, qtloader.js). When set, /plot?backend=sciqlopplots draws with it instead of uPlot."},
+                                   "description": "Directory of the SciQLopPlots browser library (sciqlopplots.mjs, sciqlopplots.js, sciqlopplots.wasm, qtloader.js). When set, /plot?backend=sciqlopplots draws with it instead of uPlot."},
                              )
 core = ConfigSection("PROXY_CORE",
                      inventory_update_interval={"default": 60 * 60 * 2, "type_ctor": int, "description": "Interval in seconds to update the inventory."},

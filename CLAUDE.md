@@ -80,7 +80,7 @@ Error codes: upstream fetch failure → **502**, encode failure → **500** (bot
 - `SPEASY_PROXY_PRESETS_PATH` — Directory of plot preset JSON files (default `speasy_proxy/presets/`)
 - `SPEASY_PROXY_INDEX_PATH` — `diskcache.Index` location for the proxy's own state (default `/tmp`)
 - `SPEASY_PROXY_HAPI_ONLY` — Serve only the HAPI server (`/hapi`); `SPEASY_PROXY_HAPI_SERVER_ID`/`_TITLE`/`_CONTACT` set its `/about`
-- `SPEASY_PROXY_SCIQLOPPLOTS_PATH` — Directory of a SciQLopPlots WebAssembly build (`sciqlopplots.js`, `.wasm`, `qtloader.js`, from SciQLopPlots' `wasm/` Meson target). When set, it is served at `/sciqlopplots/` and `/plot?backend=sciqlopplots` draws with it (`plot-view-sciqlopplots.js`); only those two send COOP/COEP (credentialless), the default `/plot` is unchanged
+- `SPEASY_PROXY_SCIQLOPPLOTS_PATH` — Directory of the SciQLopPlots browser library (`sciqlopplots.mjs`, `.js`, `.wasm`, `qtloader.js`: a `sciqlopplots-wasm-<version>.tar.gz` release, or `wasm/build_site.sh` output). When set, it is served at `/sciqlopplots/` and `/plot?backend=sciqlopplots` draws with it (`plot-view-sciqlopplots.js`); only those two send COOP/COEP (credentialless), the default `/plot` is unchanged
 - `SPEASY_PROXY_WORKERS` — gunicorn worker count in the Docker entry point (default `2 × nproc`)
 - `SPEASY_CACHE_PATH`, `SPEASY_INDEX_PATH` — speasy storage paths (used in Docker)
 

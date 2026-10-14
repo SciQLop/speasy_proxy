@@ -537,7 +537,9 @@ import { presetConfig, configStory, pythonSnippet, dataUrls, historyMode, addRec
     function exportPng() {
         if (!plotView || plotState.plots.length === 0) return;
         const png = plotView.toDataURL(2, '#0b0e17');
-        if (png) download(png, 'speasy-plot.png');
+        if (!png) return;
+        download(png, 'speasy-plot.png');
+        if (png.startsWith('blob:')) URL.revokeObjectURL(png);
     }
 
     // Line data of the visible window, one CSV block per product; spectrograms are skipped.
