@@ -1649,3 +1649,13 @@ describe('Export menu', () => {
     expect(dom.getById('export-popover').style.display).toBe('none');
   });
 });
+
+describe('sidebar resize', () => {
+  it('keeps the dragged width in a CSS variable, so collapsing still hides the sidebar', () => {
+    // An inline width beats the .sidebar.collapsed rule: after a drag the sidebar no longer hid.
+    const sidebar = { style: { setProperty: vi.fn() } };
+    plot.__test__.setSidebarWidth(sidebar, 400);
+    expect(sidebar.style.setProperty).toHaveBeenCalledWith('--sidebar-width', '400px');
+    expect(sidebar.style.width).toBeUndefined();
+  });
+});

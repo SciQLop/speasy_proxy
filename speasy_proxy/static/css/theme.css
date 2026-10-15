@@ -4,7 +4,7 @@
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
 .sidebar {
-    width: 320px;
+    width: var(--sidebar-width, 320px);
     min-width: 260px;
     background: #111627;
     border-right: 1px solid #1e2640;

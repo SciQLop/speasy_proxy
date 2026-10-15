@@ -1299,6 +1299,11 @@ import { presetConfig, configStory, pythonSnippet, dataUrls, viewQuery, shareQrS
 
     // ===== Sidebar Resize =====
 
+    // A variable, not an inline width: an inline width would beat .sidebar.collapsed.
+    function setSidebarWidth(sidebar, width) {
+        sidebar.style.setProperty('--sidebar-width', width + 'px');  // the chart's ResizeObserver follows
+    }
+
     function initResize() {
         const handle = document.getElementById('resize-handle');
         const sidebar = document.querySelector('.sidebar');
@@ -1313,8 +1318,7 @@ import { presetConfig, configStory, pythonSnippet, dataUrls, viewQuery, shareQrS
             document.body.style.userSelect = 'none';
 
             function onMouseMove(e) {
-                const newWidth = Math.max(160, Math.min(startWidth + e.clientX - startX, window.innerWidth - 200));
-                sidebar.style.width = newWidth + 'px';  // the chart's ResizeObserver follows
+                setSidebarWidth(sidebar, Math.max(160, Math.min(startWidth + e.clientX - startX, window.innerWidth - 200)));
             }
 
             function onMouseUp() {
@@ -1645,7 +1649,7 @@ import { presetConfig, configStory, pythonSnippet, dataUrls, viewQuery, shareQrS
         plotState, initChart, bindControls, renderAllSubplots, removeProductFromSubplot,
         updateShareURL, mergeProductData, applyScaleHints, applyConfig, getPlotView: () => plotView,
         renderProductParams, collectProductParams, selectProduct, onProductParamsChanged, loadInventory,
-        subplotAction, setSelectedProduct: (path) => { selectedProduct = path; },
+        subplotAction, setSidebarWidth, setSelectedProduct: (path) => { selectedProduct = path; },
         replotOverRange, loadFromURLParams, onPopState, loadPresets, base64ToConfig, onSearchInput, onMultiZoomPan,
         __resetCdpp3dviewFramesCache: () => { cdpp3dviewFramesPromise = null; frames3d = []; frames3dRequested = false; },
     };
