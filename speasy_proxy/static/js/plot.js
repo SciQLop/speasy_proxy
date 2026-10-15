@@ -458,7 +458,8 @@ import { presetConfig, configStory, pythonSnippet, dataUrls, viewQuery, shareQrS
         // Arrow keys pan the time window when not typing in a field; SciQLop's plot keys
         // (shortcutActions) act on the plot under the pointer.
         let pointer = { x: -1, y: -1 };
-        document.addEventListener('pointermove', (e) => { pointer = { x: e.clientX, y: e.clientY }; });
+        // Capture phase: the SciQLopPlots canvas stops the pointer events it handles.
+        window.addEventListener('pointermove', (e) => { pointer = { x: e.clientX, y: e.clientY }; }, { capture: true });
         document.addEventListener('keydown', (e) => {
             const tag = (e.target.tagName || '').toLowerCase();
             if (tag === 'input' || tag === 'textarea' || tag === 'select') return;

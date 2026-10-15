@@ -1673,3 +1673,14 @@ describe('sidebar resize', () => {
     expect(sidebar.style.width).toBeUndefined();
   });
 });
+
+describe('plot keys', () => {
+  it('tracks the pointer before the chart sees it: the SciQLopPlots canvas stops its pointer events', () => {
+    initChart();
+    window.addEventListener.mockClear();
+    bindControls();
+    const calls = window.addEventListener.mock.calls.filter(([type]) => type === 'pointermove');
+    expect(calls).toHaveLength(1);
+    expect(calls[0][2]).toEqual({ capture: true });
+  });
+});
