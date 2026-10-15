@@ -5,15 +5,17 @@ import { isoUtc } from './common.js';
 export function createSubplotData() {
   return {
     products: [],
-    y_axis: { log: false },
+    // SciQLop's two vertical axes: lines draw on y_axis, a spectrogram on y2_axis (valueAxis).
+    // auto: the axis still follows the ISTP SCALETYP hint (applyScaleHints in plot.js)
+    // rather than an explicit Log Y click.
+    y_axis: { log: false, auto: true },
+    y2_axis: { log: false, auto: true },
     logScale: true,
     colormap: 'viridis',
     plotType: 'line',
     lastHeatmapLayers: null,
     productData: {},
-    // Whether Y/Z still follow the ISTP SCALETYP hint from the data (applyScaleHints
-    // in plot.js) rather than an explicit Log Y / Log Z click.
-    _yScaleAuto: true,
+    // Whether Z still follows the ISTP SCALETYP hint rather than a Log Z click.
     _zScaleAuto: true,
   };
 }
@@ -52,37 +54,62 @@ export function withParam(prod, key, value) {
     : { ...prod, productInputs: { ...prod.productInputs, [key]: value } };
 }
 
+// The vertical axis the subplot draws on.
+export function valueAxis(sp) {
+  return sp.plotType === 'heatmap' ? sp.y2_axis : sp.y_axis;
+}
+
+// Config version 2 holds SciQLop's per-plot axes (its panel template's y_axis, y2_axis,
+// z_axis), so a SciQLop panel and a /plot link convert both ways without guessing.
 // Scales are saved only once chosen explicitly; one still following the ISTP hint is
 // left out so a reload re-reads the hint (see subplotFromConfig).
 export function subplotToConfig(sp) {
+  const axis = (a) => (a.auto ? {} : { log: a.log });
+  const zAxis = {
+    ...(sp._zScaleAuto ? {} : { log: sp.logScale }),
+    ...(sp._zOverride ? { range: [sp._zOverride.vMin, sp._zOverride.vMax] } : {}),
+  };
   return {
     products: sp.products.map((p) => ({
       path: p.path, label: p.label,
       coordinate_system: p.coordinateSystem,
       product_inputs: p.productInputs,
     })),
-    ...(sp._yScaleAuto ? {} : { y_axis: { log: sp.y_axis.log } }),
-    ...(sp._zScaleAuto ? {} : { log_z: sp.logScale }),
+    ...(sp.y_axis.auto ? {} : { y_axis: axis(sp.y_axis) }),
+    ...(sp.y2_axis.auto ? {} : { y2_axis: axis(sp.y2_axis) }),
+    ...(Object.keys(zAxis).length ? { z_axis: zAxis } : {}),
     ...(sp.colormap === 'viridis' ? {} : { colormap: sp.colormap }),
-    ...(sp._zOverride ? { z_range: [sp._zOverride.vMin, sp._zOverride.vMax] } : {}),
   };
 }
 
-export function subplotFromConfig(plotDef) {
+// Version 1 had one y_axis, the one drawn (a spectrogram's energy axis, else the left
+// axis), plus log_z and z_range: read as version 2 with that axis as both y axes.
+function v1AsV2(plotDef) {
+  const { y_axis, log_z, z_range, ...rest } = plotDef;
+  return {
+    ...rest,
+    ...(y_axis ? { y_axis, y2_axis: y_axis } : {}),
+    z_axis: { ...(log_z !== undefined ? { log: log_z } : {}), ...(z_range ? { range: z_range } : {}) },
+  };
+}
+
+const axisFromConfig = (a) => (a?.log !== undefined ? { log: !!a.log, auto: false } : { log: false, auto: true });
+
+export function subplotFromConfig(plotDef, version = 1) {
+  const def = version >= 2 ? plotDef : v1AsV2(plotDef);
   const subplot = createSubplotData();
-  subplot.y_axis.log = plotDef.y_axis?.log || false;
-  // A shared/loaded config is a deliberate choice, not a default — but only when it
-  // actually specified one; an old/malformed config with no y_axis is still a fresh state.
-  if (plotDef.y_axis?.log !== undefined) subplot._yScaleAuto = false;
-  if (plotDef.colormap) subplot.colormap = plotDef.colormap;
-  if (Array.isArray(plotDef.z_range) && plotDef.z_range.length === 2) {
-    subplot._zOverride = { vMin: plotDef.z_range[0], vMax: plotDef.z_range[1] };
-  }
-  if (plotDef.log_z !== undefined) {
-    subplot.logScale = plotDef.log_z;
+  // A shared/loaded config is a deliberate choice, not a default — but only for the
+  // axes it actually specified; the others still follow the data's hints.
+  subplot.y_axis = axisFromConfig(def.y_axis);
+  subplot.y2_axis = axisFromConfig(def.y2_axis);
+  if (def.colormap) subplot.colormap = def.colormap;
+  const range = def.z_axis?.range;
+  if (Array.isArray(range) && range.length === 2) subplot._zOverride = { vMin: range[0], vMax: range[1] };
+  if (def.z_axis?.log !== undefined) {
+    subplot.logScale = !!def.z_axis.log;
     subplot._zScaleAuto = false;
   }
-  for (const prod of plotDef.products) {
+  for (const prod of def.products) {
     subplot.products.push({
       path: prod.path, label: prod.label || prod.path,
       coordinateSystem: prod.coordinate_system,
@@ -530,7 +557,7 @@ export function structureKey(plots) {
       const prods = sp.products
         .map((p) => p.path + '#' + (sp.productData?.[p.path]?.columnNames?.length || 0))
         .join('+');
-      return [sp.plotType, sp.y_axis.log ? 1 : 0, sp.logScale ? 1 : 0, prods].join(':');
+      return [sp.plotType, valueAxis(sp).log ? 1 : 0, sp.logScale ? 1 : 0, prods].join(':');
     })
     .join('|');
 }

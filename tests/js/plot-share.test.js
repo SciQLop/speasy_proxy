@@ -77,6 +77,25 @@ describe('pythonSnippet', () => {
     expect(pythonSnippet(crafted)).not.toContain('__import__');
   });
 
+  it('carries a version 2 spectrogram\'s scales to the plot calls', () => {
+    const tuned = { ...view, version: 2, plots: [{ products: [{ path: 'cda/X/flux' }],
+      y2_axis: { log: true }, z_axis: { log: true, range: [1, 1e6] }, colormap: 'turbo' }] };
+    expect(pythonSnippet(tuned))
+      .toContain('flux.plot(ax=axes[0, 0], logy=True, logz=True, cmap="turbo", vmin=1, vmax=1000000)');
+  });
+
+  it('leaves logy to speasy when y_axis and y2_axis disagree: the snippet can\'t tell which is drawn', () => {
+    const both = { ...view, version: 2, plots: [{ products: [{ path: 'cda/X/flux' }],
+      y_axis: { log: true }, y2_axis: { log: false } }] };
+    expect(pythonSnippet(both)).toContain('flux.plot(ax=axes[0, 0])');
+  });
+
+  it('never lets a version 2 link put code in the snippet', () => {
+    const crafted = { ...view, version: 2, plots: [{ products: [{ path: 'cda/X/flux' }],
+      z_axis: { range: ['__import__("os").system("rm -rf ~")', 2] } }] };
+    expect(pythonSnippet(crafted)).not.toContain('__import__');
+  });
+
   it('carries the scales and colours chosen in the view to the plot calls', () => {
     const tuned = { ...view, plots: [{ products: [{ path: 'cda/X/flux' }],
       y_axis: { log: false }, log_z: true, colormap: 'turbo', z_range: [1, 1e6] }] };

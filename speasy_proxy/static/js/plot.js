@@ -5,7 +5,7 @@ import {
 } from './common.js';
 import { getDisplayName, getProductPath, shouldSkipNode, SKIP_KEYS, isSpzMetaKey, isSelectableProduct, browsableChildKeys, hasSelectableDescendant, paramSpecs, nodeTooltip } from './inventory-tree.js';
 import {
-  createSubplotData, createProductCache, subplotToConfig, subplotFromConfig,
+  createSubplotData, createProductCache, subplotToConfig, subplotFromConfig, valueAxis,
   detectPlotType, spliceColumns, spliceRows, mergeIntervals, evictProductCache,
   configToBase64, base64ToConfig, isCovered, resolutionSufficient, rangesOverlap, trimCacheWindow, cacheToCsv,
   structureKey, resampleTarget, shiftIntoView, plotTypeFromCache, computeValueRange, mergeValueRange, cleanText, distinctCrumbs,
@@ -585,8 +585,9 @@ import { presetConfig, configStory, pythonSnippet, dataUrls, viewQuery, shareQrS
     // Per-subplot edits reported by the chart (its toolbar, title chips and drop targets).
     const subplotActions = {
         logY: ({ index }) => editSubplot(index, (sp) => {
-            sp.y_axis.log = !sp.y_axis.log;
-            sp._yScaleAuto = false;
+            const axis = valueAxis(sp);
+            axis.log = !axis.log;
+            axis.auto = false;
             delete sp._yOverride;  // a manual linear range can start at <= 0, invalid on log
         }),
         logZ: ({ index }) => editSubplot(index, (sp) => {
@@ -895,21 +896,21 @@ import { presetConfig, configStory, pythonSnippet, dataUrls, viewQuery, shareQrS
     // Seeds Log Z / Log Y from the first product's ISTP hints the moment its data
     // arrives — a spectrogram's energy axis is almost always log-spaced, and a linear
     // Y axis squashes it into a sliver near the bottom. Only while the user hasn't
-    // already made an explicit choice for that axis (_yScaleAuto/_zScaleAuto) — a
+    // already made an explicit choice for that axis (auto/_zScaleAuto) — a
     // click always sticks, hints never overwrite it.
     function applyScaleHints(subplot, data) {
         if (subplot._zScaleAuto) {
             const zHint = scaleTypToLog(data.values && data.values.meta);
             if (zHint !== null) subplot.logScale = zHint;
         }
-        if (subplot._yScaleAuto) {
+        if (valueAxis(subplot).auto) {
             const yMeta = subplot.plotType === 'heatmap' && data.axes.length >= 2
                 ? data.axes[1].meta
                 : (data.values && data.values.meta);
             const yHint = scaleTypToLog(yMeta) ?? (subplot.plotType === 'heatmap' && data.axes.length >= 2
                 ? logHintFromRange(data.axes[1].values)
                 : null);
-            if (yHint !== null) subplot.y_axis.log = yHint;
+            if (yHint !== null) valueAxis(subplot).log = yHint;
         }
     }
 
@@ -1150,7 +1151,7 @@ import { presetConfig, configStory, pythonSnippet, dataUrls, viewQuery, shareQrS
 
     function stateToConfig() {
         const config = {
-            version: 1,
+            version: 2,
             time_range: { ...plotState.time_range },
             plots: plotState.plots.map(subplotToConfig)
         };
@@ -1242,7 +1243,7 @@ import { presetConfig, configStory, pythonSnippet, dataUrls, viewQuery, shareQrS
             label: iv.label || ''
         }));
 
-        plotState.plots = config.plots.map(subplotFromConfig);
+        plotState.plots = config.plots.map((plotDef) => subplotFromConfig(plotDef, config.version));
         plotState.story = configStory(config);
         showStory();
         updateEventsPanel();

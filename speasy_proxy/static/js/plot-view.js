@@ -10,7 +10,7 @@ import { CHART_COLORS, escapeHtml, utcMs } from './common.js';
 import {
   lineTable, nearestIndex, fmtTick, productTitle, dropZone,
   paramValue, zRangeOf, outOfCoverage, edgeColor, nearestEdge, eventAt, formatDuration,
-  subMsSplits, subMsTickLabels, fmtInstant,
+  subMsSplits, subMsTickLabels, fmtInstant, valueAxis,
 } from './plot-core.js';
 import { binRowRects, computeYEdges, lowestPositiveEdge, spectrogramLayers, spectrogramValueAt, COLORMAPS, colormapLut } from './spectrogram.js';
 import { bindGestures } from './plot-gestures.js';
@@ -366,7 +366,7 @@ function decadesOnlyOnLog(u, splits, axisIdx) {
 }
 
 function yScale(subplot, isHeatmap) {
-  const log = !!subplot.y_axis.log;
+  const log = !!valueAxis(subplot).log;
   return {
     distr: log ? 3 : 1,
     range: (u, min, max) => {
@@ -568,7 +568,7 @@ function createTools(subplot, isHeatmap, paramSpecsOf, act) {
   const buttons = {};
   const tools = [
     { label: 'auto Y', type: 'autoY', on: !subplot._yOverride, title: 'Fit Y to the visible data (off: keep the current Y range)' },
-    { label: 'log Y', type: 'logY', on: !!subplot.y_axis.log, title: 'Y axis: logarithmic / linear' },
+    { label: 'log Y', type: 'logY', on: !!valueAxis(subplot).log, title: 'Y axis: logarithmic / linear' },
     isHeatmap && { label: 'auto Z', type: 'autoZ', on: !subplot._zOverride, title: 'Colour range follows the data (off: keep it; or click a colour bar limit to type one)' },
     isHeatmap && { label: 'log Z', type: 'logZ', on: !!subplot.logScale, title: 'Colour scale: logarithmic / linear' },
     { label: '✕', type: 'remove', on: false, title: 'Remove this subplot', extra: ' remove' },

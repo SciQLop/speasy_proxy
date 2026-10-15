@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   spliceColumns, spliceRows, shiftIntoView, mergeIntervals, evictProductCache,
   detectPlotType, configToBase64, base64ToConfig, isCovered, resolutionSufficient, rangesOverlap, trimCacheWindow, cacheToCsv,
-  createSubplotData, createProductCache, subplotToConfig, subplotFromConfig, paramValue, withParam, editedRange, zRangeOf, outOfCoverage, formatSpan,
+  createSubplotData, createProductCache, subplotToConfig, subplotFromConfig, valueAxis, paramValue, withParam, editedRange, zRangeOf, outOfCoverage, formatSpan,
   normalizeWheelDelta, wheelIntent, zoomRange, panRange, zoomToward, pinchRange, structureKey, resampleTarget,
   plotTypeFromCache, computeValueRange, mergeValueRange, renderableRange,
   nearestIndex, lineTable, yRangeFromPixels, rangeFromDrag, colorHex, withHue, edgeColor, nearestEdge, eventAt, formatDuration, subMsTickLabels, subMsSplits, fmtInstant, fmtEventRange, fmtTick, cleanText, productTitle, dropZone, distinctCrumbs,
@@ -444,6 +444,14 @@ describe('structureKey', () => {
     b.y_axis.log = true;
     expect(structureKey([a])).not.toBe(structureKey([b]));
   });
+  it('changes when a spectrogram\'s log energy axis toggles', () => {
+    const a = createSubplotData();
+    a.plotType = 'heatmap';
+    const b = createSubplotData();
+    b.plotType = 'heatmap';
+    b.y2_axis.log = true;
+    expect(structureKey([a])).not.toBe(structureKey([b]));
+  });
   it('changes when column count changes', () => {
     const mk = (cols) => {
       const sp = createSubplotData();
@@ -460,26 +468,64 @@ describe('factories', () => {
   it('createSubplotData defaults', () => {
     const sp = createSubplotData();
     expect(sp.products).toEqual([]);
-    expect(sp.y_axis.log).toBe(false);
     expect(sp.logScale).toBe(true);
     expect(sp.plotType).toBe('line');
-    // Fresh subplot: Y/Z still follow the ISTP SCALETYP hint, not a user override.
-    expect(sp._yScaleAuto).toBe(true);
+    // Fresh subplot: Y, Y2 and Z still follow the ISTP SCALETYP hint, not a user override.
+    expect(sp.y_axis).toEqual({ log: false, auto: true });
+    expect(sp.y2_axis).toEqual({ log: false, auto: true });
     expect(sp._zScaleAuto).toBe(true);
   });
-  it('subplotToConfig / subplotFromConfig round-trip', () => {
+  it('a line plot draws on y_axis, a spectrogram on y2_axis, as in SciQLop', () => {
+    const sp = createSubplotData();
+    expect(valueAxis(sp)).toBe(sp.y_axis);
+    sp.plotType = 'heatmap';
+    expect(valueAxis(sp)).toBe(sp.y2_axis);
+  });
+  it('writes config version 2: SciQLop\'s y_axis, y2_axis and z_axis', () => {
     const sp = createSubplotData();
     sp.products.push({ path: 'amda/imf', label: 'IMF' });
-    sp.y_axis.log = true;
+    sp.y_axis = { log: true, auto: false };  // clicked
     sp.logScale = false;
-    sp._yScaleAuto = false;  // clicked
     sp._zScaleAuto = false;
+    sp._zOverride = { vMin: 1, vMax: 10 };
     const cfg = subplotToConfig(sp);
-    expect(cfg).toEqual({ products: [{ path: 'amda/imf', label: 'IMF' }], y_axis: { log: true }, log_z: false });
-    const restored = subplotFromConfig(cfg);
+    expect(cfg).toEqual({ products: [{ path: 'amda/imf', label: 'IMF' }], y_axis: { log: true }, z_axis: { log: false, range: [1, 10] } });
+    const restored = subplotFromConfig(cfg, 2);
     expect(restored.products).toEqual([{ path: 'amda/imf', label: 'IMF' }]);
-    expect(restored.y_axis.log).toBe(true);
+    expect(restored.y_axis).toEqual({ log: true, auto: false });
+    expect(restored.y2_axis.auto).toBe(true);
     expect(restored.logScale).toBe(false);
+    expect(restored._zScaleAuto).toBe(false);
+    expect(restored._zOverride).toEqual({ vMin: 1, vMax: 10 });
+  });
+  it('a spectrogram\'s log energy axis is saved as y2_axis', () => {
+    const sp = createSubplotData();
+    sp.products.push({ path: 'cda/spec', label: 'spec' });
+    sp.plotType = 'heatmap';
+    sp.y2_axis = { log: true, auto: false };
+    const cfg = subplotToConfig(sp);
+    expect(cfg.y2_axis).toEqual({ log: true });
+    expect(cfg.y_axis).toBeUndefined();
+    const restored = subplotFromConfig(cfg, 2);
+    restored.plotType = 'heatmap';
+    expect(valueAxis(restored)).toEqual({ log: true, auto: false });
+  });
+  it('a z range typed with the scale still following the hint saves only the range', () => {
+    const sp = createSubplotData();
+    sp._zOverride = { vMin: 1, vMax: 10 };
+    expect(subplotToConfig(sp).z_axis).toEqual({ range: [1, 10] });
+    expect(subplotFromConfig(subplotToConfig(sp), 2)._zScaleAuto).toBe(true);
+  });
+  it('reads version 1, whose single y_axis was the one drawn, line or spectrogram', () => {
+    const restored = subplotFromConfig({ products: [], y_axis: { log: true }, log_z: false, z_range: [1, 10] }, 1);
+    expect(restored.y_axis).toEqual({ log: true, auto: false });
+    expect(restored.y2_axis).toEqual({ log: true, auto: false });
+    expect(restored.logScale).toBe(false);
+    expect(restored._zScaleAuto).toBe(false);
+    expect(restored._zOverride).toEqual({ vMin: 1, vMax: 10 });
+  });
+  it('a config without a version is version 1', () => {
+    expect(subplotFromConfig({ products: [], y_axis: { log: true } }).y2_axis.log).toBe(true);
   });
   it('a scale still following the ISTP hint is not saved, so a reload keeps following it', () => {
     // Adding a product saves the URL before its data (and SCALETYP) arrives: saving the
@@ -487,11 +533,12 @@ describe('factories', () => {
     const sp = createSubplotData();
     sp.products.push({ path: 'cda/spec', label: 'spec' });
     sp.y_axis.log = true;  // set by the hint, not by a click
+    sp.y2_axis.log = true;
     const cfg = subplotToConfig(sp);
-    expect(cfg.y_axis).toBeUndefined();
-    expect(cfg.log_z).toBeUndefined();
-    const restored = subplotFromConfig(cfg);
-    expect(restored._yScaleAuto).toBe(true);
+    expect(cfg).toEqual({ products: [{ path: 'cda/spec', label: 'spec' }] });
+    const restored = subplotFromConfig(cfg, 2);
+    expect(restored.y_axis.auto).toBe(true);
+    expect(restored.y2_axis.auto).toBe(true);
     expect(restored._zScaleAuto).toBe(true);
   });
   it('saves a colormap only when it is not the default', () => {
@@ -500,18 +547,8 @@ describe('factories', () => {
     sp.colormap = 'jet';
     const cfg = subplotToConfig(sp);
     expect(cfg.colormap).toBe('jet');
-    expect(subplotFromConfig(cfg).colormap).toBe('jet');
-    expect(subplotFromConfig({ products: [] }).colormap).toBe('viridis');
-  });
-  it('subplotFromConfig treats a loaded/shared config as a deliberate choice', () => {
-    const restored = subplotFromConfig({ products: [], y_axis: { log: true }, log_z: false });
-    expect(restored._yScaleAuto).toBe(false);
-    expect(restored._zScaleAuto).toBe(false);
-  });
-  it('subplotFromConfig leaves auto flags set when the config omits that axis', () => {
-    const restored = subplotFromConfig({ products: [] });
-    expect(restored._yScaleAuto).toBe(true);
-    expect(restored._zScaleAuto).toBe(true);
+    expect(subplotFromConfig(cfg, 2).colormap).toBe('jet');
+    expect(subplotFromConfig({ products: [] }, 2).colormap).toBe('viridis');
   });
   it('carries a product\'s coordinate_system / product_inputs through a share-URL round-trip', () => {
     // Without this, sharing a link to an SSC/3DView product or an AMDA templated
@@ -520,7 +557,7 @@ describe('factories', () => {
     sp.products.push({ path: 'ssc/ace', label: 'ace', coordinateSystem: 'gsm' });
     sp.products.push({ path: 'amda/bepi_sixp_p', label: 'p', productInputs: { side: '1' } });
     const cfg = subplotToConfig(sp);
-    const restored = subplotFromConfig(cfg);
+    const restored = subplotFromConfig(cfg, 2);
     expect(restored.products[0].coordinateSystem).toBe('gsm');
     expect(restored.products[1].productInputs).toEqual({ side: '1' });
   });
@@ -688,13 +725,13 @@ describe('colour (Z) range', () => {
     expect(zRangeOf(createSubplotData(), cache)).toEqual({ vMin: 1, vMax: 100 });
     expect(zRangeOf({ ...createSubplotData(), _zOverride: { vMin: 3, vMax: 30 } }, cache)).toEqual({ vMin: 3, vMax: 30 });
   });
-  it('a set range is saved and restored as z_range', () => {
+  it('a set range is saved and restored as z_axis.range', () => {
     const sp = { ...createSubplotData(), _zOverride: { vMin: 3, vMax: 30 } };
     const cfg = subplotToConfig(sp);
-    expect(cfg.z_range).toEqual([3, 30]);
-    expect(subplotFromConfig(cfg)._zOverride).toEqual({ vMin: 3, vMax: 30 });
-    expect(subplotToConfig(createSubplotData()).z_range).toBeUndefined();
-    expect(subplotFromConfig({ products: [] })._zOverride).toBeUndefined();
+    expect(cfg.z_axis.range).toEqual([3, 30]);
+    expect(subplotFromConfig(cfg, 2)._zOverride).toEqual({ vMin: 3, vMax: 30 });
+    expect(subplotToConfig(createSubplotData()).z_axis).toBeUndefined();
+    expect(subplotFromConfig({ products: [] }, 2)._zOverride).toBeUndefined();
   });
 });
 

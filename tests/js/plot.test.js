@@ -66,7 +66,7 @@ function heatmapSubplot() {
   const path = 'cda/flux';
   return {
     products: [{ path, label: 'flux' }],
-    y_axis: { log: false },
+    y_axis: { log: false }, y2_axis: { log: false },
     logScale: true,
     plotType: 'heatmap',
     lastHeatmapLayers: null,
@@ -156,7 +156,7 @@ describe('rendering subplots with uPlot', () => {
     initChart();
     plotState.plots = [
       { ...heatmapSubplot() },
-      { products: [{ path: 'cda/b' }], y_axis: { log: false }, plotType: 'line', productData: { 'cda/b': lineCache('cda/b', '') } },
+      { products: [{ path: 'cda/b' }], y_axis: { log: false }, y2_axis: { log: false }, plotType: 'line', productData: { 'cda/b': lineCache('cda/b', '') } },
     ];
     plotState.time_range = { start: new Date(500).toISOString(), stop: new Date(2500).toISOString() };
 
@@ -170,7 +170,7 @@ describe('rendering subplots with uPlot', () => {
   it('swaps data into the existing charts on a data-only refresh instead of rebuilding', () => {
     initChart();
     const cache = lineCache('cda/b', '');
-    plotState.plots = [{ products: [{ path: 'cda/b' }], y_axis: { log: false }, plotType: 'line', productData: { 'cda/b': cache } }];
+    plotState.plots = [{ products: [{ path: 'cda/b' }], y_axis: { log: false }, y2_axis: { log: false }, plotType: 'line', productData: { 'cda/b': cache } }];
     plotState.time_range = { start: new Date(0).toISOString(), stop: new Date(3000).toISOString() };
     renderAllSubplots();
     const [u] = liveCharts();
@@ -189,7 +189,7 @@ describe('rendering subplots with uPlot', () => {
     // get a data-only update. uPlot needs exactly one data column per series.
     initChart();
     const cache = lineCache('cda/b', '');
-    plotState.plots = [{ products: [{ path: 'cda/b' }], y_axis: { log: false }, plotType: 'line', productData: { 'cda/b': cache } }];
+    plotState.plots = [{ products: [{ path: 'cda/b' }], y_axis: { log: false }, y2_axis: { log: false }, plotType: 'line', productData: { 'cda/b': cache } }];
     renderAllSubplots();
     const [u] = liveCharts();
 
@@ -205,9 +205,9 @@ describe('rendering subplots with uPlot', () => {
     const threeCols = { ...lineCache('amda/imf', ''), columnNames: ['bx', 'by', 'bz'], columns: { bx: [1, 2], by: [1, 2], bz: [1, 2] } };
     const oneCol = { ...lineCache('amda/ae', ''), columnNames: ['col_0'], columns: { col_0: [1, 2] } };
     plotState.plots = [
-      { products: [{ path: 'amda/imf', label: 'OMNI B' }], y_axis: { log: false }, plotType: 'line', productData: { 'amda/imf': threeCols } },
-      { products: [{ path: 'amda/ae', label: 'AE' }], y_axis: { log: false }, plotType: 'line', productData: { 'amda/ae': oneCol } },
-      { products: [{ path: 'amda/imf', label: 'OMNI B' }, { path: 'amda/ae', label: 'AE' }], y_axis: { log: false }, plotType: 'line',
+      { products: [{ path: 'amda/imf', label: 'OMNI B' }], y_axis: { log: false }, y2_axis: { log: false }, plotType: 'line', productData: { 'amda/imf': threeCols } },
+      { products: [{ path: 'amda/ae', label: 'AE' }], y_axis: { log: false }, y2_axis: { log: false }, plotType: 'line', productData: { 'amda/ae': oneCol } },
+      { products: [{ path: 'amda/imf', label: 'OMNI B' }, { path: 'amda/ae', label: 'AE' }], y_axis: { log: false }, y2_axis: { log: false }, plotType: 'line',
         productData: { 'amda/imf': threeCols, 'amda/ae': oneCol } },
     ];
     renderAllSubplots();
@@ -223,9 +223,9 @@ describe('rendering subplots with uPlot', () => {
     initChart();
     const unitless = { ...lineCache('cda/c', ''), unit: '' };
     plotState.plots = [
-      { products: [{ path: 'cda/b', label: 'OMNI B' }], y_axis: { log: false }, plotType: 'line', productData: { 'cda/b': lineCache('cda/b', '') } },
+      { products: [{ path: 'cda/b', label: 'OMNI B' }], y_axis: { log: false }, y2_axis: { log: false }, plotType: 'line', productData: { 'cda/b': lineCache('cda/b', '') } },
       heatmapSubplot(),
-      { products: [{ path: 'cda/c', label: 'count' }], y_axis: { log: false }, plotType: 'line', productData: { 'cda/c': unitless } },
+      { products: [{ path: 'cda/c', label: 'count' }], y_axis: { log: false }, y2_axis: { log: false }, plotType: 'line', productData: { 'cda/c': unitless } },
     ];
     renderAllSubplots();
 
@@ -240,7 +240,7 @@ describe('rendering subplots with uPlot', () => {
   it('puts every product of a subplot on one joined time axis', () => {
     initChart();
     plotState.plots = [{
-      products: [{ path: 'cda/a' }, { path: 'cda/b' }], y_axis: { log: false }, plotType: 'line',
+      products: [{ path: 'cda/a' }, { path: 'cda/b' }], y_axis: { log: false }, y2_axis: { log: false }, plotType: 'line',
       productData: { 'cda/a': lineCache('cda/a', ''), 'cda/b': lineCache('cda/b', '') },
     }];
     renderAllSubplots();
@@ -260,7 +260,7 @@ describe('applying a config with a zero-width time range', () => {
     applyConfig({
       version: 1,
       time_range: { start: '2026-08-20', stop: '2026-08-20' },
-      plots: [{ products: [{ path: 'amda/imf' }], y_axis: { log: false } }],
+      plots: [{ products: [{ path: 'amda/imf' }], y_axis: { log: false }, y2_axis: { log: false } }],
     });
 
     const startMs = new Date(plotState.time_range.start).getTime();
@@ -386,9 +386,9 @@ describe('changing a param select on an already-plotted product', () => {
     plotState.plots = [{
       products: [{ path: 'ssc/ace', label: 'ace', coordinateSystem: 'gse' }],
       productData: { 'ssc/ace': staleCache },
-      y_axis: { log: false },
+      y_axis: { log: false, auto: true }, y2_axis: { log: false, auto: true },
       plotType: 'line',
-      _yScaleAuto: true, _zScaleAuto: true,
+      _zScaleAuto: true,
     }];
     plotState.time_range = { start: '2020-01-01T00:00:00.000Z', stop: '2020-01-02T00:00:00.000Z' };
 
@@ -435,7 +435,7 @@ describe('restoring the params box after a page refresh', () => {
     plot.__test__.setSelectedProduct('ssc/ace');
     plotState.plots = [{
       products: [{ path: 'ssc/ace', label: 'ace', coordinateSystem: 'gsm' }],
-      productData: {}, y_axis: { log: false },
+      productData: {}, y_axis: { log: false }, y2_axis: { log: false },
     }];
     apiClient.fetchInventory.mockResolvedValueOnce(sscTree);
 
@@ -457,7 +457,7 @@ describe('product parameters in the subplot toolbar', () => {
   } } } };
   const sscSubplot = (coordinateSystem) => ({
     products: [{ path: 'ssc/ace', label: 'ace', coordinateSystem }],
-    productData: { 'ssc/ace': lineCache('ssc/ace', '') }, y_axis: { log: false }, plotType: 'line',
+    productData: { 'ssc/ace': lineCache('ssc/ace', '') }, y_axis: { log: false }, y2_axis: { log: false }, plotType: 'line',
   });
   const paramSelects = (from) => dom.created.slice(from).filter((e) => e.tagName === 'SELECT' && e.className.includes('pv-param'));
 
@@ -490,7 +490,7 @@ describe('product parameters in the subplot toolbar', () => {
 
   it('shows no parameter dropdowns for a plain product', () => {
     initChart();
-    plotState.plots = [{ products: [{ path: 'cda/b' }], y_axis: { log: false }, plotType: 'line', productData: { 'cda/b': lineCache('cda/b', '') } }];
+    plotState.plots = [{ products: [{ path: 'cda/b' }], y_axis: { log: false }, y2_axis: { log: false }, plotType: 'line', productData: { 'cda/b': lineCache('cda/b', '') } }];
     const before = dom.created.length;
     renderAllSubplots();
     expect(paramSelects(before)).toHaveLength(0);
@@ -501,7 +501,7 @@ describe('a window outside a product coverage', () => {
   const pspTree = { cda: { PSP: { __spz_type__: 'DatasetIndex', __spz_name__: 'PSP',
     hfr: { __spz_type__: 'ParameterIndex', __spz_provider__: 'cda', __spz_uid__: 'PSP/hfr', __spz_name__: 'hfr',
       start_date: '2018-10-02 03:48:16', stop_date: '2026-03-15 23:59:53' } } } };
-  const pspSubplot = () => ({ products: [{ path: 'cda/PSP/hfr' }], y_axis: { log: false }, plotType: 'line',
+  const pspSubplot = () => ({ products: [{ path: 'cda/PSP/hfr' }], y_axis: { log: false }, y2_axis: { log: false }, plotType: 'line',
     productData: { 'cda/PSP/hfr': lineCache('cda/PSP/hfr', '') } });
 
   it('offers to jump to the last data, keeping the window length', async () => {
@@ -561,7 +561,7 @@ describe('removing a product from a subplot', () => {
     initChart();
     const subplot = {
       products: [{ path: 'cda/b1' }, { path: 'cda/b2' }],
-      y_axis: { log: false },
+      y_axis: { log: false }, y2_axis: { log: false },
       logScale: true,
       plotType: 'line',
       lastHeatmapLayers: null,
@@ -639,7 +639,7 @@ describe('time window controls', () => {
 
 describe('per-subplot actions (the toolbar on each subplot)', () => {
   const lineSubplot = (path) => ({
-    products: [{ path }], y_axis: { log: false }, plotType: 'line', _yScaleAuto: true, _zScaleAuto: true,
+    products: [{ path }], y_axis: { log: false, auto: true }, y2_axis: { log: false, auto: true }, plotType: 'line', _zScaleAuto: true,
     productData: { [path]: lineCache(path, '') },
   });
 
@@ -658,7 +658,7 @@ describe('per-subplot actions (the toolbar on each subplot)', () => {
 
     expect(plotState.plots.map((sp) => sp.y_axis.log)).toEqual([false, true]);
     expect(plotState.plots[1]._yOverride).toBeUndefined();
-    expect(plotState.plots[1]._yScaleAuto).toBe(false);
+    expect(plotState.plots[1].y_axis.auto).toBe(false);
   });
 
   it('log Z flips only the spectrogram it belongs to', () => {
@@ -741,7 +741,7 @@ describe('subplot toolbar', () => {
 
   it('offers auto Z and log Z only on spectrograms and marks the active scales', () => {
     initChart();
-    const line = { products: [{ path: 'cda/b' }], y_axis: { log: true }, plotType: 'line', productData: { 'cda/b': lineCache('cda/b', '') } };
+    const line = { products: [{ path: 'cda/b' }], y_axis: { log: true }, y2_axis: { log: false }, plotType: 'line', productData: { 'cda/b': lineCache('cda/b', '') } };
     plotState.plots = [line, heatmapSubplot()];
     const before = dom.created.length;
 
@@ -772,7 +772,7 @@ describe('subplot toolbar', () => {
 
   it('offers a colormap choice only on spectrograms, showing the current one', () => {
     initChart();
-    const line = { products: [{ path: 'cda/b' }], y_axis: { log: false }, plotType: 'line', productData: { 'cda/b': lineCache('cda/b', '') } };
+    const line = { products: [{ path: 'cda/b' }], y_axis: { log: false }, y2_axis: { log: false }, plotType: 'line', productData: { 'cda/b': lineCache('cda/b', '') } };
     plotState.plots = [line, { ...heatmapSubplot(), colormap: 'turbo' }];
     const before = dom.created.length;
 
@@ -785,7 +785,7 @@ describe('subplot toolbar', () => {
 
   it('auto Y off freezes the current Y range, back on lets it refit', () => {
     initChart();
-    plotState.plots = [{ products: [{ path: 'cda/b' }], y_axis: { log: false }, plotType: 'line', productData: { 'cda/b': lineCache('cda/b', '') } }];
+    plotState.plots = [{ products: [{ path: 'cda/b' }], y_axis: { log: false }, y2_axis: { log: false }, plotType: 'line', productData: { 'cda/b': lineCache('cda/b', '') } }];
     const before = dom.created.length;
     renderAllSubplots();
     const autoY = dom.created.slice(before).find((e) => e.textContent === 'auto Y');
@@ -805,7 +805,7 @@ describe('subplot toolbar', () => {
 
 describe('ISTP SCALETYP scale hints', () => {
   function autoSubplot(plotType) {
-    return { plotType, logScale: true, y_axis: { log: false }, _yScaleAuto: true, _zScaleAuto: true };
+    return { plotType, logScale: true, y_axis: { log: false, auto: true }, y2_axis: { log: false, auto: true }, _zScaleAuto: true };
   }
 
   it('seeds Log Z and Log Y from a spectrogram\'s SCALETYP (energy axis log, values linear)', () => {
@@ -818,7 +818,7 @@ describe('ISTP SCALETYP scale hints', () => {
     applyScaleHints(subplot, data);
 
     expect(subplot.logScale).toBe(false); // values.meta.SCALETYP -> Z (color)
-    expect(subplot.y_axis.log).toBe(true); // axes[1].meta.SCALETYP -> Y (energy)
+    expect(subplot.y2_axis.log).toBe(true); // axes[1].meta.SCALETYP -> Y (energy)
   });
 
   it('uses values.meta.SCALETYP for a line subplot\'s Y axis (no DEPEND_1)', () => {
@@ -833,13 +833,13 @@ describe('ISTP SCALETYP scale hints', () => {
   it('leaves the current value untouched when SCALETYP is absent (e.g. AMDA)', () => {
     const subplot = autoSubplot('heatmap');
     subplot.logScale = false; // deliberately not the createSubplotData default, to prove
-    subplot.y_axis.log = true; // an absent hint doesn't coincidentally "restore" a default
+    subplot.y2_axis.log = true; // an absent hint doesn't coincidentally "restore" a default
     const data = { values: { meta: {} }, axes: [{ values: [] }, { meta: {} }] };
 
     applyScaleHints(subplot, data);
 
     expect(subplot.logScale).toBe(false);
-    expect(subplot.y_axis.log).toBe(true);
+    expect(subplot.y2_axis.log).toBe(true);
   });
 
   // Many spectrograms (AMDA, Cluster HIA, Solar Orbiter PAS) carry no SCALETYP on their
@@ -849,22 +849,22 @@ describe('ISTP SCALETYP scale hints', () => {
   it('draws an unhinted spectrogram axis spanning over a decade on a log scale', () => {
     const subplot = autoSubplot('heatmap');
     applyScaleHints(subplot, unhinted([10, 100, 1000, 30000]));
-    expect(subplot.y_axis.log).toBe(true);
+    expect(subplot.y2_axis.log).toBe(true);
   });
 
   it('reads a time-varying (2-D) energy table too', () => {
     const subplot = autoSubplot('heatmap');
     applyScaleHints(subplot, unhinted([[10, 100], [12, 30000]]));
-    expect(subplot.y_axis.log).toBe(true);
+    expect(subplot.y2_axis.log).toBe(true);
   });
 
   it('keeps an unhinted axis linear when it spans less than a decade or reaches zero', () => {
     const narrow = autoSubplot('heatmap');
     applyScaleHints(narrow, unhinted([500, 900, 1900]));
-    expect(narrow.y_axis.log).toBe(false);
+    expect(narrow.y2_axis.log).toBe(false);
     const withZero = autoSubplot('heatmap');
     applyScaleHints(withZero, unhinted([0, 10, 30000]));
-    expect(withZero.y_axis.log).toBe(false);
+    expect(withZero.y2_axis.log).toBe(false);
   });
 
   it('lets an explicit SCALETYP linear win over a wide range', () => {
@@ -872,15 +872,15 @@ describe('ISTP SCALETYP scale hints', () => {
     const data = unhinted([10, 30000]);
     data.axes[1].meta.SCALETYP = 'linear';
     applyScaleHints(subplot, data);
-    expect(subplot.y_axis.log).toBe(false);
+    expect(subplot.y2_axis.log).toBe(false);
   });
 
   it('never overwrites an explicit user Log Y / Log Z choice', () => {
     const subplot = autoSubplot('heatmap');
-    subplot._yScaleAuto = false;
+    subplot.y2_axis.auto = false;
     subplot._zScaleAuto = false;
     subplot.logScale = true;
-    subplot.y_axis.log = false;
+    subplot.y2_axis.log = false;
     const data = {
       values: { meta: { SCALETYP: 'linear' } },
       axes: [{ values: [] }, { meta: { SCALETYP: 'log' } }],
@@ -889,7 +889,7 @@ describe('ISTP SCALETYP scale hints', () => {
     applyScaleHints(subplot, data);
 
     expect(subplot.logScale).toBe(true);
-    expect(subplot.y_axis.log).toBe(false);
+    expect(subplot.y2_axis.log).toBe(false);
   });
 });
 
@@ -975,7 +975,7 @@ describe('ISTP names and descriptions', () => {
   it('titles the badge with the ISTP name, and keeps the path and description on hover', () => {
     initChart();
     const cache = { ...lineCache('amda/omni_sw_n', ''), title: 'sw density', description: 'Solar wind density' };
-    plotState.plots = [{ products: [{ path: 'amda/omni_sw_n', label: 'amda/omni_sw_n' }], y_axis: { log: false }, plotType: 'line', productData: { 'amda/omni_sw_n': cache } }];
+    plotState.plots = [{ products: [{ path: 'amda/omni_sw_n', label: 'amda/omni_sw_n' }], y_axis: { log: false }, y2_axis: { log: false }, plotType: 'line', productData: { 'amda/omni_sw_n': cache } }];
     const before = dom.created.length;
 
     renderAllSubplots();
@@ -992,7 +992,7 @@ describe('units in a mixed subplot', () => {
     const speed = { ...lineCache('cda/v', ''), unit: 'km/s' };
     const dens = { ...lineCache('cda/n', ''), unit: 'cm-3' };
     const dens2 = { ...lineCache('cda/n2', ''), unit: 'cm-3' };
-    plotState.plots = [{ products: [{ path: 'cda/n', label: 'n' }, { path: 'cda/n2', label: 'n2' }, { path: 'cda/v', label: 'v' }], y_axis: { log: false }, plotType: 'line',
+    plotState.plots = [{ products: [{ path: 'cda/n', label: 'n' }, { path: 'cda/n2', label: 'n2' }, { path: 'cda/v', label: 'v' }], y_axis: { log: false }, y2_axis: { log: false }, plotType: 'line',
       productData: { 'cda/n': dens, 'cda/n2': dens2, 'cda/v': speed } }];
     const before = dom.created.length;
 
@@ -1127,7 +1127,7 @@ describe('URL state', () => {
 
     plot.__test__.loadFromURLParams();
 
-    expect(plotState.plots[0]._yScaleAuto).toBe(true);
+    expect(plotState.plots[0].y_axis.auto).toBe(true);
     window.location.search = '';
   });
 });
@@ -1179,7 +1179,7 @@ describe('product search', () => {
 describe('time fields follow the view', () => {
   it('a pan or zoom updates the start/stop fields, so chips work from what is shown', async () => {
     initChart();
-    plotState.plots = [{ products: [{ path: 'cda/b' }], y_axis: { log: false }, plotType: 'line',
+    plotState.plots = [{ products: [{ path: 'cda/b' }], y_axis: { log: false }, y2_axis: { log: false }, plotType: 'line',
       productData: { 'cda/b': { ...lineCache('cda/b', ''), intervals: [[0, 1e12]], fetchSpan: 1e12 } } }];
     renderAllSubplots();
     plot.__test__.getPlotView().setView({ start: Date.parse('2020-01-01T04:00:00Z'), end: Date.parse('2020-01-01T10:00:00Z') });
@@ -1193,7 +1193,7 @@ describe('time fields follow the view', () => {
 
 describe('Back and Forward walk the views', () => {
   const T0 = Date.parse('2020-01-01T00:00:00Z'), HOUR = 3600000;
-  const oneLinePlot = () => [{ products: [{ path: 'cda/b' }], y_axis: { log: false }, plotType: 'line',
+  const oneLinePlot = () => [{ products: [{ path: 'cda/b' }], y_axis: { log: false }, y2_axis: { log: false }, plotType: 'line',
     productData: { 'cda/b': { ...lineCache('cda/b', ''), intervals: [[0, 1e13]], fetchSpan: 1e13 } } }];
   const configUrl = (config) => '?config=' + configToBase64(config);
   const clearHistory = () => { window.history.pushState.mockClear(); window.history.replaceState.mockClear(); };

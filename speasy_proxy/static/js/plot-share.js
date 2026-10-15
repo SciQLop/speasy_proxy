@@ -162,7 +162,7 @@ export function pythonSnippet(config) {
   });
   const nameOf = new Map(products.map((p, i) => [productKey(p), names[i]]));
   return ['import speasy as spz', 'import matplotlib.pyplot as plt', '', ...calls, '',
-    ...matplotlibLines(config.plots, nameOf), ''].join('\n');
+    ...matplotlibLines(config.plots, nameOf, config.version), ''].join('\n');
 }
 
 const pyBool = (b) => (b ? 'True' : 'False');
@@ -171,19 +171,28 @@ const pyBool = (b) => (b ? 'True' : 'False');
 const finitePair = (range) =>
   Array.isArray(range) && range.length === 2 && range.every((v) => typeof v === 'number' && Number.isFinite(v));
 
+// speasy's plot() has one logy, for the axis it draws on. A config that sets both y axes
+// differently doesn't say which one that is (it depends on the data), so speasy decides.
+function logY(sp) {
+  const logs = [sp.y_axis?.log, sp.y2_axis?.log].filter((log) => log !== undefined);
+  return logs.length && logs.every((log) => log === logs[0]) ? logs[0] : undefined;
+}
+
 // Only the choices the view saved: speasy reads the rest (log scales) from the ISTP metadata.
-function plotOptions(sp) {
+function plotOptions(plotDef, version) {
+  const sp = version >= 2 ? plotDef : { ...plotDef, z_axis: { log: plotDef.log_z, range: plotDef.z_range } };
   const opts = [];
-  if (sp.y_axis) opts.push('logy=' + pyBool(sp.y_axis.log));
-  if (sp.log_z !== undefined) opts.push('logz=' + pyBool(sp.log_z));
+  const logy = logY(sp);
+  if (logy !== undefined) opts.push('logy=' + pyBool(logy));
+  if (sp.z_axis?.log !== undefined) opts.push('logz=' + pyBool(sp.z_axis.log));
   if (sp.colormap) opts.push('cmap=' + JSON.stringify(sp.colormap));
-  if (finitePair(sp.z_range)) opts.push('vmin=' + sp.z_range[0], 'vmax=' + sp.z_range[1]);
+  if (finitePair(sp.z_axis?.range)) opts.push('vmin=' + sp.z_axis.range[0], 'vmax=' + sp.z_axis.range[1]);
   return opts;
 }
 
-function matplotlibLines(plots, nameOf) {
+function matplotlibLines(plots, nameOf, version) {
   const draws = plots.flatMap((sp, i) => sp.products.map((p) =>
-    nameOf.get(productKey(p)) + '.plot(' + [`ax=axes[${i}, 0]`, ...plotOptions(sp)].join(', ') + ')'));
+    nameOf.get(productKey(p)) + '.plot(' + [`ax=axes[${i}, 0]`, ...plotOptions(sp, version)].join(', ') + ')'));
   return [`fig, axes = plt.subplots(${plots.length}, sharex=True, squeeze=False, layout="constrained", figsize=(10, ${2.5 * plots.length}))`,
     ...draws, 'plt.show()'];
 }

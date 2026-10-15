@@ -4,7 +4,7 @@
 // panel: pan/zoom, the shared time axis, legends and the crosshair are SciQLopPlots' own.
 // simplify: no per-subplot toolbar or badges, and events are shown read-only (no
 // Shift+drag to add one, no dragging to move one). Port them once this backend is kept.
-import { productTitle } from './plot-core.js';
+import { productTitle, valueAxis } from './plot-core.js';
 import { utcMs } from './common.js';
 import { PRODUCT_MIME } from './plot-view.js';
 
@@ -154,7 +154,7 @@ export function createPlotView(root, { onViewChange, onAction = () => {} }) {
 
   function addSlot(sp) {
     const plot = panel.addPlot();
-    plot.setAxis('y', isHeatmap(sp) ? { label: yLabel(sp) } : { label: yLabel(sp), log: !!sp.y_axis?.log });
+    plot.setAxis('y', isHeatmap(sp) ? { label: yLabel(sp) } : { label: yLabel(sp), log: !!valueAxis(sp).log });
     return { plot, items: new Map() };
   }
 
@@ -181,7 +181,7 @@ export function createPlotView(root, { onViewChange, onAction = () => {} }) {
   function fillColormap(sp, plot, map, prod, cache) {
     const { t, y, z } = colormapArrays(cache);
     if (map) { map.setData(t, y, z); return map; }
-    return plot.colormap(t, y, z, { name: productTitle(prod, cache), yLog: !!sp.y_axis?.log, zLog: !!sp.logScale });
+    return plot.colormap(t, y, z, { name: productTitle(prod, cache), yLog: !!valueAxis(sp).log, zLog: !!sp.logScale });
   }
 
   // plot.js downloads these URLs: blob: URLs, which it revokes after the download starts.
