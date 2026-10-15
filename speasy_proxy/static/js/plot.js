@@ -5,7 +5,7 @@ import {
 } from './common.js';
 import { getDisplayName, getProductPath, shouldSkipNode, SKIP_KEYS, isSpzMetaKey, isSelectableProduct, browsableChildKeys, hasSelectableDescendant, paramSpecs, nodeTooltip } from './inventory-tree.js';
 import {
-  createSubplotData, createProductCache, subplotToConfig, subplotFromConfig, valueAxis,
+  createSubplotData, createProductCache, subplotToConfig, subplotFromConfig, valueAxis, shortcutActions,
   detectPlotType, spliceColumns, spliceRows, mergeIntervals, evictProductCache,
   configToBase64, base64ToConfig, isCovered, resolutionSufficient, rangesOverlap, trimCacheWindow, cacheToCsv,
   structureKey, resampleTarget, shiftIntoView, plotTypeFromCache, computeValueRange, mergeValueRange, cleanText, distinctCrumbs,
@@ -455,12 +455,18 @@ import { presetConfig, configStory, pythonSnippet, dataUrls, viewQuery, shareQrS
             else if (btn.dataset.ms) applyRelativeRange(Number(btn.dataset.ms));
         });
 
-        // Arrow keys pan the time window when not typing in a field.
+        // Arrow keys pan the time window when not typing in a field; SciQLop's plot keys
+        // (shortcutActions) act on the plot under the pointer.
+        let pointer = { x: -1, y: -1 };
+        document.addEventListener('pointermove', (e) => { pointer = { x: e.clientX, y: e.clientY }; });
         document.addEventListener('keydown', (e) => {
             const tag = (e.target.tagName || '').toLowerCase();
             if (tag === 'input' || tag === 'textarea' || tag === 'select') return;
-            if (e.key === 'ArrowLeft') { e.preventDefault(); panTime(-1); }
-            else if (e.key === 'ArrowRight') { e.preventDefault(); panTime(1); }
+            if (e.key === 'ArrowLeft') { e.preventDefault(); panTime(-1); return; }
+            if (e.key === 'ArrowRight') { e.preventDefault(); panTime(1); return; }
+            const actions = shortcutActions(e, plotView.targetAt(pointer.x, pointer.y), plotState.plots.length);
+            if (actions.length) e.preventDefault();
+            actions.forEach(subplotAction);
         });
         document.getElementById('btn-clear').addEventListener('click', clearAllPlots);
         for (const [id, exportAs] of [['export-png', exportPng], ['export-pdf', exportPdf], ['export-csv', exportCsv]]) {
@@ -594,6 +600,10 @@ import { presetConfig, configStory, pythonSnippet, dataUrls, viewQuery, shareQrS
             sp.logScale = !sp.logScale;
             sp._zScaleAuto = false;
             if (sp.logScale && sp._zOverride?.vMin <= 0) delete sp._zOverride;  // no position on a log scale
+        }),
+        autoscale: ({ index, axes }) => editSubplot(index, (sp) => {
+            if (axes.includes('y')) delete sp._yOverride;
+            if (axes.includes('z')) delete sp._zOverride;
         }),
         zRange: ({ index, value }) => editSubplot(index, (sp) => {
             if (value) sp._zOverride = value; else delete sp._zOverride;

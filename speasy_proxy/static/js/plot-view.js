@@ -10,7 +10,7 @@ import { CHART_COLORS, escapeHtml, utcMs } from './common.js';
 import {
   lineTable, nearestIndex, fmtTick, productTitle, dropZone,
   paramValue, zRangeOf, outOfCoverage, edgeColor, nearestEdge, eventAt, formatDuration,
-  subMsSplits, subMsTickLabels, fmtInstant, valueAxis,
+  subMsSplits, subMsTickLabels, fmtInstant, valueAxis, pointerTarget,
 } from './plot-core.js';
 import { binRowRects, computeYEdges, lowestPositiveEdge, spectrogramLayers, spectrogramValueAt, COLORMAPS, colormapLut } from './spectrogram.js';
 import { bindGestures } from './plot-gestures.js';
@@ -284,7 +284,13 @@ export function createPlotView(root, { onViewChange, onAction = () => {}, paramS
     placeTooltip(tooltip, root, u, left, u.cursor.top);
   }
 
-  return { render, update, setView, getView: () => ({ ...view }), resize: fitHeights, clear, toDataURL };
+  const targetAt = (x, y) => pointerTarget(x, y, charts.map((c) => ({
+    root: c.u.root.getBoundingClientRect(),
+    over: c.u.over.getBoundingClientRect(),
+    colorbar: c.colorbar?.node.getBoundingClientRect() ?? null,
+  })));
+
+  return { render, update, setView, getView: () => ({ ...view }), resize: fitHeights, clear, toDataURL, targetAt };
 }
 
 // --- layout ----------------------------------------------------------------------
@@ -567,10 +573,10 @@ function createTools(subplot, isHeatmap, paramSpecsOf, act) {
   const toolClass = (on, extra = '') => 'pv-tool' + (on ? ' active' : '') + extra;
   const buttons = {};
   const tools = [
-    { label: 'auto Y', type: 'autoY', on: !subplot._yOverride, title: 'Fit Y to the visible data (off: keep the current Y range)' },
-    { label: 'log Y', type: 'logY', on: !!valueAxis(subplot).log, title: 'Y axis: logarithmic / linear' },
-    isHeatmap && { label: 'auto Z', type: 'autoZ', on: !subplot._zOverride, title: 'Colour range follows the data (off: keep it; or click a colour bar limit to type one)' },
-    isHeatmap && { label: 'log Z', type: 'logZ', on: !!subplot.logScale, title: 'Colour scale: logarithmic / linear' },
+    { label: 'auto Y', type: 'autoY', on: !subplot._yOverride, title: 'Fit Y to the visible data (off: keep the current Y range). Key: M over the Y axis' },
+    { label: 'log Y', type: 'logY', on: !!valueAxis(subplot).log, title: 'Y axis: logarithmic / linear. Key: L over the Y axis' },
+    isHeatmap && { label: 'auto Z', type: 'autoZ', on: !subplot._zOverride, title: 'Colour range follows the data (off: keep it; or click a colour bar limit to type one). Key: M over the colour bar' },
+    isHeatmap && { label: 'log Z', type: 'logZ', on: !!subplot.logScale, title: 'Colour scale: logarithmic / linear. Key: L over the colour bar' },
     { label: '✕', type: 'remove', on: false, title: 'Remove this subplot', extra: ' remove' },
   ].filter(Boolean);
   for (const t of tools) {

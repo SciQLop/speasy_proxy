@@ -120,6 +120,40 @@ export function subplotFromConfig(plotDef, version = 1) {
   return subplot;
 }
 
+// SciQLop's plot keys (its Settings > Shortcuts): L toggles log scale and M autoscales the
+// axis under the pointer, Ctrl+Shift+A autoscales every plot. target: what is under the
+// pointer, { index, axis: 'y' | 'z' | 'plot' }, or null. SciQLop's L over the data acts
+// on its selected axes; with no axis selection here, it toggles the plot's Y axis.
+const AXIS_KEYS = {
+  l: { y: { type: 'logY' }, z: { type: 'logZ' }, plot: { type: 'logY' } },
+  m: {
+    y: { type: 'autoscale', axes: ['y'] },
+    z: { type: 'autoscale', axes: ['z'] },
+    plot: { type: 'autoscale', axes: ['y', 'z'] },
+  },
+};
+
+export function shortcutActions(e, target, nPlots) {
+  const key = e.key.toLowerCase();
+  if ((e.ctrlKey || e.metaKey) && e.shiftKey && !e.altKey && key === 'a') {
+    return Array.from({ length: nPlots }, (_, index) => ({ type: 'autoscale', index, axes: ['y', 'z'] }));
+  }
+  if (e.ctrlKey || e.metaKey || e.altKey || !target || !AXIS_KEYS[key]) return [];
+  return [{ ...AXIS_KEYS[key][target.axis], index: target.index }];
+}
+
+const inside = (r, x, y) => !!r && x >= r.left && x < r.right && y >= r.top && y < r.bottom;
+
+// What shortcutActions acts on at (x, y) px: charts holds each subplot's rects (its root,
+// data area and colour bar, or null). Left of the data area is the Y axis.
+export function pointerTarget(x, y, charts) {
+  const index = charts.findIndex((c) => inside(c.root, x, y));
+  if (index < 0) return null;
+  const c = charts[index];
+  if (inside(c.colorbar, x, y)) return { index, axis: 'z' };
+  return { index, axis: x < c.over.left ? 'y' : 'plot' };
+}
+
 export function detectPlotType(json) {
   const meta = json.values.meta || {};
   const displayType = (meta.DISPLAY_TYPE || '').toLowerCase();

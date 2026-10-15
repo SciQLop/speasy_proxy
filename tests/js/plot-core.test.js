@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   spliceColumns, spliceRows, shiftIntoView, mergeIntervals, evictProductCache,
   detectPlotType, configToBase64, base64ToConfig, isCovered, resolutionSufficient, rangesOverlap, trimCacheWindow, cacheToCsv,
-  createSubplotData, createProductCache, subplotToConfig, subplotFromConfig, valueAxis, paramValue, withParam, editedRange, zRangeOf, outOfCoverage, formatSpan,
+  createSubplotData, createProductCache, subplotToConfig, subplotFromConfig, valueAxis, shortcutActions, pointerTarget, paramValue, withParam, editedRange, zRangeOf, outOfCoverage, formatSpan,
   normalizeWheelDelta, wheelIntent, zoomRange, panRange, zoomToward, pinchRange, structureKey, resampleTarget,
   plotTypeFromCache, computeValueRange, mergeValueRange, renderableRange,
   nearestIndex, lineTable, yRangeFromPixels, rangeFromDrag, colorHex, withHue, edgeColor, nearestEdge, eventAt, formatDuration, subMsTickLabels, subMsSplits, fmtInstant, fmtEventRange, fmtTick, cleanText, productTitle, dropZone, distinctCrumbs,
@@ -886,5 +886,56 @@ describe('shiftIntoView', () => {
 
   it('keeps the left edge visible when the box is wider than the window', () => {
     expect(shiftIntoView(100, 600, 400)).toBe(-92);
+  });
+});
+
+describe('shortcutActions (SciQLop\'s plot keys)', () => {
+  const key = (k, mods = {}) => ({ key: k, ctrlKey: false, shiftKey: false, altKey: false, metaKey: false, ...mods });
+  const over = (axis) => ({ index: 1, axis });
+
+  it('L toggles log scale on the axis under the pointer', () => {
+    expect(shortcutActions(key('l'), over('y'), 3)).toEqual([{ type: 'logY', index: 1 }]);
+    expect(shortcutActions(key('l'), over('z'), 3)).toEqual([{ type: 'logZ', index: 1 }]);
+  });
+  it('L over the data toggles the plot\'s Y axis', () => {
+    expect(shortcutActions(key('l'), over('plot'), 3)).toEqual([{ type: 'logY', index: 1 }]);
+  });
+  it('M autoscales the axis under the pointer, or the whole plot over its data', () => {
+    expect(shortcutActions(key('m'), over('y'), 3)).toEqual([{ type: 'autoscale', index: 1, axes: ['y'] }]);
+    expect(shortcutActions(key('m'), over('z'), 3)).toEqual([{ type: 'autoscale', index: 1, axes: ['z'] }]);
+    expect(shortcutActions(key('m'), over('plot'), 3)).toEqual([{ type: 'autoscale', index: 1, axes: ['y', 'z'] }]);
+  });
+  it('reads the letter whatever the case (Caps Lock)', () => {
+    expect(shortcutActions(key('L'), over('y'), 3)).toEqual([{ type: 'logY', index: 1 }]);
+  });
+  it('Ctrl+Shift+A autoscales every plot, wherever the pointer is', () => {
+    const all = [0, 1].map((index) => ({ type: 'autoscale', index, axes: ['y', 'z'] }));
+    expect(shortcutActions(key('A', { ctrlKey: true, shiftKey: true }), null, 2)).toEqual(all);
+    expect(shortcutActions(key('A', { metaKey: true, shiftKey: true }), null, 2)).toEqual(all);
+  });
+  it('does nothing away from a plot, or with a modifier the browser owns', () => {
+    expect(shortcutActions(key('l'), null, 3)).toEqual([]);
+    expect(shortcutActions(key('l', { ctrlKey: true }), over('y'), 3)).toEqual([]);
+    expect(shortcutActions(key('m', { altKey: true }), over('y'), 3)).toEqual([]);
+    expect(shortcutActions(key('a', { ctrlKey: true }), null, 3)).toEqual([]);
+  });
+});
+
+describe('pointerTarget', () => {
+  const rect = (left, top, width, height) => ({ left, top, right: left + width, bottom: top + height });
+  // Two charts stacked: a 60 px Y gutter left of each data area; the second has a colour bar.
+  const charts = [
+    { root: rect(0, 0, 800, 200), over: rect(60, 10, 700, 170), colorbar: null },
+    { root: rect(0, 200, 800, 200), over: rect(60, 210, 700, 170), colorbar: rect(400, 215, 80, 10) },
+  ];
+  it('names the plot and the part of it under the pointer', () => {
+    expect(pointerTarget(30, 100, charts)).toEqual({ index: 0, axis: 'y' });
+    expect(pointerTarget(300, 100, charts)).toEqual({ index: 0, axis: 'plot' });
+    expect(pointerTarget(420, 220, charts)).toEqual({ index: 1, axis: 'z' });
+    expect(pointerTarget(300, 300, charts)).toEqual({ index: 1, axis: 'plot' });
+  });
+  it('is null away from every plot', () => {
+    expect(pointerTarget(300, 450, charts)).toBeNull();
+    expect(pointerTarget(-1, -1, charts)).toBeNull();
   });
 });

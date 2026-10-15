@@ -661,6 +661,20 @@ describe('per-subplot actions (the toolbar on each subplot)', () => {
     expect(plotState.plots[1].y_axis.auto).toBe(false);
   });
 
+  it('autoscale drops the manual ranges it names, on its subplot only', () => {
+    plotState.plots = [heatmapSubplot(), heatmapSubplot()];
+    for (const sp of plotState.plots) Object.assign(sp, { _yOverride: { min: 1, max: 2 }, _zOverride: { vMin: 1, vMax: 2 } });
+
+    plot.__test__.subplotAction({ type: 'autoscale', index: 1, axes: ['z'] });
+    expect(plotState.plots[1]._zOverride).toBeUndefined();
+    expect(plotState.plots[1]._yOverride).toEqual({ min: 1, max: 2 });
+
+    plot.__test__.subplotAction({ type: 'autoscale', index: 1, axes: ['y', 'z'] });
+    expect(plotState.plots[1]._yOverride).toBeUndefined();
+    expect(plotState.plots[0]._yOverride).toEqual({ min: 1, max: 2 });
+    expect(plotState.plots[0]._zOverride).toEqual({ vMin: 1, vMax: 2 });
+  });
+
   it('log Z flips only the spectrogram it belongs to', () => {
     plotState.plots = [heatmapSubplot(), heatmapSubplot()];
 

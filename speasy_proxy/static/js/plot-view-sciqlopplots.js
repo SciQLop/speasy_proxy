@@ -193,5 +193,11 @@ export function createPlotView(root, { onViewChange, onAction = () => {} }) {
     toPdfURL: () => exportURL('pdf'),
     getView: () => ({ ...view }),
     resize: () => {},          // Qt follows its container's size itself
+    // The library has no axis under the pointer: the plot's data area stands for it.
+    targetAt: (x, y) => {
+      const r = root.getBoundingClientRect();
+      const index = panel?.plotAt(x - r.left, y - r.top)?.index;
+      return index === undefined ? null : { index, axis: 'plot' };
+    },
   };
 }
