@@ -20,15 +20,28 @@ def servers():
     return root
 
 
+CATALOG = [{"id": "sorce/mag", "title": "SORCE magnetometer", "info": INFO},
+           {"id": "no_info", "title": "Not described"}]
+
+
 def fake_fetch(url):
     if url == dump_url("LISIRD"):
-        return {"catalog": [{"id": "sorce/mag", "title": "SORCE magnetometer", "info": INFO},
-                            {"id": "no_info", "title": "Not described"}]}
+        return {"catalog": CATALOG}
     raise OSError("unreachable")
 
 
-def test_fills_each_server_with_its_datasets_and_parameters():
-    inventory = to_dict(hapi_inventory(servers(), fake_fetch), version=2)
+def wrapped_fetch(url):
+    """The shape the dumps took on 2026-11-24 (DAS2, LISIRD, CDAWeb...): the catalog response itself under 'catalog'."""
+    if url == dump_url("LISIRD"):
+        return {"about": {"id": "LISIRD", "title": "LISIRD", "x_url": "https://lasp.colorado.edu/lisird/hapi"},
+                "catalog": {"catalog": CATALOG, "x_LastUpdate": "2026-11-24T16:06:23Z"},
+                "capabilities": {"outputFormats": ["csv"], "x_LastUpdate": "2026-11-24T16:06:33Z"}}
+    raise OSError("unreachable")
+
+
+@pytest.mark.parametrize("fetch", [fake_fetch, wrapped_fetch], ids=["catalog_list", "catalog_object"])
+def test_fills_each_server_with_its_datasets_and_parameters(fetch):
+    inventory = to_dict(hapi_inventory(servers(), fetch), version=2)
     bx = inventory["lisird"]["sorce"]["mag"]["Bx"]
     assert bx["__spz_type__"] == "ParameterIndex"
     assert bx["__spz_uid__"] == "lisird/sorce/mag/Bx"

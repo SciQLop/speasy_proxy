@@ -33,12 +33,18 @@ def _meta(node: SpeasyIndex) -> dict:
     return {k: v for k, v in node.__dict__.items() if not k.startswith("__spz_") and not isinstance(v, SpeasyIndex)}
 
 
+def _datasets(dump: dict) -> list:
+    """The dump's catalog: a list, or since 2026-11-24 the server's /catalog response (an object holding the list)."""
+    catalog = dump["catalog"]
+    return catalog["catalog"] if isinstance(catalog, dict) else catalog
+
+
 def _server(key: str, listed: SpeasyIndex, fetch: Callable[[str], dict]) -> SpeasyIndex:
     """A server without a dump (or whose dump fails) stays as speasy lists it: browsable, with no product."""
     node = SpeasyIndex(name=key, provider=listed.spz_provider(), uid=key, meta=_meta(listed))
     url = dump_url(listed.__dict__.get("id", key))
     try:
-        build_inventory(node, {}, fetch(url)["catalog"], dataset_type=DatasetIndex)
+        build_inventory(node, {}, _datasets(fetch(url)), dataset_type=DatasetIndex)
     except Exception as e:  # pylint: disable=broad-except
         log.warning(f"No HAPI dump for {key} ({url}): {e!r}")
     return node
