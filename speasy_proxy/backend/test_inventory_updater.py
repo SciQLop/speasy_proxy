@@ -1,3 +1,4 @@
+import pytest
 import threading
 from datetime import UTC, datetime, timedelta
 
@@ -360,3 +361,16 @@ def test_refresh_excludes_concurrent_lazy_build(monkeypatch):
     t.join(timeout=2)
     mgr._refresh_if_due()  # must complete now that the lock is free
     assert mgr._inventories == {"inv": "x"}
+
+
+def test_hapi_refresh_hands_the_served_hapi_tree_back_as_previous(monkeypatch):
+    from speasy_proxy.backend import inventory_updater
+    if inventory_updater.hapi_inventory is None or "hapi" not in inventory_updater.tree.__dict__:
+        pytest.skip("speasy without the HAPI provider")
+    served = object()
+    seen = {}
+    monkeypatch.setitem(inventory_updater._served_overrides, "hapi", served)
+    monkeypatch.setattr(inventory_updater, "hapi_inventory",
+                        lambda servers, previous=None: seen.setdefault("previous", previous))
+    inventory_updater.update_hapi_dumps()
+    assert seen["previous"] is served

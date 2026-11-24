@@ -8,7 +8,7 @@ Only the served inventory is built from them: speasy's own tree stays lazy, so g
 import json
 import logging
 import urllib.request
-from typing import Callable
+from typing import Callable, Optional
 from urllib.parse import quote
 
 from speasy.core.hapi.inventory import build_inventory
@@ -39,22 +39,31 @@ def _datasets(dump: dict) -> list:
     return catalog["catalog"] if isinstance(catalog, dict) else catalog
 
 
-def _server(key: str, listed: SpeasyIndex, fetch: Callable[[str], dict]) -> SpeasyIndex:
-    """A server without a dump (or whose dump fails) stays as speasy lists it: browsable, with no product."""
+def _server(key: str, listed: SpeasyIndex, fetch: Callable[[str], dict],
+            previous: Optional[SpeasyIndex]) -> SpeasyIndex:
+    """A server whose dump fails keeps its previously served node; with none (first load, or no dump at all) it
+    stays as speasy lists it: browsable, with no product."""
     node = SpeasyIndex(name=key, provider=listed.spz_provider(), uid=key, meta=_meta(listed))
     url = dump_url(listed.__dict__.get("id", key))
     try:
         build_inventory(node, {}, _datasets(fetch(url)), dataset_type=DatasetIndex)
+        return node
     except Exception as e:  # pylint: disable=broad-except
-        log.warning(f"No HAPI dump for {key} ({url}): {e!r}")
-    return node
+        if previous is None:
+            log.warning(f"No HAPI dump for {key} ({url}): {e!r}")
+            return node
+        log.warning(f"No HAPI dump for {key} ({url}): {e!r}, kept the previous {key}")
+        return previous
 
 
-def hapi_inventory(servers: SpeasyIndex, fetch: Callable[[str], dict] = fetch_json) -> SpeasyIndex:
-    """A copy of speasy's HAPI tree (``servers``) with each server filled from its dump."""
+def hapi_inventory(servers: SpeasyIndex, fetch: Callable[[str], dict] = fetch_json,
+                   previous: Optional[SpeasyIndex] = None) -> SpeasyIndex:
+    """A copy of speasy's HAPI tree (``servers``) with each server filled from its dump, or taken from ``previous``
+    (the tree served so far) when its dump fails."""
     root = SpeasyIndex(name=servers.spz_name(), provider=servers.spz_provider(), uid=servers.spz_uid(),
                        meta=_meta(servers))
+    kept = previous.__dict__ if previous is not None else {}
     for key, listed in servers.__dict__.items():
         if isinstance(listed, SpeasyIndex):
-            root.__dict__[key] = _server(key, listed, fetch)
+            root.__dict__[key] = _server(key, listed, fetch, kept.get(key))
     return root

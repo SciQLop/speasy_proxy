@@ -61,3 +61,30 @@ def test_leaves_speasy_tree_untouched():
 
 def test_dump_url_escapes_the_server_id():
     assert dump_url("UCalgary/SRS") == "https://hapi-server.org/meta/catalog/UCalgary%2FSRS-all.json"
+
+
+def lisird_down(url):
+    raise OSError("unreachable")
+
+
+def test_a_failed_dump_keeps_the_previously_served_server(caplog):
+    previous = hapi_inventory(servers(), fake_fetch)
+    inventory = to_dict(hapi_inventory(servers(), lisird_down, previous=previous), version=2)
+    assert inventory["lisird"]["sorce"]["mag"]["Bx"]["__spz_uid__"] == "lisird/sorce/mag/Bx"
+    assert "kept the previous lisird" in caplog.text
+
+
+def test_a_failed_dump_without_previous_copy_is_served_empty():
+    inventory = to_dict(hapi_inventory(servers(), lisird_down, previous=None), version=2)
+    assert "sorce" not in inventory["lisird"]
+    assert inventory["lisird"]["title"] == "LISIRD"
+
+
+def test_a_successful_dump_replaces_the_previous_copy():
+    def other_catalog(url):
+        return {"catalog": [{"id": "tsis/ssi", "title": "TSIS SSI", "info": INFO}]}
+
+    previous = hapi_inventory(servers(), fake_fetch)
+    inventory = to_dict(hapi_inventory(servers(), other_catalog, previous=previous), version=2)
+    assert "tsis" in inventory["lisird"]
+    assert "sorce" not in inventory["lisird"]

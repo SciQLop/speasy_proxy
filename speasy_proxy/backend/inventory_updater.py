@@ -57,7 +57,7 @@ def update_inventories():
 def update_hapi_dumps():
     """Network (~33 MB): run it outside the tree lock, speasy's tree is only read."""
     if hapi_inventory is not None and "hapi" in tree.__dict__:
-        _served_overrides["hapi"] = hapi_inventory(tree.__dict__["hapi"])
+        _served_overrides["hapi"] = hapi_inventory(tree.__dict__["hapi"], previous=_served_overrides.get("hapi"))
 
 
 def _served(provider: str) -> SpeasyIndex:
