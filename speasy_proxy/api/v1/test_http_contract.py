@@ -63,9 +63,48 @@ def test_unknown_product_is_404(client, monkeypatch):
     assert resp.status_code == 404
 
 
-def test_upstream_failure_stays_502(client, monkeypatch):
+@pytest.mark.parametrize("error", [
+    "Unknown HAPI server 'nope', known servers are: das2, lisird",  # speasy's HAPI provider
+    "Unknown HAPI dataset 'lisird/nope', browse spz.inventories.tree.hapi.lisird",
+    "Unknown HAPI product 'lisird/x/nope', browse spz.inventories.tree.hapi.lisird",
+    "Unknown dataset: nope",  # speasy's DataProvider base class, any provider
+    "Unknown parameter: nope",
+    "Unknown provider 'nope'",
+])
+def test_unknown_ids_from_any_provider_are_404(client, monkeypatch, error):
+    def _unknown(**kw):
+        raise ValueError(error)
+
+    monkeypatch.setattr(m, "_get_data", _unknown)
+    assert client.get(f"/get_data?path=hapi/nope/x&{RANGE}&format=json").status_code == 404
+
+
+def test_unknown_virtual_product_is_404_by_type(client, monkeypatch):
+    registry = pytest.importorskip("speasy.virtual_products.registry")
+
+    def _unknown(**kw):
+        raise registry.UnknownVirtualProduct("worded any way")
+
+    monkeypatch.setattr(m, "_get_data", _unknown)
+    assert client.get(f"/get_data?path=virtual/nope&{RANGE}&format=json").status_code == 404
+
+
+def test_real_unknown_hapi_server_is_404(client, monkeypatch):
+    """Through speasy itself: its HAPI provider rejects an unknown server id before any network call."""
+    pytest.importorskip("speasy.data_providers.hapi", reason="speasy without the HAPI provider")
+    monkeypatch.undo()
+    app = FastAPI()
+    app.include_router(m.router)
+    app.dependency_overrides[trigger_inventory_check] = lambda: None
+    resp = TestClient(app).get(f"/get_data?path=hapi/no_such_server/ds/param&{RANGE}&format=json")
+    assert resp.status_code == 404, resp.text
+
+
+@pytest.mark.parametrize("error", [IOError("upstream down"),
+                                   ValueError("Unknown parameter referenced in bins: ['x']")])  # bad upstream data
+def test_upstream_failure_stays_502(client, monkeypatch, error):
     def _down(**kw):
-        raise IOError("upstream down")
+        raise error
 
     monkeypatch.setattr(m, "_get_data", _down)
     assert client.get(f"/get_data?path=amda/x&{RANGE}&format=json").status_code == 502

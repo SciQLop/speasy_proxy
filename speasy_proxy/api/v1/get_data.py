@@ -19,6 +19,12 @@ from speasy.products.variable import SpeasyVariable, VariableTimeAxis, DataConta
 from speasy.products.variable import to_dictionary
 from speasy.core.codecs import get_codec
 
+try:
+    from speasy.virtual_products.registry import UnknownVirtualProduct
+except ImportError:  # speasy without virtual products
+    class UnknownVirtualProduct(ValueError):
+        pass
+
 from speasy_proxy.api import pickle_data
 from .query_parameters import ZstdCompression, Compression, PickleProtocol, DataFormat, MaxPoints, ResampleStrategy
 from speasy_proxy.api.compression import compress_if_asked, blosc_arrays, BLOSC_MIME
@@ -117,13 +123,21 @@ def _invalid_time_range_reason(start_time: datetime, stop_time: datetime) -> Opt
     return None
 
 
-_NOT_FOUND_MESSAGES = ("Unknown product", "Can't find a provider", "Given string does not look like a path")
+# speasy has no common exception for an unknown id (only virtual products have one, UnknownVirtualProduct): each
+# provider raises a ValueError with its own message, so these are matched one by one. Not a bare "Unknown ": that
+# would also catch errors in the upstream data, such as "Unknown parameter referenced in bins" from HAPI responses.
+_NOT_FOUND_MESSAGES = (
+    "Can't find a provider", "Given string does not look like a path", "Unknown provider",  # dispatch
+    "Unknown dataset", "Unknown parameter:", "Unknown product",  # DataProvider base class, impex, generic archive
+    "Unknown HAPI server", "Unknown HAPI dataset", "Unknown HAPI product",
+)
 
 
 def _fetch_failure_status(e: Exception) -> int:
-    # speasy has no dedicated exception for an unknown path, only these ValueError messages;
-    # anything else is blamed on upstream.
-    return 404 if isinstance(e, ValueError) and str(e).startswith(_NOT_FOUND_MESSAGES) else 502
+    """404 for an id speasy doesn't know, anything else is blamed on upstream (502)."""
+    unknown_id = isinstance(e, UnknownVirtualProduct) or (
+            isinstance(e, ValueError) and str(e).startswith(_NOT_FOUND_MESSAGES))
+    return 404 if unknown_id else 502
 
 
 def _download_headers(fmt: str, path: str, start_time: datetime, stop_time: datetime) -> dict:
